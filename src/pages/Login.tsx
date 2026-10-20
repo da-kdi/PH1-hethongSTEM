@@ -11,7 +11,8 @@ const TITLE: Record<Mode, string> = {
   up: 'Tạo tài khoản',
   forgot: 'Nhập email để đặt lại mật khẩu',
 }
-const redirectTo = () => window.location.origin
+// Gồm đường dẫn gốc của bản dựng (vd /PH1-hethongSTEM/ trên GitHub Pages); bản chạy ở gốc tên miền thì vẫn là "/"
+const redirectTo = () => window.location.origin + import.meta.env.BASE_URL
 
 export default function Login() {
   const brand = useLoginBranding()
