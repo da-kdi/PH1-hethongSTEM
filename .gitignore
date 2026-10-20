@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+*.tsbuildinfo
+
+# Supabase CLI
+supabase/.temp/
+deno.lock
+_preview/
+_audit/
+_audit_tokens.json
