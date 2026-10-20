@@ -76,4 +76,13 @@ jobs:
         run: |
           [ -n "$EMAIL" ] || { echo "::error::Nhập email"; exit 1; }
           echo "select public.grant_platform_admin(:'email');" | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$EMAIL"
-          echo "::notice title=grant_admin::Đã cấp Quản trị nền tảng cho $EMAIL"
+          # CSDL demo: thêm vai trò Hiệu trưởng trường mẫu THCS-PH và cán bộ Sở SO-HY để xem cổng Trường / Sở / Giáo viên
+          cat <<'SQL' | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$EMAIL"
+          insert into memberships (user_id, org_id, role_id, created_by)
+          select p.id, o.id, r.id, null from profiles p
+            join organizations o on o.code in ('THCS-PH', 'SO-HY')
+            join roles r on r.org_id is null and r.key = case o.code when 'THCS-PH' then 'principal' else 'department' end
+           where lower(p.email) = lower(:'email')
+          on conflict do nothing;
+          SQL
+          echo "::notice title=grant_admin::Đã cấp Quản trị nền tảng + Hiệu trưởng THCS-PH + cán bộ Sở SO-HY cho $EMAIL"

@@ -1831,6 +1831,11 @@ select pg_temp.chk('admin_ph', 'CTĐT danh mục: trường ẩn mục hệ th�
 select pg_temp.chk('iso_gv', 'CTĐT danh mục: giáo viên không thêm danh mục',
   $q$insert into curriculum_catalog (owner_org_id, kind, code, name) values (my_org_id(), 'subject', 'iso_gv', 'ISO')$q$, 'ERR');
 
+-- 058: dữ liệu mẫu chương trình đào tạo
+select pg_temp.chk('admin_ph', 'CTĐT mẫu: trường thấy 4 CT KDI đã ban hành + 1 của Sở + 2 của trường', $q$select count(*) from curricula where code like 'DEMO-%'$q$, '7');
+select pg_temp.chk('so_hy', 'CTĐT mẫu: Sở thấy CT KDI, CT của Sở (cả bản bị trả lại) và của trường trực thuộc', $q$select count(*) from curricula where code like 'DEMO-%'$q$, '8');
+select pg_temp.chk('admin_ph', 'CTĐT danh mục: mục KDI thêm là mặc định cho mọi đơn vị', $q$select count(*) from curriculum_catalog where code = 'CLB'$q$, '1');
+select pg_temp.chk('kdi', 'CTĐT mẫu: hồ sơ chờ duyệt của KDI trong engine', $q$select count(*) from approval_requests where kind = 'curriculum' and status = 'pending' and title like 'Robotics cơ bản%'$q$, '1');
 -- ===== Dọn dẹp + kết quả =====
 select pg_temp.cleanup();
 select case when bool_and(ok) then 'PASS' else 'FAIL' end || ' ' || count(*) filter (where ok) || '/' || count(*) as "Tổng"
