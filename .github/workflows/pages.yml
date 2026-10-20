@@ -22,10 +22,10 @@ jobs:
       - name: Dựng giao diện (trỏ vào CSDL riêng của PH1)
         env:
           VITE_BASE: '/${{ github.event.repository.name }}/'
-          VITE_SUPABASE_URL: ${{ vars.PH1_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.PH1_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ vars.PH1_SUPABASE_URL || secrets.PH1_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.PH1_SUPABASE_ANON_KEY || secrets.PH1_SUPABASE_ANON_KEY }}
         run: |
-          [ -n "$VITE_SUPABASE_URL" ] && [ -n "$VITE_SUPABASE_ANON_KEY" ] || { echo "::error::Chưa đặt biến repo PH1_SUPABASE_URL / PH1_SUPABASE_ANON_KEY"; exit 1; }
+          [ -n "$VITE_SUPABASE_URL" ] && [ -n "$VITE_SUPABASE_ANON_KEY" ] || { echo "::error::Chưa đặt PH1_SUPABASE_URL / PH1_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions, tab Variables hoặc Secrets, đúng tên, ở mức repository)"; exit 1; }
           npm run build
       # Mở thẳng một đường dẫn con / tải lại trang vẫn vào ứng dụng
       - run: cp dist/index.html dist/404.html
