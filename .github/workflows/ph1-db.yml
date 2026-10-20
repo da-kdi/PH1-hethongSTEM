@@ -1,9 +1,13 @@
 name: CSDL riêng của PH1 (Supabase)
 # BẢN TÁCH PH1: chỉ ghi vào project Supabase RIÊNG của PH1 (secret PH1_SUPABASE_DB_URL).
 # Chặn cứng nếu chuỗi kết nối trỏ vào project của bản chính. Không đi theo patch ghép về repo chính.
+# CSDL PH1 là CSDL demo: migration luôn chạy KÈM dữ liệu mẫu (cờ app.seed_demo bật bằng SET trong phiên —
+# Session pooler của Supabase bỏ qua PGOPTIONS nên không dùng cách đó).
 #   • setup       — chạy MỘT lần trên project mới: toàn bộ migration + dữ liệu mẫu, rồi ghi lịch sử migration.
-#   • migrate     — chạy migration mới (tự chạy khi đẩy lên main có thay đổi ở supabase/migrations, sau khi kiểm thử xanh).
-#   • grant_admin — cấp quyền Quản trị nền tảng cho một email đã đăng ký trên CSDL PH1.
+#   • migrate     — chạy migration mới (tự chạy khi đẩy lên main có thay đổi ở supabase/migrations).
+#   • grant_admin — cấp Quản trị nền tảng + Hiệu trưởng THCS-PH + cán bộ Sở SO-HY cho một email đã đăng ký.
+#   • reset       — XOÁ toàn bộ dữ liệu ứng dụng (schema public) rồi dựng lại như setup; giữ tài khoản đăng nhập.
+#                   Gõ XOA vào ô xác nhận. Có email thì cấp quyền luôn.
 on:
   push:
     branches: [main]
@@ -13,10 +17,14 @@ on:
       action:
         description: 'Việc cần làm'
         type: choice
-        options: [migrate, setup, grant_admin]
+        options: [migrate, setup, grant_admin, reset]
         default: migrate
       email:
-        description: 'grant_admin: email đã đăng ký trên trang PH1'
+        description: 'grant_admin / reset: email đã đăng ký trên trang PH1'
+        type: string
+        default: ''
+      confirm:
+        description: 'reset: gõ XOA để xác nhận xoá và dựng lại CSDL PH1'
         type: string
         default: ''
 
@@ -29,6 +37,7 @@ jobs:
       DB_URL: ${{ secrets.PH1_SUPABASE_DB_URL }}
       ACTION: ${{ github.event_name == 'push' && 'migrate' || inputs.action }}
       EMAIL: ${{ inputs.email }}
+      CONFIRM: ${{ inputs.confirm }}
       MAIN_REF: tsvujwddjpnchkdxqjza   # project Supabase của bản chính — không bao giờ ghi vào
     steps:
       - uses: actions/checkout@v4
@@ -37,47 +46,25 @@ jobs:
           [ -n "$DB_URL" ] || { echo "::error::Chưa có secret PH1_SUPABASE_DB_URL (Session pooler của project Supabase riêng cho PH1)"; exit 1; }
           case "$DB_URL" in *"$MAIN_REF"*) echo "::error::PH1_SUPABASE_DB_URL đang trỏ vào CSDL của BẢN CHÍNH — dừng."; exit 1;; esac
           sudo apt-get install -y -qq postgresql-client > /dev/null
-      - uses: supabase/setup-cli@v1
-        with: { version: 2.121.0 }
-
-      - name: Dựng CSDL lần đầu (migration + dữ liệu mẫu)
-        if: env.ACTION == 'setup'
-        run: |
-          N=$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")
-          [ "$N" = "0" ] || { echo "::error::CSDL đã có bảng organizations — setup chỉ chạy trên project mới, dùng migrate."; exit 1; }
-          for f in supabase/migrations/*.sql; do
-            echo "→ $(basename "$f")"
-            PGOPTIONS="-c app.seed_demo=on" psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f" > /dev/null \
-              || { echo "::error title=setup::Lỗi ở $(basename "$f")"; exit 1; }
-          done
-          V=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1)
-          supabase migration repair --db-url "$DB_URL" --status applied $V --yes < /dev/null
-          echo "::notice title=setup::Đã dựng $(echo $V | wc -w) migration có dữ liệu mẫu"
-
-      - name: Chạy migration mới
-        if: env.ACTION == 'migrate'
-        run: |
-          N=$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")
-          [ "$N" = "1" ] || { echo "::error::CSDL PH1 chưa dựng — chạy workflow bằng tay với action = setup trước."; exit 1; }
-          # CSDL PH1 là CSDL demo: chạy migration mới CÓ dữ liệu mẫu (như setup), rồi ghi lịch sử migration
-          OUT=$(supabase db push --db-url "$DB_URL" --dry-run --yes < /dev/null 2>&1); echo "$OUT"
-          P=$(echo "$OUT" | grep -oE '[0-9]+_[a-z0-9_]+\.sql' | sort -u)
-          [ -n "$P" ] || { echo "::notice title=migrate::Không có migration chờ"; exit 0; }
-          for f in $P; do
-            echo "→ $f"
-            PGOPTIONS="-c app.seed_demo=on" psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f" > /dev/null \
-              || { echo "::error title=migrate::Lỗi ở $f"; exit 1; }
-            supabase migration repair --db-url "$DB_URL" --status applied "${f%%_*}" --yes < /dev/null
-          done
-          echo "::notice title=migrate::Đã chạy (kèm dữ liệu mẫu): $(echo $P)"
-
-      - name: Cấp quyền Quản trị nền tảng
-        if: env.ACTION == 'grant_admin'
-        run: |
-          [ -n "$EMAIL" ] || { echo "::error::Nhập email"; exit 1; }
-          echo "select public.grant_platform_admin(:'email');" | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$EMAIL"
-          # CSDL demo: thêm vai trò Hiệu trưởng trường mẫu THCS-PH và cán bộ Sở SO-HY để xem cổng Trường / Sở / Giáo viên
-          cat <<'SQL' | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$EMAIL"
+          # Hàm dùng chung cho các bước sau
+          cat > "$RUNNER_TEMP/ph1.sh" <<'SH'
+          run_seeded() {   # run_seeded <file.sql>: chạy một file với cờ dữ liệu mẫu bật trong cùng phiên
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c "set app.seed_demo = 'on'" -f "$1" > /dev/null
+          }
+          has_app() { [ "$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")" = "1" ]; }
+          build_all() {
+            for f in supabase/migrations/*.sql; do
+              echo "→ $(basename "$f")"
+              run_seeded "$f" || { echo "::error title=setup::Lỗi ở $(basename "$f")"; exit 1; }
+            done
+            V=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1)
+            supabase migration repair --db-url "$DB_URL" --status applied $V --yes < /dev/null
+            N=$(psql "$DB_URL" -At -c "select count(*) from organizations where type = 'school'")
+            echo "::notice title=setup::Đã dựng $(echo $V | wc -w) migration · $N trường mẫu"
+          }
+          grant() {   # grant <email>
+            cat <<'SQL' | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$1"
+          select public.grant_platform_admin(:'email');
           insert into memberships (user_id, org_id, role_id, created_by)
           select p.id, o.id, r.id, null from profiles p
             join organizations o on o.code in ('THCS-PH', 'SO-HY')
@@ -85,4 +72,65 @@ jobs:
            where lower(p.email) = lower(:'email')
           on conflict do nothing;
           SQL
-          echo "::notice title=grant_admin::Đã cấp Quản trị nền tảng + Hiệu trưởng THCS-PH + cán bộ Sở SO-HY cho $EMAIL"
+            echo "::notice title=grant_admin::Đã cấp Quản trị nền tảng + Hiệu trưởng THCS-PH + cán bộ Sở SO-HY cho $1"
+          }
+          SH
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.121.0 }
+
+      - name: Dựng CSDL lần đầu (migration + dữ liệu mẫu)
+        if: env.ACTION == 'setup'
+        run: |
+          . "$RUNNER_TEMP/ph1.sh"
+          if has_app; then echo "::error::CSDL đã có bảng organizations — setup chỉ chạy trên project mới (dùng migrate hoặc reset)."; exit 1; fi
+          build_all
+
+      - name: Xoá và dựng lại CSDL PH1
+        if: env.ACTION == 'reset'
+        run: |
+          . "$RUNNER_TEMP/ph1.sh"
+          [ "$CONFIRM" = "XOA" ] || { echo "::error::Gõ XOA vào ô xác nhận để reset."; exit 1; }
+          psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          drop schema if exists public cascade;
+          create schema public;
+          grant usage on schema public to postgres, anon, authenticated, service_role;
+          grant all on schema public to postgres;
+          alter default privileges in schema public grant all on tables to postgres, anon, authenticated, service_role;
+          alter default privileges in schema public grant all on functions to postgres, anon, authenticated, service_role;
+          alter default privileges in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+          do $$ begin
+            if to_regclass('supabase_migrations.schema_migrations') is not null then delete from supabase_migrations.schema_migrations; end if;
+            if to_regclass('cron.job') is not null then perform cron.unschedule(jobid) from cron.job where command like '%public.%'; end if;
+          end $$;
+          SQL
+          build_all
+          # Tài khoản đăng nhập (auth.users) vẫn giữ: tạo lại hồ sơ; CSDL demo không bắt buộc xác thực 2 lớp
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
+          insert into public.profiles (id, full_name, email)
+          select id, coalesce(raw_user_meta_data->>'full_name', split_part(email, '@', 1)), email from auth.users
+          on conflict (id) do nothing;
+          update public.security_settings set mfa_roles = '{}', enforce_mfa_db = false where id = 1;
+          SQL
+          if [ -n "$EMAIL" ]; then grant "$EMAIL"; fi
+
+      - name: Chạy migration mới
+        if: env.ACTION == 'migrate'
+        run: |
+          . "$RUNNER_TEMP/ph1.sh"
+          has_app || { echo "::error::CSDL PH1 chưa dựng — chạy workflow bằng tay với action = setup trước."; exit 1; }
+          OUT=$(supabase db push --db-url "$DB_URL" --dry-run --yes < /dev/null 2>&1); echo "$OUT"
+          P=$(echo "$OUT" | grep -oE '[0-9]+_[a-z0-9_]+\.sql' | sort -u)
+          [ -n "$P" ] || { echo "::notice title=migrate::Không có migration chờ"; exit 0; }
+          for f in $P; do
+            echo "→ $f"
+            run_seeded "supabase/migrations/$f" || { echo "::error title=migrate::Lỗi ở $f"; exit 1; }
+            supabase migration repair --db-url "$DB_URL" --status applied "${f%%_*}" --yes < /dev/null
+          done
+          echo "::notice title=migrate::Đã chạy (kèm dữ liệu mẫu): $(echo $P)"
+
+      - name: Cấp quyền Quản trị nền tảng
+        if: env.ACTION == 'grant_admin'
+        run: |
+          . "$RUNNER_TEMP/ph1.sh"
+          [ -n "$EMAIL" ] || { echo "::error::Nhập email"; exit 1; }
+          grant "$EMAIL"
