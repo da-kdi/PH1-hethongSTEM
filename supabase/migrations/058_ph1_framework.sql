@@ -213,6 +213,7 @@ create table if not exists ppct_plans (
   school_year text not null check (school_year ~ '^\d{4}-\d{4}$'),
   start_date date not null,
   periods_per_week numeric(4,1) not null default 1 check (periods_per_week > 0),
+  teach_weekday int not null default 2 check (teach_weekday between 1 and 7),   -- thứ dạy trong tuần (1 = thứ Hai)
   status text not null default 'draft' check (status in ('draft', 'published', 'archived')),
   version_no int not null default 1,
   notes text,
@@ -284,7 +285,7 @@ begin
       exit when v_week > 60;
       v_take := least(v_left, v_cap); v_seq := v_seq + 1;
       insert into ppct_items (plan_id, seq, week_no, planned_date, curriculum_unit_id, curriculum_lesson_id, material_lesson_id, title, periods, part)
-        values (p.id, v_seq, v_week, v_monday, l.unit_id, l.id, v_ml, l.title, v_take, v_part);
+        values (p.id, v_seq, v_week, v_monday + (p.teach_weekday - 1), l.unit_id, l.id, v_ml, l.title, v_take, v_part);
       v_left := v_left - v_take; v_cap := v_cap - v_take; v_part := v_part + 1; n := n + 1;
     end loop;
   end loop;

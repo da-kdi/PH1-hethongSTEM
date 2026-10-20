@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 
-// Chương trình đào tạo (migration 057_ph1_curriculum.sql)
+// Chương trình giáo dục (migration 057_ph1_curriculum.sql, 058_ph1_framework.sql)
 
-export type CatKind = 'category' | 'level' | 'subject' | 'field' | 'outcome_type' | 'assessment_method'
+export type CatKind = 'category' | 'level' | 'subject' | 'field' | 'outcome_type' | 'assessment_method' | 'package_tier'
 export type CatItem = { id: string; owner_org_id: string | null; kind: CatKind; code: string; name: string; description: string | null; color: string | null; sort: number }
 export type Labels = { unit: string; lesson: string; period: string }
 export type Scope = 'own' | 'children' | 'selected' | 'public'
 export type Curriculum = {
-  id: string; owner_org_id: string; owner_name: string | null; code: string | null; name: string; category: string | null; summary: string | null
+  id: string; owner_org_id: string; owner_name: string | null; code: string | null; name: string; category: string | null; color: string | null; summary: string | null
   issuer: string | null; levels: string[]; grades: number[]; subjects: string[]; fields: string[]; structure_labels: Labels; scope: Scope
   require_approval: boolean; source_curriculum_id: string | null; source_version_id: string | null; current_version_id: string | null
   archived_at: string | null; created_at: string; updated_at: string
@@ -37,7 +37,8 @@ export type Assessment = {
   id: string; version_id: string; unit_id: string | null; lesson_id: string | null; seq: number; title: string; method: string | null
   outcome_ids: string[]; rubric_id: string | null; criteria: Criterion[]; evidence: string | null; weight: number | null
 }
-export type Content = { units: Unit[]; lessons: Lesson[]; outcomes: Outcome[]; assessments: Assessment[] }
+export type Subject = { id: string; version_id: string; seq: number; subject: string; grade: number; periods_total: number; periods_per_week: number | null; is_required: boolean; notes: string | null }
+export type Content = { units: Unit[]; lessons: Lesson[]; outcomes: Outcome[]; assessments: Assessment[]; subjects: Subject[] }
 
 export const DEFAULT_LABELS: Labels = { unit: 'Chủ đề', lesson: 'Bài học', period: 'Tiết' }
 export const labelsOf = (c: Pick<Curriculum, 'structure_labels'> | null) => ({ ...DEFAULT_LABELS, ...(c?.structure_labels ?? {}) })
@@ -53,6 +54,7 @@ export const CAT_KIND: Record<CatKind, [string, string]> = {
   category: ['Loại chương trình', 'CT1–CT5 hoặc loại riêng của đơn vị'],
   level: ['Cấp học', ''], subject: ['Môn học', 'Môn chủ đạo, môn tích hợp'], field: ['Lĩnh vực', ''],
   outcome_type: ['Loại chuẩn đầu ra', 'Kiến thức, kỹ năng, năng lực…'], assessment_method: ['Hình thức đánh giá', ''],
+  package_tier: ['Hạng gói', 'Cơ bản, Nâng cao, gói riêng…'],
 }
 export const ROOM_KIND: Record<string, string> = { stem: 'Phòng STEM', classroom: 'Phòng học', lab: 'Phòng thí nghiệm', outdoor: 'Ngoài trời' }
 export const GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
@@ -90,13 +92,14 @@ export const catName = (items: CatItem[], kind: CatKind, code: string | null | u
   code ? items.find(i => i.kind === kind && i.code === code)?.name ?? code : ''
 
 export async function loadContent(versionId: string): Promise<Content> {
-  const [u, l, o, a] = await Promise.all([
+  const [u, l, o, a, s] = await Promise.all([
     supabase.from('curriculum_units').select('*').eq('version_id', versionId).order('seq'),
     supabase.from('curriculum_lessons').select('*').eq('version_id', versionId).order('seq'),
     supabase.from('curriculum_outcomes').select('*').eq('version_id', versionId).order('seq'),
     supabase.from('curriculum_assessments').select('*').eq('version_id', versionId).order('seq'),
+    supabase.from('curriculum_subjects').select('*').eq('version_id', versionId).order('grade').order('seq'),
   ])
-  return { units: (u.data as Unit[]) ?? [], lessons: (l.data as Lesson[]) ?? [], outcomes: (o.data as Outcome[]) ?? [], assessments: (a.data as Assessment[]) ?? [] }
+  return { units: (u.data as Unit[]) ?? [], lessons: (l.data as Lesson[]) ?? [], outcomes: (o.data as Outcome[]) ?? [], assessments: (a.data as Assessment[]) ?? [], subjects: (s.data as Subject[]) ?? [] }
 }
 
 export type Org = { id: string; name: string; type: string; parent_id: string | null }

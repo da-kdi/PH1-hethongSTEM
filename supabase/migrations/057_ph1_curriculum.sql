@@ -1,4 +1,4 @@
--- 057. PH1 · 1.1.1 Chương trình đào tạo — quản lý nội dung chuẩn.
+-- 057. PH1 · 1.1.1 Chương trình giáo dục — quản lý nội dung chuẩn.
 -- Cần chạy sau 056.
 --   1. Danh mục điều chỉnh được (loại chương trình CT1–CT5, cấp học, môn, lĩnh vực, loại chuẩn đầu ra, hình thức đánh giá):
 --      mặc định hệ thống → đơn vị (KDI, Sở, trường) thêm mục riêng hoặc ẩn mục kế thừa.
@@ -324,7 +324,7 @@ create or replace function public.approval_kind_label(p_kind text) returns text 
   select case p_kind when 'stem_registration' then 'Đăng ký dạy STEM' when 'borrow_request' then 'Phiếu mượn thiết bị'
     when 'package_purchase' then 'Đề xuất mua gói STEM' when 'edu_plan' then 'Kế hoạch giáo dục' when 'project' then 'Dự án STEM'
     when 'supply_purchase' then 'Đề xuất mua vật tư' when 'stock_transfer' then 'Phiếu vận chuyển'
-    when 'curriculum' then 'Chương trình đào tạo' end
+    when 'curriculum' then 'Chương trình giáo dục' end
 $$;
 
 -- Gửi duyệt → mở hồ sơ (không sửa approval_source_opened dùng chung)
@@ -500,7 +500,7 @@ begin
               and r.key in ('principal', 'it_admin', 'ministry', 'province', 'department', 'district', 'provider', 'platform_admin') loop
     perform public.notify_user(u.user_id, u.owner_org_id, 'status', 'Chương trình nguồn có phiên bản mới',
       c.name || ' · phiên bản ' || coalesce(v.label, v.version_no::text) || ' hiệu lực từ ' || to_char(v_from, 'DD/MM/YYYY'),
-      'Chương trình đào tạo', case when u.type = 'school' then 'school_admin' when u.type = 'provider' then 'platform' else 'department' end, c.id);
+      'Chương trình giáo dục', case when u.type = 'school' then 'school_admin' when u.type = 'provider' then 'platform' else 'department' end, c.id);
   end loop;
 end $$;
 

@@ -33,8 +33,9 @@ export function MultiPick({ items, value, onChange, disabled, label }: { items: 
 
 type Lib = { id: string; title: string; kind: string }
 
-export function StructureEditor({ versionId, content, cat, labels, editable, reload, setMsg }: {
+export function StructureEditor({ versionId, content, cat, labels, editable, reload, setMsg, defaults }: {
   versionId: string; content: Content; cat: CatItem[]; labels: Labels; editable: boolean; reload: () => void; setMsg: (m: string) => void
+  defaults?: { subject_main?: string | null; grade?: number | null }   // môn / khối đang lọc → gán cho chủ đề thêm mới
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set(content.units.slice(0, 1).map(u => u.id)))
   const [lib, setLib] = useState<Lib[]>([])
@@ -50,7 +51,7 @@ export function StructureEditor({ versionId, content, cat, labels, editable, rel
 
   async function addUnit() {
     const seq = (content.units[content.units.length - 1]?.seq ?? 0) + 1
-    const { data, error } = await supabase.from('curriculum_units').insert({ version_id: versionId, seq, title: `${labels.unit} ${seq}`, periods: 0 }).select('id').single()
+    const { data, error } = await supabase.from('curriculum_units').insert({ version_id: versionId, seq, title: `${labels.unit} ${seq}`, periods: 0, subject_main: defaults?.subject_main ?? null, grade: defaults?.grade ?? null }).select('id').single()
     if (error) return setMsg(errText(error.message))
     setOpen(new Set([...open, (data as { id: string }).id])); reload()
   }

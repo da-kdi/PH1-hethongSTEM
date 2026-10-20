@@ -1,4 +1,4 @@
-/* Chương trình đào tạo (PH1 · 1.1.1) — dùng biến màu chung của index.css */
+/* Chương trình giáo dục (PH1 · 1.1.1) — dùng biến màu chung của index.css */
 .cur-title{margin:0;font-size:18px;flex:1}
 .cur-ro{display:inline-block;padding:6px 0;color:var(--text)}
 .cur-muted td{opacity:.6}
@@ -44,3 +44,8 @@
   .cur-outcomes{flex-direction:column}
   .cur-scope{width:100%;position:static}
 }
+.cur-group{display:flex;align-items:baseline;gap:8px;margin:18px 0 6px;font-size:15px;color:var(--text)}
+.cur-group small{color:var(--muted);font-weight:600;background:var(--soft);border-radius:999px;padding:1px 9px;font-size:12px}
+.cur-cardwrap{display:flex;flex-direction:column;gap:4px}
+.cur-cardwrap .p1-card{flex:1}
+.cur-late td{background:#fff5f5}

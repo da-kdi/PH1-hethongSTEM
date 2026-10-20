@@ -19,6 +19,7 @@ export const LABEL: Partial<Record<RoleKey | '*', Record<string, string>>> = {
   // ví dụ: department: { 'Dashboard toàn Sở': 'Tổng quan toàn Sở' },
   school_admin: { 'Quản lý Phòng STEM': 'Quản lý phòng' },   // 056: phòng STEM, phòng học, kho
   platform: { ...PH1_LABEL.platform },   // PH1: src/modules/ph1/nav.ts
+  '*': { ...PH1_LABEL['*'] },
 }
 export const labelOf = (role: RoleKey, id: string) => LABEL[role]?.[id] ?? LABEL['*']?.[id] ?? id
 

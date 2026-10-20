@@ -412,9 +412,9 @@ begin
   -- ===== Phân phối chương trình =====
   -- Trường A (THCS Phố Hiến): KHTN 6 — 2 tiết/tuần; Robotics 6 — 1 tiết/tuần. Trường B (THCS Lê Quý Đôn): KHTN 6 — 1 tiết/tuần, cùng bộ học liệu.
   select id into v_gv from teachers where org_id = v_ph order by full_name limit 1;
-  insert into ppct_plans (org_id, package_school_id, curriculum_id, material_set_id, title, subject, grade, class_ids, school_year, start_date, periods_per_week, status, notes)
+  insert into ppct_plans (org_id, package_school_id, curriculum_id, material_set_id, title, subject, grade, class_ids, school_year, start_date, periods_per_week, teach_weekday, status, notes)
     values (v_ph, a_ph, c2, s_k6, 'KHTN 6 – Liên môn (2 tiết/tuần)', 'khtn', 6,
-            coalesce(array(select id from classes where org_id = v_ph and grade = 6 order by name), '{}'), '2026-2027', '2026-09-07', 2, 'published',
+            coalesce(array(select id from classes where org_id = v_ph and grade = 6 order by name), '{}'), '2026-2027', '2026-09-07', 2, 4, 'published',
             'Dạy vào tiết 4–5 thứ Năm tại phòng STEM') returning id into pl;
   perform public.ppct_build(pl);
   update ppct_items set teacher_id = v_gv, room_kind = 'stem' where plan_id = pl;
