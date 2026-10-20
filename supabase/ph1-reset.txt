@@ -1,0 +1,2 @@
+# Đổi nội dung file này (vd tăng số) rồi đẩy lên main → workflow "CSDL riêng của PH1" xoá và dựng lại CSDL PH1 kèm dữ liệu mẫu.
+lan=2

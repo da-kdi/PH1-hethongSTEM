@@ -7,11 +7,12 @@ name: CSDL riêng của PH1 (Supabase)
 #   • migrate     — chạy migration mới (tự chạy khi đẩy lên main có thay đổi ở supabase/migrations).
 #   • grant_admin — cấp Quản trị nền tảng + Hiệu trưởng THCS-PH + cán bộ Sở SO-HY cho một email đã đăng ký.
 #   • reset       — XOÁ toàn bộ dữ liệu ứng dụng (schema public) rồi dựng lại như setup; giữ tài khoản đăng nhập.
-#                   Gõ XOA vào ô xác nhận. Có email thì cấp quyền luôn.
+#                   Gõ XOA vào ô xác nhận. Có email thì cấp quyền luôn. Tự chạy khi đẩy lên main có đổi supabase/ph1-reset.txt
+#                   (dùng khi cấu trúc lại migration của PH1); quản trị nền tảng hiện có được cấp lại quyền.
 on:
   push:
     branches: [main]
-    paths: ['supabase/migrations/**']
+    paths: ['supabase/migrations/**', 'supabase/ph1-reset.txt']
   workflow_dispatch:
     inputs:
       action:
@@ -35,12 +36,19 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DB_URL: ${{ secrets.PH1_SUPABASE_DB_URL }}
-      ACTION: ${{ github.event_name == 'push' && 'migrate' || inputs.action }}
+      ACTION_IN: ${{ github.event_name == 'push' && 'migrate' || inputs.action }}
       EMAIL: ${{ inputs.email }}
-      CONFIRM: ${{ inputs.confirm }}
+      CONFIRM_IN: ${{ inputs.confirm }}
       MAIN_REF: tsvujwddjpnchkdxqjza   # project Supabase của bản chính — không bao giờ ghi vào
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Xác định việc cần làm
+        run: |
+          echo "ACTION=$ACTION_IN" >> "$GITHUB_ENV"; echo "CONFIRM=$CONFIRM_IN" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = push ] && git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" 2>/dev/null | grep -qx 'supabase/ph1-reset.txt'; then
+            echo "ACTION=reset" >> "$GITHUB_ENV"; echo "CONFIRM=XOA" >> "$GITHUB_ENV"; echo "::notice title=reset::Đổi supabase/ph1-reset.txt → dựng lại CSDL PH1"
+          fi
       - name: Kiểm tra chuỗi kết nối
         run: |
           [ -n "$DB_URL" ] || { echo "::error::Chưa có secret PH1_SUPABASE_DB_URL (Session pooler của project Supabase riêng cho PH1)"; exit 1; }
@@ -90,6 +98,8 @@ jobs:
         run: |
           . "$RUNNER_TEMP/ph1.sh"
           [ "$CONFIRM" = "XOA" ] || { echo "::error::Gõ XOA vào ô xác nhận để reset."; exit 1; }
+          # Ghi lại quản trị nền tảng hiện có để cấp lại quyền sau khi dựng lại
+          ADMINS=$(psql "$DB_URL" -At -c "select string_agg(distinct p.email, ' ') from memberships m join roles r on r.id = m.role_id join profiles p on p.id = m.user_id where r.key = 'platform_admin'" 2>/dev/null || true)
           psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
           drop schema if exists public cascade;
           create schema public;
@@ -111,7 +121,7 @@ jobs:
           on conflict (id) do nothing;
           update public.security_settings set mfa_roles = '{}', enforce_mfa_db = false where id = 1;
           SQL
-          if [ -n "$EMAIL" ]; then grant "$EMAIL"; fi
+          for e in $EMAIL $ADMINS; do grant "$e"; done
 
       - name: Chạy migration mới
         if: env.ACTION == 'migrate'

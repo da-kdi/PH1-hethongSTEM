@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=${1:-ph1.patch}
 SHELL_ONLY=(src/App.tsx src/lib/nav.ts .github/workflows/db-tests.yml wrangler.jsonc README.md
-  vite.config.ts .env.example .github/workflows/pages.yml .github/workflows/ph1-db.yml supabase/tests/run.sh docs/GHEP-VE-REPO-CHINH.md docs/ghep-lan-dau.diff scripts/ph1-export-patch.sh scripts/ph1-sync-upstream.sh UPSTREAM_BASE)
+  vite.config.ts .env.example .github/workflows/pages.yml .github/workflows/ph1-db.yml supabase/tests/run.sh supabase/ph1-reset.txt docs/GHEP-VE-REPO-CHINH.md docs/ghep-lan-dau.diff scripts/ph1-export-patch.sh scripts/ph1-sync-upstream.sh UPSTREAM_BASE)
 EXCL=(); for f in "${SHELL_ONLY[@]}"; do EXCL+=(":(exclude)$f"); done
 
 git diff --quiet HEAD || { echo "Còn thay đổi chưa commit — commit trước rồi xuất patch."; exit 1; }
