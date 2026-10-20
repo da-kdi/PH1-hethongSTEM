@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
-import { Empty, Pill, Section, Stat, Tree, errMsg, fmtDY, useOrgList, type TreeNode } from '../ui'
-import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs } from '../curriculum/api'
+import { CtBadge, Drawer, Empty, Mini, Pill, Section, StatusTabs, Thumb, Toolbar, VCard, errMsg, fmtDY, norm, timeAgo, useOrgList, useViewMode } from '../ui'
+import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { BASIS, NORM_CAT, type MLesson, type Norm } from '../materials/MaterialsPage'
 
 type Activity = { title: string; minutes?: number; teacher?: string; student?: string; product?: string }
@@ -11,7 +11,7 @@ type DNorm = { name: string; spec?: string | null; unit: string; qty: number; ba
 type Design = { id: string; org_id: string; teacher_id: string | null; material_lesson_id: string | null; curriculum_lesson_id: string | null; based_on_id: string | null
   title: string; subject: string | null; grade: number | null; status: string; version_no: number; objectives: string | null; sessions: DSession[]; norms: DNorm[]
   files: { title: string; url?: string }[]; criteria: { name: string; levels: string[] }[]; notes: string | null; updated_at: string }
-type MSetLite = { id: string; name: string; subject: string | null; grade: number | null }
+type MSetLite = { id: string; name: string; subject: string | null; grade: number | null; curriculum_id: string | null }
 
 const STATUS: Record<string, [string, '' | 'good' | 'warn']> = { draft: ['Bản nháp', ''], review: ['Chờ duyệt', 'warn'], published: ['Đã phát hành', 'good'] }
 
@@ -20,31 +20,39 @@ const STATUS: Record<string, [string, '' | 'good' | 'warn']> = { draft: ['Bản 
 export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teacherId?: string | null }) {
   const [list, setList] = useState<Design[]>([])
   const [sets, setSets] = useState<MSetLite[]>([])
-  const [mlessons, setMlessons] = useState<Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq'>[]>([])
-  const [sel, setSel] = useState<string | null>(null)
-  const [from, setFrom] = useState('')
+  const [progs, setProgs] = useState<Curriculum[]>([])
+  const [mlessons, setMlessons] = useState<Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq' | 'periods' | 'objectives'>[]>([])
+  const [status, setStatus] = useState<'all' | 'published' | 'review' | 'draft'>('all')
+  const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
+  const [view, setView] = useViewMode('designs', 'table')
+  const [open, setOpen] = useState<string | null>(null)
+  const [peek, setPeek] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
   const [msg, setMsg] = useState('')
   const orgs = useOrgList()
   const { all, hidden } = useCatalog()
   const { below } = useOrgs(orgId)
   const cat = effectiveCatalog(all, hidden, below)
   async function load(pick?: string) {
-    const [d, s, l] = await Promise.all([
+    const [d, s, l, c] = await Promise.all([
       supabase.from('lesson_designs').select('*').order('updated_at', { ascending: false }),
-      supabase.from('material_sets').select('id, name, subject, grade').neq('status', 'archived').order('name'),
-      supabase.from('material_lessons').select('id, set_id, title, seq').order('seq'),
+      supabase.from('material_sets').select('id, name, subject, grade, curriculum_id').neq('status', 'archived').order('name'),
+      supabase.from('material_lessons').select('id, set_id, title, seq, periods, objectives').order('seq'),
+      supabase.from('curricula').select('*').order('code'),
     ])
     if (d.error) return setMsg(errMsg(d.error.message))
-    const ds = (d.data as Design[]) ?? []; setList(ds); setSets((s.data as MSetLite[]) ?? []); setMlessons((l.data as any[]) ?? [])
-    setSel(pick ?? (sel && ds.some(x => x.id === sel) ? sel : ds[0]?.id ?? null))
+    setList((d.data as Design[]) ?? []); setSets((s.data as MSetLite[]) ?? []); setMlessons((l.data as any[]) ?? []); setProgs((c.data as Curriculum[]) ?? [])
+    if (pick) setOpen(pick)
   }
   useEffect(() => { load() }, [orgId])
 
+  const progOf = (d: Design) => { const ml = mlessons.find(x => x.id === d.material_lesson_id); const s = sets.find(x => x.id === ml?.set_id); return progs.find(p => p.id === s?.curriculum_id) }
+  const srcOf = (d: Design) => { const ml = mlessons.find(x => x.id === d.material_lesson_id); const s = sets.find(x => x.id === ml?.set_id); return s ? `Từ học liệu · ${s.name}` : d.based_on_id ? 'Sao chép từ giáo án khác' : 'Soạn từ trang trắng' }
   async function createFrom(mlId: string | null) {
     if (!orgId) return
     let row: Partial<Design> = { title: 'Giáo án mới', sessions: [{ title: 'Buổi 1', minutes: 45, activities: [] }], norms: [], criteria: [], files: [] }
     if (mlId) {
-      const [a, n, f] = await Promise.all([
+      const [a, n, fl] = await Promise.all([
         supabase.from('material_lessons').select('*').eq('id', mlId).single(),
         supabase.from('material_norms').select('*').eq('lesson_id', mlId).order('seq'),
         supabase.from('material_files').select('title, url').eq('lesson_id', mlId).order('seq'),
@@ -55,55 +63,90 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
         sessions: (ss.length ? ss : [1]).map(k => ({ title: `Buổi ${k}`, minutes: m.steps.filter(s => (s.session ?? 1) === k).reduce((x, s) => x + (s.minutes ?? 0), 0),
           activities: m.steps.filter(s => (s.session ?? 1) === k).map(s => ({ title: s.title, minutes: s.minutes, teacher: s.teacher, student: s.student, product: '' })) })),
         norms: ((n.data as Norm[]) ?? []).map(x => ({ name: x.name, spec: x.spec, unit: x.unit, qty: Number(x.qty), basis: x.basis, category: x.category })),
-        files: ((f.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })), criteria: m.criteria }
+        files: ((fl.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })), criteria: m.criteria }
     }
     const { data, error } = await supabase.from('lesson_designs').insert({ ...row, org_id: orgId, teacher_id: teacherId ?? null, status: 'draft' }).select('id').single()
     if (error) return setMsg(errMsg(error.message))
-    setFrom(''); load((data as { id: string }).id)
+    setPicking(false); load((data as { id: string }).id)
   }
 
-  const tree: TreeNode[] = useMemo(() => {
-    const byOrg = new Map<string, Design[]>(); list.forEach(d => byOrg.set(d.org_id, [...(byOrg.get(d.org_id) ?? []), d]))
-    return [...byOrg.entries()].map(([oid, ds]) => ({ id: 'o:' + oid, label: <b>{orgs.find(o => o.id === oid)?.name ?? 'Đơn vị'}</b>, meta: `${ds.length} giáo án`,
-      children: ds.map(d => ({ id: d.id, label: d.title, meta: `${catName(cat, 'subject', d.subject)}${d.grade != null ? ' · ' + gradeLabel(d.grade) : ''} · ${STATUS[d.status]?.[0]}`,
-        badge: d.material_lesson_id ? <Pill tone="info">Từ học liệu</Pill> : undefined })) }))
-  }, [list, orgs, cat])
-  const d = list.find(x => x.id === sel)
+  const d = list.find(x => x.id === open)
+  if (d) return <DesignEditor key={d.id} d={d} prog={progOf(d) ?? null} source={srcOf(d)} cat={cat} orgs={orgs} back={() => { setOpen(null); load() }} reload={() => load()} onCopy={async () => {
+    const { id: _i, updated_at: _u, ...rest } = d
+    const r = await supabase.from('lesson_designs').insert({ ...rest, title: d.title + ' (bản sao)', based_on_id: d.id, status: 'draft', version_no: 1, org_id: orgId }).select('id').single()
+    if (r.error) setMsg(errMsg(r.error.message)); else load((r.data as { id: string }).id)
+  }} onDelete={async () => { if (!confirm('Xoá giáo án này?')) return; const r = await supabase.from('lesson_designs').delete().eq('id', d.id); if (r.error) setMsg(errMsg(r.error.message)); else { setOpen(null); load() } }} />
+
+  const qq = norm(q)
+  const base = list.filter(x => (!f.prog || progOf(x)?.id === f.prog) && (!f.grade || String(x.grade) === f.grade) && (!f.org || x.org_id === f.org)
+    && (!qq || norm(`${x.title} ${x.objectives ?? ''} ${catName(cat, 'subject', x.subject)}`).includes(qq)))
+  const shown = base.filter(x => status === 'all' || x.status === status)
+  const acts = (x: Design) => x.sessions.reduce((a, s) => a + s.activities.length, 0)
+  const pd = list.find(x => x.id === peek)
   return (
     <>
-      <div className="p1-stats">
-        <Stat label="Giáo án" value={list.length} sub={`${list.filter(x => x.status === 'published').length} đã phát hành`} />
-        <Stat label="Tạo từ học liệu gốc" value={list.filter(x => x.material_lesson_id).length} />
-        <Stat label="Đang soạn" value={list.filter(x => x.status === 'draft').length} />
-      </div>
       {msg && <p className="msg">{msg}</p>}
-      <div className="p1-layout">
-        <aside className="p1-aside">
-          <h4>Tạo giáo án</h4>
-          <select value={from} onChange={e => setFrom(e.target.value)} aria-label="Từ học liệu" style={{ width: '100%', marginBottom: 6 }}>
-            <option value="">— Từ bài trong học liệu —</option>
-            {sets.map(s => <optgroup key={s.id} label={s.name}>{mlessons.filter(l => l.set_id === s.id).map(l => <option key={l.id} value={l.id}>{l.title}</option>)}</optgroup>)}
-          </select>
-          <div className="p1-actions" style={{ marginBottom: 14 }}>
-            <button type="button" className="primary" disabled={!from} onClick={() => createFrom(from)}>Tạo từ học liệu</button>
-            <button type="button" onClick={() => createFrom(null)}>Giáo án trống</button>
-          </div>
-          <h4>Giáo án</h4>
-          {tree.length ? <Tree nodes={tree} selected={sel} onSelect={id => !id.startsWith('o:') && setSel(id)} defaultOpen={2} /> : <Empty>Chưa có giáo án.</Empty>}
-        </aside>
-        <div>{d ? <DesignEditor key={d.id} d={d} cat={cat} orgs={orgs} reload={() => load(d.id)} onCopy={async () => {
-          const { id: _i, updated_at: _u, ...rest } = d
-          const r = await supabase.from('lesson_designs').insert({ ...rest, title: d.title + ' (bản sao)', based_on_id: d.id, status: 'draft', version_no: 1, org_id: orgId }).select('id').single()
-          if (r.error) setMsg(errMsg(r.error.message)); else load((r.data as { id: string }).id)
-        }} onDelete={async () => { if (!confirm('Xoá giáo án này?')) return; const r = await supabase.from('lesson_designs').delete().eq('id', d.id); if (r.error) setMsg(errMsg(r.error.message)); else load() }} />
-          : <Empty>Chọn hoặc tạo một giáo án.</Empty>}</div>
-      </div>
+      <div className="bar"><div><h3 style={{ margin: 0 }}>Giáo án triển khai</h3><p className="sub" style={{ margin: '2px 0 0' }}>Tạo từ học liệu gốc rồi chỉnh theo lớp — học liệu gốc không bị thay đổi.</p></div>
+        <button type="button" className="primary" onClick={() => setPicking(true)}>+ Tạo giáo án</button></div>
+      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã phát hành', base.filter(x => x.status === 'published').length],
+        ['review', 'Chờ duyệt', base.filter(x => x.status === 'review').length], ['draft', 'Bản nháp', base.filter(x => x.status === 'draft').length]]} value={status} onChange={setStatus} />
+      <Toolbar q={q} onQ={setQ} placeholder="Tìm theo tên bài, môn học, mục tiêu…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
+        { key: 'prog', label: 'Tất cả chương trình', options: progs.map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
+        { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(list.map(x => x.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
+        { key: 'org', label: 'Mọi đơn vị', options: Array.from(new Set(list.map(x => x.org_id))).map(o => ({ value: o, label: orgs.find(z => z.id === o)?.name ?? o })) },
+      ]} />
+      {shown.length === 0 ? <Empty>Chưa có giáo án{status !== 'all' ? ' ở trạng thái này' : ''}. Bấm “+ Tạo giáo án” để chọn bài từ học liệu.</Empty> : view === 'table' ? (
+        <table className="p1-list"><thead><tr><th>Giáo án</th><th>CT</th><th>Khối</th><th>Môn</th><th>Trạng thái</th><th>Buổi / hoạt động</th><th>Cập nhật</th><th></th></tr></thead>
+          <tbody>{shown.map(x => { const p = progOf(x)
+            return <tr key={x.id} onClick={() => setOpen(x.id)}>
+              <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{x.title}</b><small>{srcOf(x)} · {orgs.find(o => o.id === x.org_id)?.name}</small></div></div></td>
+              <td><CtBadge color={p?.color} code={p?.code} /></td><td>{x.grade != null ? gradeLabel(x.grade) : '—'}</td><td>{catName(cat, 'subject', x.subject) || '—'}</td>
+              <td><Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill></td>
+              <td><b>{x.sessions.length}</b> buổi / {acts(x)} hoạt động</td><td>{timeAgo(x.updated_at)}</td>
+              <td><div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPeek(x.id) }}>👁</button>
+                <button type="button" title="Soạn" onClick={e => { e.stopPropagation(); setOpen(x.id) }}>✎</button></div></td>
+            </tr> })}</tbody></table>
+      ) : <div className="p1-grid">{shown.map(x => { const p = progOf(x)
+        return <VCard key={x.id} color={p?.color} code={p?.code} icon="✏️" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill>} title={x.title}
+          subtitle={`${catName(cat, 'subject', x.subject)}${x.grade != null ? ' · ' + gradeLabel(x.grade) : ''}`} desc={srcOf(x)}
+          chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${x.version_no}`]} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>}
+
+      {pd && <Drawer color={progOf(pd)?.color} title={pd.title} onClose={() => setPeek(null)}
+        badges={[progOf(pd)?.code, STATUS[pd.status]?.[0], `${catName(cat, 'subject', pd.subject)}${pd.grade != null ? ' · ' + gradeLabel(pd.grade) : ''}`, `${pd.sessions.reduce((a, s) => a + s.activities.reduce((x, y) => x + (y.minutes ?? 0), 0), 0)} phút`]}
+        footer={<><span className="note">{srcOf(pd)}</span><button type="button" className="primary" onClick={() => { setOpen(pd.id); setPeek(null) }}>Mở rộng để soạn ⤢</button></>}>
+        {pd.objectives && <div className="p1-box goal"><h4>🎯 Mục tiêu</h4><p className="p1-text">{pd.objectives}</p></div>}
+        <Mini items={[['Buổi', pd.sessions.length], ['Hoạt động', acts(pd)], ['Vật tư', pd.norms.length], ['Tiêu chí', pd.criteria.length]]} />
+        <div className="p1-box"><h4>🪜 Tiến trình</h4>{pd.sessions.map((s, i) => <div key={i}><div className="p1-session">{s.title}</div>
+          <ol className="p1-steps">{s.activities.map((a, k) => <li key={k}><span className="no">{k + 1}</span><div><b>{a.title}</b><div className="meta"><span>⏱ {a.minutes ?? 0} phút</span></div></div></li>)}</ol></div>)}</div>
+        {pd.notes && <div className="p1-box"><h4>📝 Điều chỉnh theo lớp</h4><p className="p1-text">{pd.notes}</p></div>}
+      </Drawer>}
+
+      {picking && <Drawer title="Chọn bài từ học liệu" badges={['Kho bài học', `${mlessons.length} bài`]} onClose={() => setPicking(false)} wide
+        footer={<><span className="note">Giáo án là bản riêng — chỉnh thoải mái, học liệu gốc giữ nguyên.</span><button type="button" onClick={() => createFrom(null)}>Soạn từ trang trắng</button></>}>
+        <LessonPicker sets={sets} progs={progs} lessons={mlessons} cat={cat} onPick={createFrom} />
+      </Drawer>}
     </>
   )
 }
 
+function LessonPicker({ sets, progs, lessons, cat, onPick }: { sets: MSetLite[]; progs: Curriculum[]; lessons: Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq' | 'periods' | 'objectives'>[]
+  cat: ReturnType<typeof effectiveCatalog>; onPick: (id: string) => void }) {
+  const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
+  const qq = norm(q)
+  const shown = lessons.filter(l => { const s = sets.find(x => x.id === l.set_id); return (!f.prog || s?.curriculum_id === f.prog) && (!f.set || l.set_id === f.set) && (!qq || norm(l.title).includes(qq)) })
+  return (<>
+    <Toolbar q={q} onQ={setQ} placeholder="Tìm bài…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} filters={[
+      { key: 'prog', label: 'Tất cả chương trình', options: progs.filter(p => sets.some(s => s.curriculum_id === p.id)).map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
+      { key: 'set', label: 'Mọi bộ học liệu', options: sets.map(s => ({ value: s.id, label: s.name })) }]} />
+    <div className="p1-grid">{shown.map(l => { const s = sets.find(x => x.id === l.set_id); const p = progs.find(x => x.id === s?.curriculum_id)
+      return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`}
+        desc={l.objectives} chips={[`${l.periods} tiết`]} foot={<small>{s?.name}</small>} onClick={() => onPick(l.id)} more="Dùng mẫu ›" /> })}</div>
+    {!shown.length && <Empty>Không có bài phù hợp.</Empty>}
+  </>)
+}
+
 type T = 'flow' | 'norms' | 'files' | 'criteria'
-function DesignEditor({ d, cat, orgs, reload, onCopy, onDelete }: { d: Design; cat: ReturnType<typeof effectiveCatalog>; orgs: { id: string; name: string }[]; reload: () => void; onCopy: () => void; onDelete: () => void }) {
+function DesignEditor({ d, prog, source, cat, orgs, back, reload, onCopy, onDelete }: { d: Design; prog: Curriculum | null; source: string; cat: ReturnType<typeof effectiveCatalog>; orgs: { id: string; name: string }[]; back: () => void; reload: () => void; onCopy: () => void; onDelete: () => void }) {
   const [tab, setTab] = useState<T>('flow')
   const [msg, setMsg] = useState('')
   const [src, setSrc] = useState<Norm[] | null>(null)
@@ -115,10 +158,11 @@ function DesignEditor({ d, cat, orgs, reload, onCopy, onDelete }: { d: Design; c
   const changed = (n: DNorm) => { const o = src?.find(x => x.name === n.name); return !o ? 'Thêm mới' : Number(o.qty) !== Number(n.qty) || o.basis !== n.basis ? `Gốc: ${o.qty} ${o.unit} / ${BASIS[o.basis]}` : '' }
   return (
     <>
-      <div className="p1-head"><h2>{d.title}</h2><Pill tone={STATUS[d.status]?.[1]}>{STATUS[d.status]?.[0]}</Pill><Pill>PB {d.version_no}</Pill>
+      <button type="button" className="p1-back" onClick={back}>← Tất cả giáo án</button>
+      <div className="p1-head">{prog && <CtBadge color={prog.color} code={prog.code} />}<h2>{d.title}</h2><Pill tone={STATUS[d.status]?.[1]}>{STATUS[d.status]?.[0]}</Pill><Pill>PB {d.version_no}</Pill>
         <button type="button" onClick={onCopy}>Sao chép</button><button type="button" className="danger" onClick={onDelete}>Xoá</button>
         <p className="p1-sub">{orgs.find(o => o.id === d.org_id)?.name} · {catName(cat, 'subject', d.subject)}{d.grade != null ? ' ' + gradeLabel(d.grade) : ''} · {total} phút · cập nhật {fmtDY(d.updated_at.slice(0, 10))}
-          {d.material_lesson_id ? ' · tạo từ học liệu gốc (học liệu gốc không đổi)' : ''}</p></div>
+          {' · ' + source}</p></div>
       {msg && <p className="msg">{msg}</p>}
       <Section title="Thông tin" actions={<>
         {d.status === 'draft' && <button type="button" onClick={() => upd({ status: 'review' })}>Trình duyệt</button>}

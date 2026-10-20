@@ -7,7 +7,7 @@ import { OutcomesEditor } from './Outcomes'
 import { VersionsPanel, VStatusPill } from './Versions'
 import { SubjectsEditor } from './Subjects'
 import { PackagesPanel } from '../packages/Packages'
-import { Code, Empty, Pill, Section, SideNav, Stat } from '../ui'
+import { Code, Empty, Pill, Section, SideNav, Stat, Thumb, Toolbar, VCard, norm, useViewMode } from '../ui'
 import {
   GRADES, SCOPE, catName, catOf, effectiveCatalog, errText, fmtDate, gradeLabel, labelsOf, loadContent, useCatalog, useOrgs, vName,
   type CatItem, type Content, type Curriculum, type Labels, type Scope, type Version,
@@ -31,6 +31,8 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
   const [creating, setCreating] = useState(false)
   const [catKey, setCatKey] = useState(0)
   const [q, setQ] = useState('')
+  const [pf, setPf] = useState<Record<string, string>>({})
+  const [view, setView] = useViewMode('programs')
   const [msg, setMsg] = useState(''); const [note, setNote] = useState(''); const [err, setErr] = useState('')
   const { all, hidden } = useCatalog(catKey)
   const { orgs, below, me } = useOrgs(orgId)
@@ -75,7 +77,9 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
     newerSource={!!open.source_curriculum_id && list.some(x => x.id === open.source_curriculum_id && x.current_version_id !== open.source_version_id)}
     back={() => { setOpenId(null); load() }} reload={load} go={go} />
 
-  const match = (c: Curriculum) => !q || `${c.code} ${c.name} ${c.summary ?? ''}`.toLowerCase().includes(q.toLowerCase())
+  const qq = norm(q)
+  const match = (c: Curriculum) => (!qq || norm(`${c.code} ${c.name} ${c.summary ?? ''}`).includes(qq)) && (!pf.level || c.levels.includes(pf.level))
+    && (!pf.grade || c.grades.includes(Number(pf.grade))) && (!pf.subject || (info.get(c.id)?.subjects ?? []).some(s => s.subject === pf.subject))
   const mine = list.filter(c => c.owner_org_id === orgId && match(c))
   const shared = list.filter(c => c.owner_org_id !== orgId && !below.has(c.owner_org_id) && c.current_version_id && match(c))
   const children = list.filter(c => below.has(c.owner_org_id) && match(c))
@@ -87,41 +91,40 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
     if (error) return setMsg(errText(error.message))
     setNote(`Đã tạo “${name}” (bản nháp) từ ${c.owner_name}.`); await load(); setOpenId(data as string)
   }
-  const card = (c: Curriculum, showOwner: boolean) => {
-    const i = info.get(c.id)
-    const vs = versions.filter(v => v.curriculum_id === c.id)
-    const wip = vs.find(v => ['draft', 'pending', 'approved', 'rejected'].includes(v.status))
-    const cur = vs.find(v => v.id === c.current_version_id)
-    const subj = Array.from(new Set((i?.subjects ?? []).map(s => s.subject)))
-    return (
-      <button type="button" className="p1-card" key={c.id} onClick={() => setOpenId(c.id)}>
-        <i className="p1-stripe" style={{ background: c.color ?? '#475569' }} />
-        <div className="p1-cardtop"><Code color={c.color}>{c.code ?? '—'}</Code><h4>{c.name}</h4></div>
-        {c.summary && <p>{c.summary}</p>}
-        <div className="p1-chips">{subj.slice(0, 4).map(s => <Pill key={s}>{catName(cat, 'subject', s)}</Pill>)}{subj.length > 4 && <Pill>+{subj.length - 4}</Pill>}</div>
-        <div className="p1-cardfoot">
-          <span>{c.grades.length ? 'Khối ' + c.grades.join(', ') : 'Chưa chọn khối'}</span><span>·</span>
-          <span>{i?.units ?? 0} chủ đề · {i?.periods ?? 0} tiết</span><span>·</span>
-          <span>{vs.length} phiên bản</span>
-          <span style={{ marginLeft: 'auto' }}>{cur ? <Pill tone="good">● {cur.label ?? `PB ${cur.version_no}`}</Pill> : wip ? <VStatusPill s={wip.status} /> : <Pill>Chưa ban hành</Pill>}</span>
-        </div>
-        {showOwner && <small className="sub">{c.owner_name}</small>}
-      </button>
-    )
-  }
+  const stateOf = (c: Curriculum) => { const vs = versions.filter(v => v.curriculum_id === c.id)
+    return { vs, cur: vs.find(v => v.id === c.current_version_id), wip: vs.find(v => ['draft', 'pending', 'approved', 'rejected'].includes(v.status)) } }
+  const statusPill = (c: Curriculum) => { const { cur, wip } = stateOf(c)
+    return cur ? <Pill tone="good">● {cur.label ?? `PB ${cur.version_no}`}</Pill> : wip ? <VStatusPill s={wip.status} /> : <Pill>Chưa ban hành</Pill> }
+  const subjOf = (c: Curriculum) => Array.from(new Set((info.get(c.id)?.subjects ?? []).map(s => s.subject)))
+  const card = (c: Curriculum, showOwner: boolean) => { const i = info.get(c.id); const sj = subjOf(c)
+    return <VCard key={c.id} color={c.color} code={c.code} icon={<span style={{ fontSize: 15, fontWeight: 700 }}>{c.levels.map(l => catName(cat, 'level', l)).join(' · ')}</span>}
+      status={statusPill(c)} title={c.name} subtitle={showOwner ? c.owner_name : (c.grades.length ? 'Khối ' + c.grades.join(', ') : 'Chưa chọn khối')} desc={c.summary}
+      chips={[...sj.slice(0, 3).map(s => catName(cat, 'subject', s)), sj.length > 3 ? `+${sj.length - 3} môn` : '']}
+      foot={<small>{i?.units ?? 0} chủ đề · {i?.periods ?? 0} tiết · {stateOf(c).vs.length} phiên bản</small>} onClick={() => setOpenId(c.id)} /> }
+  const table = (rows: Curriculum[], showOwner: boolean, withClone = false) => (
+    <table className="p1-list"><thead><tr><th>Chương trình</th><th>Cấp · khối</th><th>Môn học</th><th>Quy mô</th><th>Phiên bản hiệu lực</th>{withClone && <th></th>}</tr></thead>
+      <tbody>{rows.map(c => { const i = info.get(c.id); const sj = subjOf(c)
+        return <tr key={c.id} onClick={() => setOpenId(c.id)}>
+          <td><div className="titlecell"><Thumb color={c.color} code={c.code} /><div><b>{c.name}</b><small>{showOwner ? c.owner_name : c.summary}</small></div></div></td>
+          <td>{c.levels.map(l => catName(cat, 'level', l)).join(', ') || '—'}<br /><small className="sub">{c.grades.length ? 'Khối ' + c.grades.join(', ') : ''}</small></td>
+          <td>{sj.map(s => catName(cat, 'subject', s)).join(', ') || '—'}</td>
+          <td>{i?.units ?? 0} chủ đề · {i?.lessons ?? 0} bài<br /><small className="sub">{i?.periods ?? 0} tiết</small></td>
+          <td>{statusPill(c)}</td>
+          {withClone && <td>{canManage && <button type="button" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button>}</td>}
+        </tr> })}</tbody></table>)
+  const levels = Array.from(new Set(list.flatMap(c => c.levels)))
+  const grades = Array.from(new Set(list.flatMap(c => c.grades))).sort((a, b) => a - b)
+  const subjects = Array.from(new Set([...info.values()].flatMap(i => i.subjects.map(s => s.subject))))
 
   return (
     <>
       <div className="bar">
         <Tabs items={[['programs', 'Chương trình', list.length], ['packages', 'Gói chương trình'], ['catalog', 'Danh mục']] as [Top, string, number?][]}
           value={top} onChange={t => { setTop(t); setCreating(false) }} />
-        {top === 'programs' && <div className="actions">
-          <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm mã, tên chương trình…" aria-label="Tìm chương trình" style={{ minWidth: 220 }} />
-          {canManage && <button type="button" className="primary" onClick={() => { setCreating(true); setMsg(''); setNote('') }}>+ Chương trình mới</button>}
-        </div>}
+        {top === 'programs' && canManage && <button type="button" className="primary" onClick={() => { setCreating(true); setMsg(''); setNote('') }}>+ Chương trình mới</button>}
       </div>
       {msg && <p className="msg">{msg}</p>}
-      {note && <p className="sub"><b>{note}</b></p>}
+      {note && <div className="p1-alert good">{note}</div>}
 
       {top === 'programs' && <>
         {creating && <InfoForm cat={cat} orgs={orgs} below={below} me={me} isPlatform={isPlatform} onCancel={() => setCreating(false)}
@@ -132,17 +135,22 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
             if (v.color) await supabase.from('curricula').update({ color: v.color }).eq('id', data as string)
             setCreating(false); await load(); setOpenId(data as string); return null
           }} />}
+        <Toolbar q={q} onQ={setQ} placeholder="Tìm theo mã, tên, mục tiêu chương trình…" values={pf} onFilter={(k, v) => setPf({ ...pf, [k]: v })} view={view} onView={setView} filters={[
+          { key: 'level', label: 'Tất cả cấp học', options: levels.map(l => ({ value: l, label: catName(cat, 'level', l) })) },
+          { key: 'grade', label: 'Tất cả khối', options: grades.map(g => ({ value: String(g), label: gradeLabel(g) })) },
+          { key: 'subject', label: 'Tất cả môn', options: subjects.map(s => ({ value: s, label: catName(cat, 'subject', s) })) },
+        ]} />
         <h3 className="cur-group">{me?.type === 'provider' ? 'Chương trình của KDI' : `Chương trình của ${me?.name ?? 'đơn vị'}`} <small>{mine.length}</small></h3>
-        {mine.length ? <div className="p1-grid">{mine.map(c => card(c, false))}</div>
-          : <Empty>{canManage ? 'Chưa có chương trình riêng. Bấm “+ Chương trình mới” hoặc kế thừa một chương trình bên dưới.' : 'Đơn vị chưa có chương trình riêng.'}</Empty>}
+        {!mine.length ? <Empty>{canManage ? 'Chưa có chương trình riêng. Bấm “+ Chương trình mới” hoặc kế thừa một chương trình bên dưới.' : 'Đơn vị chưa có chương trình riêng.'}</Empty>
+          : view === 'grid' ? <div className="p1-grid">{mine.map(c => card(c, false))}</div> : table(mine, false)}
         {shared.length > 0 && <>
           <h3 className="cur-group">Được phát hành tới đơn vị <small>{shared.length}</small></h3>
-          <div className="p1-grid">{shared.map(c => <div key={c.id} className="cur-cardwrap">{card(c, true)}
-            {canManage && <button type="button" className="linkbtn" onClick={() => clone(c)}>Kế thừa để điều chỉnh</button>}</div>)}</div>
+          {view === 'grid' ? <div className="p1-grid">{shared.map(c => <div key={c.id} className="cur-cardwrap">{card(c, true)}
+            {canManage && <button type="button" className="linkbtn" onClick={() => clone(c)}>Kế thừa để điều chỉnh</button>}</div>)}</div> : table(shared, true, true)}
         </>}
         {children.length > 0 && <>
           <h3 className="cur-group">Của đơn vị trực thuộc <small>{children.length}</small></h3>
-          <div className="p1-grid">{children.map(c => card(c, true))}</div>
+          {view === 'grid' ? <div className="p1-grid">{children.map(c => card(c, true))}</div> : table(children, true)}
         </>}
       </>}
       {top === 'packages' && <PackagesPanel orgId={orgId} cat={cat} programs={list} canManage={canManage} orgs={orgs} below={below} />}

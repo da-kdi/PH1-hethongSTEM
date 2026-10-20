@@ -75,3 +75,95 @@ export function errMsg(m: string) {
   if (/duplicate key/i.test(m)) return 'Đã có mục trùng.'
   return m
 }
+
+// ===== Danh sách kiểu "kho": thanh lọc, Thẻ / Bảng, ngăn xem nhanh =====
+export type ViewMode = 'grid' | 'table'
+export function useViewMode(key: string, def: ViewMode = 'grid'): [ViewMode, (v: ViewMode) => void] {
+  const [v, setV] = useState<ViewMode>(() => { try { return (localStorage.getItem('ph1.view.' + key) as ViewMode) || def } catch { return def } })
+  return [v, (x: ViewMode) => { setV(x); try { localStorage.setItem('ph1.view.' + key, x) } catch { /* bỏ qua */ } }]
+}
+export type FilterDef = { key: string; label: string; options: { value: string; label: string }[] }
+export function Toolbar({ q, onQ, placeholder, filters = [], values = {}, onFilter, view, onView, children }: {
+  q: string; onQ: (v: string) => void; placeholder?: string; filters?: FilterDef[]; values?: Record<string, string>; onFilter?: (k: string, v: string) => void
+  view?: ViewMode; onView?: (v: ViewMode) => void; children?: ReactNode
+}) {
+  return (
+    <div className="p1-toolbar">
+      <div className="p1-search"><input type="search" value={q} onChange={e => onQ(e.target.value)} placeholder={placeholder ?? 'Tìm kiếm…'} aria-label="Tìm kiếm" /></div>
+      {filters.map(f => <select key={f.key} value={values[f.key] ?? ''} onChange={e => onFilter?.(f.key, e.target.value)} aria-label={f.label}>
+        <option value="">{f.label}</option>{f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>)}
+      {view && onView && <div className="p1-viewtoggle" role="group" aria-label="Kiểu hiển thị">
+        <button type="button" className={view === 'grid' ? 'on' : ''} onClick={() => onView('grid')} aria-pressed={view === 'grid'} title="Thẻ">▦ Thẻ</button>
+        <button type="button" className={view === 'table' ? 'on' : ''} onClick={() => onView('table')} aria-pressed={view === 'table'} title="Bảng">☰ Bảng</button>
+      </div>}
+      {children}
+    </div>
+  )
+}
+export function StatusTabs<T extends string>({ items, value, onChange }: { items: [T, string, number?][]; value: T; onChange: (v: T) => void }) {
+  return <div className="p1-statustabs" role="tablist">{items.map(([k, l, n]) => <button type="button" role="tab" key={k} aria-selected={value === k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{l}{n !== undefined && <small>{n}</small>}</button>)}</div>
+}
+// Ngăn xem nhanh bên phải (bản thu gọn) — chân ngăn có nút "Mở rộng" ra trang đầy đủ
+export function Drawer({ color, badges, title, onClose, children, footer, wide }: {
+  color?: string | null; badges?: ReactNode[]; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean
+}) {
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [onClose])
+  const c = color ?? '#1c63bb'
+  return (<>
+    <div className="p1-overlay" onClick={onClose} />
+    <aside className={'p1-drawer' + (wide ? ' wide' : '')} role="dialog" aria-modal="true">
+      <div className="p1-dhead" style={{ background: `linear-gradient(135deg, ${c}, ${shade(c, -35)})` }}>
+        <button type="button" className="p1-dclose" onClick={onClose} aria-label="Đóng">✕</button>
+        {badges && <div className="badges">{badges.filter(Boolean).map((b, i) => <span key={i}>{b}</span>)}</div>}
+        <h3>{title}</h3>
+      </div>
+      <div className="p1-dbody">{children}</div>
+      {footer && <div className="p1-dfoot">{footer}</div>}
+    </aside>
+  </>)
+}
+// Thẻ có dải màu theo chương trình (thay ảnh bìa)
+export function VCard({ color, code, icon, status, title, subtitle, desc, chips, foot, onClick, more = 'Xem chi tiết ›' }: {
+  color?: string | null; code?: string | null; icon?: ReactNode; status?: ReactNode; title: ReactNode; subtitle?: ReactNode; desc?: ReactNode
+  chips?: ReactNode[]; foot?: ReactNode; onClick: () => void; more?: string
+}) {
+  const c = color ?? '#475569'
+  return (
+    <button type="button" className="p1-card" onClick={onClick}>
+      <div className="p1-banner" style={{ background: `linear-gradient(135deg, ${c}, ${shade(c, -30)})` }}>
+        {code && <span className="tag">{code}</span>}{status && <span className="tag2">{status}</span>}
+        <span className="icon">{icon}</span>{code && <span className="big">{code}</span>}
+      </div>
+      <div className="p1-cardbody">
+        <h4>{title}</h4>{subtitle && <span className="subj">{subtitle}</span>}{desc && <p>{desc}</p>}
+        {chips && chips.length > 0 && <div className="chips">{chips.filter(Boolean).map((x, i) => <span key={i} className="p1-chip-s">{x}</span>)}</div>}
+      </div>
+      <div className="p1-cardfoot">{foot}<span className="more">{more}</span></div>
+    </button>
+  )
+}
+export function Thumb({ color, code }: { color?: string | null; code?: string | null }) {
+  const c = color ?? '#475569'
+  return <span className="p1-thumb" style={{ background: `linear-gradient(135deg, ${c}, ${shade(c, -30)})` }}>{code ?? ''}</span>
+}
+export function CtBadge({ color, code }: { color?: string | null; code?: string | null }) {
+  if (!code) return <span className="sub">—</span>
+  const c = color ?? '#475569'
+  return <span className="p1-ct" style={{ color: c, borderColor: c + '55', background: c + '14' }}>{code}</span>
+}
+export function Mini({ items }: { items: [string, ReactNode][] }) {
+  return <div className="p1-mini">{items.map(([l, v]) => <div key={l}><span>{l}</span><b>{v}</b></div>)}</div>
+}
+// Làm tối / sáng một màu #rrggbb
+export function shade(hex: string, pct: number) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return hex
+  const n = parseInt(m[1], 16); const f = (x: number) => Math.max(0, Math.min(255, Math.round(x + (pct / 100) * (pct < 0 ? x : 255 - x))))
+  return '#' + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map(x => x.toString(16).padStart(2, '0')).join('')
+}
+export function timeAgo(ts: string | null | undefined) {
+  if (!ts) return '—'
+  const s = (Date.now() - new Date(ts).getTime()) / 1000
+  if (s < 90) return 'vừa xong'; if (s < 3600) return `${Math.round(s / 60)} phút trước`; if (s < 86400) return `${Math.round(s / 3600)} giờ trước`
+  if (s < 86400 * 30) return `${Math.round(s / 86400)} ngày trước`; return new Date(ts).toLocaleDateString('vi-VN')
+}
+export const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase()

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
-import { Code, Empty, Pill, Progress, Section, Stat, Tree, SCHOOL_YEAR, addD, errMsg, fmtD, fmtDY, today, useOrgList, useRpcBool, type TreeNode } from '../ui'
+import { Code, CtBadge, Drawer, Empty, Mini, Pill, Progress, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, addD, errMsg, fmtD, fmtDY, norm, today, useOrgList, useRpcBool, useViewMode } from '../ui'
 import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { BASIS, needQty, type Norm } from '../materials/MaterialsPage'
 
@@ -31,8 +31,12 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
   const [plans, setPlans] = useState<Plan[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
   const [items, setItems] = useState<Item[]>([])
-  const [sel, setSel] = useState<string | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
+  const [peek, setPeek] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [status, setStatus] = useState<'all' | 'published' | 'draft' | 'late'>('all')
+  const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
+  const [view, setView] = useViewMode('ppct', 'table')
   const [msg, setMsg] = useState('')
   const canManage = useRpcBool('curriculum_can_manage')
   const orgs = useOrgList()
@@ -44,50 +48,78 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
     const [p, c, i] = await Promise.all([
       supabase.from('ppct_plans').select('*').order('grade').order('title'),
       supabase.from('curricula').select('*').order('code'),
-      supabase.from('ppct_items').select('id, plan_id, status, planned_date, periods'),
+      supabase.from('ppct_items').select('id, plan_id, status, planned_date, periods, week_no, title, curriculum_unit_id, part, seq'),
     ])
     if (p.error) return setMsg(errMsg(p.error.message))
-    const ps = (p.data as Plan[]) ?? []
-    setPlans(ps); setProgs((c.data as Curriculum[]) ?? []); setItems((i.data as Item[]) ?? [])
-    setSel(pick ?? (sel && ps.some(x => x.id === sel) ? sel : ps[0]?.id ?? null))
+    setPlans((p.data as Plan[]) ?? []); setProgs((c.data as Curriculum[]) ?? []); setItems((i.data as Item[]) ?? [])
+    if (pick) setOpen(pick)
   }
   useEffect(() => { load() }, [orgId])
 
-  const tree: TreeNode[] = useMemo(() => {
-    const bySchool = new Map<string, Plan[]>()
-    plans.forEach(p => bySchool.set(p.org_id, [...(bySchool.get(p.org_id) ?? []), p]))
-    return [...bySchool.entries()].map(([oid, ps]) => ({
-      id: 'org:' + oid, label: <b>{orgs.find(o => o.id === oid)?.name ?? 'Trường'}</b>, meta: `${ps.length} kế hoạch`,
-      children: Array.from(new Set(ps.map(p => p.grade))).sort((a, b) => (a ?? 0) - (b ?? 0)).map(g => ({
-        id: `g:${oid}:${g}`, label: g == null ? 'Khác' : gradeLabel(g),
-        children: ps.filter(p => p.grade === g).map(p => {
-          const its = items.filter(i => i.plan_id === p.id)
-          const done = its.filter(i => i.status === 'done').length
-          const late = its.filter(isLate).length
-          const c = progs.find(x => x.id === p.curriculum_id)
-          return { id: p.id, color: c?.color ?? '#94a3b8', label: p.title, meta: `${c?.code ?? ''} · ${p.periods_per_week} tiết/tuần · ${its.length ? Math.round(done * 100 / its.length) : 0}% đã dạy`,
-            badge: late ? <Pill tone="bad">{late} chậm</Pill> : p.status === 'draft' ? <Pill>Nháp</Pill> : undefined }
-        }),
-      })),
-    }))
-  }, [plans, items, orgs, progs])
+  if (creating) return <><button type="button" className="p1-back" onClick={() => setCreating(false)}>← Tất cả kế hoạch</button>
+    <CreatePlan orgId={orgId} orgs={orgs} progs={progs} cat={cat} onDone={id => { setCreating(false); load(id) }} onCancel={() => setCreating(false)} /></>
+  const plan = plans.find(p => p.id === open)
+  if (plan) return <><button type="button" className="p1-back" onClick={() => { setOpen(null); load() }}>← Tất cả kế hoạch</button>
+    <PlanDetail key={plan.id} plan={plan} prog={progs.find(c => c.id === plan.curriculum_id) ?? null} orgName={orgs.find(o => o.id === plan.org_id)?.name ?? ''}
+      cat={cat} canManage={canManage} reload={() => load(plan.id)} onDeleted={() => { setOpen(null); load() }} /></>
 
-  const plan = plans.find(p => p.id === sel)
+  const stat = (p: Plan) => { const its = items.filter(i => i.plan_id === p.id); const done = its.filter(i => i.status === 'done').length
+    const due = its.filter(i => i.planned_date && i.planned_date <= today() && i.status !== 'skipped').length
+    return { total: its.length, done, due, late: its.filter(isLate).length, periods: its.filter(i => i.status !== 'skipped').reduce((a, i) => a + Number(i.periods), 0) } }
+  const qq = norm(q)
+  const base = plans.filter(p => (!f.org || p.org_id === f.org) && (!f.prog || p.curriculum_id === f.prog) && (!f.grade || String(p.grade) === f.grade)
+    && (!qq || norm(`${p.title} ${orgs.find(o => o.id === p.org_id)?.name ?? ''}`).includes(qq)))
+  const shown = base.filter(p => status === 'all' || (status === 'late' ? stat(p).late > 0 : p.status === status))
+  const prog = (p: Plan) => progs.find(c => c.id === p.curriculum_id)
+  const WDS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+  const pp = plans.find(p => p.id === peek)
   return (
     <>
       {msg && <p className="msg">{msg}</p>}
-      <div className="p1-layout">
-        <aside className="p1-aside">
-          <div className="bar small"><h4>Kế hoạch theo trường</h4>{canManage && <button type="button" className="linkbtn" onClick={() => { setCreating(true); setSel(null) }}>+ Kế hoạch mới</button>}</div>
-          {tree.length ? <Tree nodes={tree} selected={sel} onSelect={id => { if (!id.includes(':')) { setSel(id); setCreating(false) } }} defaultOpen={3} /> : <Empty>Chưa có kế hoạch.</Empty>}
-        </aside>
-        <div>
-          {creating ? <CreatePlan orgId={orgId} orgs={orgs} progs={progs} cat={cat} onDone={id => { setCreating(false); load(id) }} onCancel={() => setCreating(false)} />
-            : plan ? <PlanDetail key={plan.id} plan={plan} prog={progs.find(c => c.id === plan.curriculum_id) ?? null} orgName={orgs.find(o => o.id === plan.org_id)?.name ?? ''}
-              cat={cat} canManage={canManage} reload={() => load(plan.id)} onDeleted={() => load()} />
-            : <Empty>Chọn một kế hoạch ở cây bên trái{canManage ? ' hoặc bấm “+ Kế hoạch mới”' : ''}.</Empty>}
-        </div>
+      <div className="p1-stats">
+        <Stat label="Kế hoạch" value={plans.length} sub={`${new Set(plans.map(p => p.org_id)).size} trường`} />
+        <Stat label="Đã công bố" value={plans.filter(p => p.status === 'published').length} tone="good" />
+        <Stat label="Mục đến hạn đã dạy" value={`${Math.round(items.filter(i => i.status === 'done').length * 100 / Math.max(1, items.filter(i => i.planned_date && i.planned_date <= today() && i.status !== 'skipped').length))}%`} />
+        <Stat label="Chậm tiến độ" value={items.filter(isLate).length} tone={items.some(isLate) ? 'bad' : ''} sub="mục quá ngày chưa dạy" />
       </div>
+      <div className="bar"><div><h3 style={{ margin: 0 }}>Kế hoạch phân phối</h3><p className="sub" style={{ margin: '2px 0 0' }}>Gói đã chọn → kế hoạch theo trường, khối, lớp, tuần, số tiết.</p></div>
+        {canManage && <button type="button" className="primary" onClick={() => setCreating(true)}>+ Kế hoạch mới</button>}</div>
+      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã công bố', base.filter(p => p.status === 'published').length],
+        ['draft', 'Bản nháp', base.filter(p => p.status === 'draft').length], ['late', 'Có mục chậm', base.filter(p => stat(p).late > 0).length]]} value={status} onChange={setStatus} />
+      <Toolbar q={q} onQ={setQ} placeholder="Tìm kế hoạch, trường…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
+        { key: 'org', label: 'Tất cả trường', options: Array.from(new Set(plans.map(p => p.org_id))).map(o => ({ value: o, label: orgs.find(z => z.id === o)?.name ?? o })) },
+        { key: 'prog', label: 'Tất cả chương trình', options: progs.filter(c => plans.some(p => p.curriculum_id === c.id)).map(c => ({ value: c.id, label: `${c.code} · ${c.name}` })) },
+        { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(plans.map(p => p.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
+      ]} />
+      {shown.length === 0 ? <Empty>Không có kế hoạch phù hợp.</Empty> : view === 'table' ? (
+        <table className="p1-list"><thead><tr><th>Kế hoạch</th><th>CT</th><th>Khối · lớp</th><th>Nhịp độ</th><th>Tiến độ (đã dạy / đến hạn)</th><th>Trạng thái</th><th></th></tr></thead>
+          <tbody>{shown.map(p => { const s = stat(p); const c = prog(p); const v = s.due ? Math.round(s.done * 100 / s.due) : 0
+            return <tr key={p.id} onClick={() => setOpen(p.id)}>
+              <td><div className="titlecell"><Thumb color={c?.color} code={c?.code} /><div><b>{p.title}</b><small>{orgs.find(o => o.id === p.org_id)?.name} · {p.school_year}</small></div></div></td>
+              <td><CtBadge color={c?.color} code={c?.code} /></td>
+              <td>{p.grade != null ? gradeLabel(p.grade) : '—'} · {p.class_ids.length} lớp</td>
+              <td>{p.periods_per_week} tiết/tuần · {WDS[p.teach_weekday - 1]}<br /><small className="sub">{s.periods} tiết · từ {fmtD(p.start_date)}</small></td>
+              <td style={{ minWidth: 180 }}><Progress value={v} tone={v >= 90 ? 'good' : v >= 70 ? 'warn' : 'bad'} /><small className="sub">{s.done}/{s.due} mục{s.late ? ` · ${s.late} chậm` : ''}</small></td>
+              <td><Pill tone={p.status === 'published' ? 'good' : ''}>{p.status === 'published' ? 'Đã công bố' : 'Bản nháp'}</Pill></td>
+              <td><div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPeek(p.id) }}>👁</button>
+                <button type="button" title="Mở lịch" onClick={e => { e.stopPropagation(); setOpen(p.id) }}>📅</button></div></td>
+            </tr> })}</tbody></table>
+      ) : <div className="p1-grid">{shown.map(p => { const s = stat(p); const c = prog(p)
+        return <VCard key={p.id} color={c?.color} code={c?.code} icon="📅" status={<Pill tone={p.status === 'published' ? 'good' : ''}>{p.status === 'published' ? 'Đã công bố' : 'Bản nháp'}</Pill>}
+          title={p.title} subtitle={orgs.find(o => o.id === p.org_id)?.name} chips={[`${p.periods_per_week} tiết/tuần`, `${p.class_ids.length} lớp`, `${s.done}/${s.total} đã dạy`, s.late ? `${s.late} chậm` : '']}
+          foot={<Progress value={s.due ? s.done * 100 / s.due : 0} />} onClick={() => setPeek(p.id)} /> })}</div>}
+
+      {pp && (() => { const s = stat(pp); const c = prog(pp); const its = items.filter(i => i.plan_id === pp.id).sort((a, b) => a.week_no - b.week_no || a.seq - b.seq)
+        const next = its.filter(i => i.status !== 'done' && (i.planned_date ?? '') >= today()).slice(0, 6); const late = its.filter(isLate)
+        return <Drawer color={c?.color} title={pp.title} onClose={() => setPeek(null)}
+          badges={[c?.code, orgs.find(o => o.id === pp.org_id)?.name, pp.grade != null ? gradeLabel(pp.grade) : '', `${pp.periods_per_week} tiết/tuần`]}
+          footer={<><span className="note">Bắt đầu {fmtDY(pp.start_date)} · {pp.school_year}</span><button type="button" className="primary" onClick={() => { setOpen(pp.id); setPeek(null) }}>Mở lịch đầy đủ ⤢</button></>}>
+          <Mini items={[['Tổng tiết', s.periods], ['Số tuần', Math.max(0, ...its.map(i => i.week_no))], ['Đã dạy', `${s.done}/${s.due}`], ['Chậm', s.late]]} />
+          {late.length > 0 && <div className="p1-alert bad">{late.length} mục chậm tiến độ: {late.slice(0, 3).map(i => i.title).join(', ')}{late.length > 3 ? '…' : ''}</div>}
+          <div className="p1-box"><h4>📅 Sắp tới</h4>{next.length === 0 ? <p className="sub" style={{ margin: 0 }}>Không còn mục nào sắp tới.</p> :
+            <div className="p1-strip">{next.map(i => <div key={i.id}><small>Tuần {i.week_no} · {fmtD(i.planned_date)}</small><span><b>{i.title}</b>{i.part > 1 ? ` (phần ${i.part})` : ''} · {i.periods} tiết</span></div>)}</div>}</div>
+          {pp.notes && <div className="p1-box"><h4>📝 Ghi chú</h4><p className="p1-text">{pp.notes}</p></div>}
+        </Drawer> })()}
     </>
   )
 }

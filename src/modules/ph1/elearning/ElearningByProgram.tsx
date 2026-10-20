@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
-import { Code, Empty, Pill, Section, errMsg } from '../ui'
+import { Code, Empty, Pill, Section, VCard, errMsg } from '../ui'
 import type { Curriculum } from '../curriculum/api'
 
 const ElearningManage = lazy(() => import('../../../pages/elearning/Manage'))
@@ -16,11 +16,12 @@ export function ElearningByProgram(props: { orgId: string | null; teacherId?: st
   const [tab, setTab] = useState<'program' | 'manage'>('program')
   return (<>
     <div className="bar"><Tabs items={[['program', 'Theo chương trình & gói'], ['manage', 'Khoá học, đề luyện, ngân hàng câu hỏi']] as ['program' | 'manage', string][]} value={tab} onChange={setTab} /></div>
-    {tab === 'program' ? <ByProgram orgId={props.orgId} /> : <Suspense fallback={<p className="sub">Đang tải…</p>}><ElearningManage {...props} /></Suspense>}
+    {tab === 'program' ? <ByProgram orgId={props.orgId} onManage={() => setTab('manage')} /> : <Suspense fallback={<p className="sub">Đang tải…</p>}><ElearningManage {...props} /></Suspense>}
   </>)
 }
 
-function ByProgram({ orgId }: { orgId: string | null }) {
+function ByProgram({ orgId, onManage }: { orgId: string | null; onManage: () => void }) {
+  const setTab = (_: string) => onManage()
   const [courses, setCourses] = useState<Course[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
   const [pkgs, setPkgs] = useState<{ id: string; name: string }[]>([])
@@ -60,13 +61,10 @@ function ByProgram({ orgId }: { orgId: string | null }) {
       </Section>
       {groups.map(({ key, c }) => { const cs = courses.filter(x => (x.curriculum_id ?? '_') === key); if (!cs.length) return null
         return <Section key={key} title={c ? <><Code color={c.color}>{c.code}</Code> {c.name}</> : 'Khoá học chưa gắn chương trình'}>
-          <div className="p1-grid">{cs.map(x => <div key={x.id} className="p1-card" style={{ cursor: 'default' }}>
-            <div className="p1-cardtop"><Pill tone={x.status === 'published' ? 'good' : ''}>{x.status === 'published' ? 'Đã phát hành' : x.status === 'archived' ? 'Lưu trữ' : 'Bản nháp'}</Pill></div>
-            <h4>{x.title}</h4>{x.description && <p>{x.description}</p>}
-            <div className="p1-cardfoot"><span>{x.course_lessons.length} bài</span>{x.grade && <><span>·</span><span>Lớp {x.grade}</span></>}
-              {x.package_id && <><span>·</span><span>{pkgs.find(p => p.id === x.package_id)?.name}</span></>}
-              {x.material_set_id && <><span>·</span><span>Từ {sets.find(s => s.id === x.material_set_id)?.name ?? 'học liệu'}</span></>}</div>
-          </div>)}</div></Section> })}
+          <div className="p1-grid">{cs.map(x => <VCard key={x.id} color={c?.color} code={c?.code} icon="🎓" status={<Pill tone={x.status === 'published' ? 'good' : ''}>{x.status === 'published' ? 'Đã phát hành' : x.status === 'archived' ? 'Lưu trữ' : 'Bản nháp'}</Pill>}
+            title={x.title} subtitle={x.grade ? `Lớp ${x.grade}` : undefined} desc={x.description}
+            chips={[`${x.course_lessons.length} bài`, x.package_id ? pkgs.find(p => p.id === x.package_id)?.name ?? '' : '', x.material_set_id ? `Từ ${sets.find(s => s.id === x.material_set_id)?.name ?? 'học liệu'}` : '']}
+            onClick={() => setTab('manage')} more="Quản lý khoá học ›" />)}</div></Section> })}
       {courses.length === 0 && <Empty>Chưa có khoá học trực tuyến.</Empty>}
     </>
   )

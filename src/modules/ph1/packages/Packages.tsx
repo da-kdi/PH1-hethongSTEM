@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
-import { Code, Empty, Pill, Section, Stat, SCHOOL_YEAR, errMsg, fmtDY } from '../ui'
+import { Code, Empty, Pill, Section, Stat, VCard, SCHOOL_YEAR, errMsg, fmtDY } from '../ui'
 import { GRADES, catName, catOf, gradeLabel, type CatItem, type Curriculum } from '../curriculum/api'
 
 type Pkg = { id: string; owner_org_id: string; code: string | null; name: string; tier: string | null; description: string | null; conditions: string | null
@@ -75,23 +75,17 @@ export function PackagesPanel({ orgId, cat, programs, canManage, orgs, below }: 
     const its = items.filter(i => i.package_id === x.id)
     const tier = cat.find(c => c.kind === 'package_tier' && c.code === x.tier)
     const n = apps.filter(a => a.package_id === x.id && a.status === 'active').length
-    return (
-      <button type="button" className="p1-card" key={x.id} onClick={() => setOpen(x.id)}>
-        <i className="p1-stripe" style={{ background: tier?.color ?? '#475569' }} />
-        <div className="p1-cardtop"><Pill tone={x.tier === 'nang_cao' ? 'info' : ''}>{tier?.name ?? x.tier ?? 'Gói'}</Pill><Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0] ?? x.status}</Pill></div>
-        <h4>{x.name}</h4>
-        {x.description && <p>{x.description}</p>}
-        <div className="p1-chips">{Array.from(new Set(its.map(i => i.curriculum_id))).map(cid => { const c = prog(cid); return c ? <Code key={cid} color={c.color}>{c.code}</Code> : null })}</div>
-        <div className="p1-cardfoot"><span>{its.length} dòng chương trình / môn</span><span>·</span><span>{pkgPeriods(x)} tiết</span><span>·</span><span>{n} trường đang áp dụng</span></div>
-      </button>
-    )
+    return <VCard key={x.id} color={tier?.color} code={tier?.name ?? 'Gói'} icon="📦" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0] ?? x.status}</Pill>}
+      title={x.name} subtitle={x.code ?? undefined} desc={x.description}
+      chips={Array.from(new Set(its.map(i => i.curriculum_id))).map(cid => prog(cid)?.code ?? '')}
+      foot={<small>{its.length} dòng môn / khối · {pkgPeriods(x)} tiết · {n} trường</small>} onClick={() => setOpen(x.id)} />
   }
   return (
     <>
       {msg && <p className="msg">{msg}</p>}
       <p className="sub">Gói chương trình chọn chương trình, môn học, khối lớp và phiên bản để cung cấp cho một nhóm trường hoặc một trường. Gói Nâng cao có thể tạo từ gói Cơ bản rồi bổ sung chương trình, môn hoặc thời lượng.</p>
       <h3 className="cur-group">Gói của đơn vị <small>{mine.length}</small></h3>
-      <div className="p1-grid">{mine.map(card)}{canManage && <button type="button" className="p1-card add" onClick={() => create()}>+ Tạo gói chương trình</button>}</div>
+      <div className="p1-grid">{mine.map(card)}{canManage && <button type="button" className="p1-card add" onClick={() => create()}>＋ Tạo gói chương trình</button>}</div>
       {others.length > 0 && <><h3 className="cur-group">Gói của KDI / cấp trên / đơn vị khác <small>{others.length}</small></h3><div className="p1-grid">{others.map(card)}</div></>}
       {!pkgs.length && !canManage && <Empty>Chưa có gói chương trình.</Empty>}
     </>
