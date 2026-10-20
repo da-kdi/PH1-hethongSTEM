@@ -48,9 +48,14 @@ scripts/ph1-sync-upstream.sh ../KDISTEM
    git apply -3 --index /đường/dẫn/ph1.patch
    ```
    (`-3` dùng các blob gốc có sẵn trong lịch sử repo chính nên tự gộp với thay đổi mới của nhóm khác; chỗ xung đột để lại dấu `<<<<<<<`.)
-3. **Chỉ lần ghép đầu tiên** — nối module PH1 vào khung của repo chính:
-   - `src/lib/nav.ts`: thêm `import { PH1_NAV } from '../modules/ph1/nav'`; trong `NAV`, thay nhóm "Chương trình & học liệu" của từng cổng bằng `...PH1_NAV.<cổng>` (cổng `platform`: thay nhóm `'2. Chương trình & học liệu'`; `teacher`: thay nhóm `'Soạn giảng'` — giữ lại mục `'Trợ lý AI'` bằng cách thêm vào PH1_NAV hoặc một nhóm riêng; `student`: chỉ lấy `'Chủ đề'`, `'E-learning & luyện thi'` vào nhóm Học tập hiện có).
-   - `src/App.tsx`: thêm `import { PH1_PAGES } from './modules/ph1/pages'` rồi trộn vào cuối từng bảng, ví dụ `const SCHOOL: PageMap = { ...{/* như cũ */}, ...PH1_PAGES.school_admin }` (tương tự TEACHER, STUDENT, DEPARTMENT, PLATFORM). Mục trùng mã sẽ lấy bản PH1.
-   - Từ lần ghép sau, `App.tsx`/`nav.ts` không cần sửa nữa: mọi mục/màn mới của PH1 chỉ khai báo trong `src/modules/ph1/`.
+3. **Chỉ lần ghép đầu tiên** — nối module PH1 vào khung của repo chính bằng `docs/ghep-lan-dau.diff` (đã thử trên repo chính tại `UPSTREAM_BASE`: build xanh):
+   ```bash
+   git apply -3 /đường/dẫn/KDISTEM-PH1/docs/ghep-lan-dau.diff
+   ```
+   - `src/lib/nav.ts`: nhóm "Chương trình & học liệu" của cổng KDI, Trường, Sở được thay bằng `...PH1_NAV.<cổng>`.
+   - `src/App.tsx`: `PH1_PAGES` được trộn vào SCHOOL / TEACHER / STUDENT / DEPARTMENT / PLATFORM (mục trùng mã lấy bản PH1).
+   - Cổng **Giáo viên** và **Học sinh** giữ menu của repo chính (mục PH1 nằm lẫn trong nhóm theo công việc, có cả Trợ lý AI, Học trước & tự học…). Mục **mới** của PH1 ở hai cổng này phải thêm tay vào `NAV` repo chính khi ghép; màn thì đã tự có qua `PH1_PAGES`.
+   - Từ lần ghép sau, cổng KDI/Trường/Sở không cần sửa `App.tsx`/`nav.ts` nữa: mục/màn mới của PH1 chỉ khai báo trong `src/modules/ph1/`.
+   - Trước khi `git apply`, cây làm việc của repo chính phải sạch (`git status` trống); nếu báo `does not match index` thì chạy `git update-index --refresh`.
 4. Đổi số migration nếu trùng, chạy `npm run build` và `supabase/tests/run.sh`, mở PR theo quy trình repo chính (CI xanh → merge → CI tự chạy migration lên Supabase).
 5. Lưu ý thứ tự đề án Ver9: Chương trình & học liệu là **PH1**, Đào tạo nhà giáo là **PH2** (repo chính hiện đánh số ngược: "1. Đào tạo…", "2. Chương trình…"). Đổi số tiêu đề nhóm ở repo chính là việc của người giữ menu chung, làm cùng lúc cho cả 5 phân hệ.
