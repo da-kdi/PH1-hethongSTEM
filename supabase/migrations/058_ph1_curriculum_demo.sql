@@ -42,8 +42,9 @@ begin
         values (p_version, v_unit, j, 'B' || i || '.' || j, l->>0, n, 35, v_plan, l->>2)
         returning id into v_lesson;
       insert into curriculum_outcomes (version_id, unit_id, lesson_id, seq, code, kind, subject, description)
-        values (p_version, v_unit, v_lesson, 1, 'YC' || i || '.' || j || 'a', 'kien_thuc', u->>'s', coalesce(l->>2, 'Nêu được kiến thức nền của bài ' || (l->>0) || '.')),
-               (p_version, v_unit, v_lesson, 2, 'YC' || i || '.' || j || 'b', 'ky_nang', null,
+        values (p_version, v_unit, v_lesson, 1, 'YC' || i || '.' || j || 'a', 'kien_thuc', u->>'s', coalesce(l->>2, 'Nêu được kiến thức nền của bài ' || (l->>0) || '.'));
+      insert into curriculum_outcomes (version_id, unit_id, lesson_id, seq, code, kind, subject, description)
+        values (p_version, v_unit, v_lesson, 2, 'YC' || i || '.' || j || 'b', 'ky_nang', null,
                 'Thực hiện được sản phẩm / nhiệm vụ của bài “' || (l->>0) || '” theo tiêu chí đã thống nhất, sử dụng dụng cụ an toàn.')
         returning id into v_o;
       v_outs := v_outs || v_o;
