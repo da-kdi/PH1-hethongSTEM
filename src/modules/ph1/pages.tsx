@@ -7,6 +7,9 @@ import { TabbedPages } from '../../components/TabbedPages'
 // (xem docs/GHEP-VE-REPO-CHINH.md). Màn mới của PH1 đặt trong src/modules/ph1/ và chỉ cần khai báo ở đây.
 type PageMap = Record<string, ComponentType<any>>
 
+// Màn mới của PH1
+const CurriculumPage = lazy(() => import('./curriculum/CurriculumPage').then(m => ({ default: m.CurriculumPage })))
+
 // Màn đã có ở repo chính (giữ nguyên đường dẫn để ghép lại không lệch)
 const Packages = lazy(() => import('../../pages/Packages'))
 const PackageOrders = lazy(() => import('../../pages/approvals/PackageOrders').then(m => ({ default: m.PackageOrders })))
@@ -27,6 +30,7 @@ const SysLessons = lazy(() => import('../../pages/platform/SystemViews').then(m 
 
 export const PH1_PAGES: Partial<Record<RoleKey, PageMap>> = {
   school_admin: {
+    'Chương trình đào tạo': CurriculumPage,
     'Gói STEM': Packages,
     'Đề xuất mua gói': PackageOrders,
     'Phân phối chương trình': Curriculum,
@@ -36,6 +40,7 @@ export const PH1_PAGES: Partial<Record<RoleKey, PageMap>> = {
     'Ngân hàng câu hỏi': QuestionBank,
   },
   department: {
+    'Chương trình đào tạo': CurriculumPage,
     'Chương trình CT1–CT5': DeptPrograms,
     'Theo dõi Môn học STEM': DeptSubjects,
     'Phát hành học liệu': LibraryManage,
@@ -44,6 +49,7 @@ export const PH1_PAGES: Partial<Record<RoleKey, PageMap>> = {
     'Ngân hàng câu hỏi': QuestionBank,
   },
   teacher: {
+    'Chương trình đào tạo': CurriculumPage,
     'Soạn bài giảng': TeacherLessonStudio,
     'Kho hoạt động & Bài giảng': TeacherActivities,
     'Thư viện STEM': LibraryBrowse,
@@ -55,6 +61,7 @@ export const PH1_PAGES: Partial<Record<RoleKey, PageMap>> = {
     'E-learning & luyện thi': StudentElearning,
   },
   platform: {
+    'Chương trình đào tạo': CurriculumPage,
     'Chương trình giáo dục': PlatformCatalog,
     'Học liệu': (p: any) => <TabbedPages {...p} tabs={[['Phát hành học liệu', LibraryManage], ['Kho học liệu dùng chung', LibraryBrowse]]} />,
     'Phân phối chương trình': SysCurriculum,

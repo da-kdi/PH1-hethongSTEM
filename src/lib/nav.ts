@@ -1,4 +1,4 @@
-import { PH1_NAV } from '../modules/ph1/nav'
+import { PH1_NAV, PH1_LABEL, PH1_MODULE_OF, PH1_ENT_MODULE_OF } from '../modules/ph1/nav'
 
 export type RoleKey = 'school_admin' | 'teacher' | 'student' | 'department' | 'platform' | 'parent' | 'judge'
 // section: tên phân hệ khi phân hệ chia nhiều nhóm (menu hiện tiêu đề phân hệ phía trên các nhóm con)
@@ -18,6 +18,7 @@ export const ROLE_LABEL: Record<RoleKey, string> = {
 export const LABEL: Partial<Record<RoleKey | '*', Record<string, string>>> = {
   // ví dụ: department: { 'Dashboard toàn Sở': 'Tổng quan toàn Sở' },
   school_admin: { 'Quản lý Phòng STEM': 'Quản lý phòng' },   // 056: phòng STEM, phòng học, kho
+  platform: { ...PH1_LABEL.platform },   // PH1: src/modules/ph1/nav.ts
 }
 export const labelOf = (role: RoleKey, id: string) => LABEL[role]?.[id] ?? LABEL['*']?.[id] ?? id
 
@@ -26,6 +27,7 @@ export const NAV: Record<RoleKey, NavGroup[]> = PH1_NAV
 
 // Mục menu của vai trò Trường – Quản trị → chức năng trong ma trận phân quyền
 export const MODULE_OF: Record<string, string> = {
+  ...PH1_MODULE_OF,   // PH1: src/modules/ph1/nav.ts
   'Giáo viên': 'teachers', 'Lớp học': 'classes', 'Học sinh': 'students', 'Phụ huynh': 'students', 'Phân công giảng dạy': 'assignments',
   'Quản lý Phòng STEM': 'stem_rooms', 'Quản lý Thiết bị': 'equipment', 'Vật tư tiêu hao': 'equipment', 'Đề xuất mua vật tư': 'equipment', 'Vận chuyển vật tư': 'equipment', 'Kiểm kê': 'equipment', 'Bảo hành thiết bị': 'warranty',
   'Thời khóa biểu': 'timetable', 'Duyệt đăng ký dạy STEM': 'stem_registrations', 'Tòa nhà & Tầng': 'buildings',
@@ -43,6 +45,7 @@ export const MODULE_OF: Record<string, string> = {
 // Mục menu (mọi giao diện trừ Quản trị nền tảng) → chức năng dùng để kiểm tra gói dịch vụ (migration 024).
 // Mục không có ở đây là phần lõi, luôn hiện.
 export const ENT_MODULE_OF: Record<string, string> = {
+  ...PH1_ENT_MODULE_OF,
   ...MODULE_OF, 'Quy trình phê duyệt': 'approvals',
   'Đặt phòng STEM': 'stem_rooms', 'Thư viện STEM': 'library', 'Kho hoạt động & Bài giảng': 'library',
   'Lịch tập huấn': 'training', 'Bài giảng tập huấn': 'training', 'Kế hoạch tập huấn': 'training', 'Giám sát Tập huấn GV': 'training',
