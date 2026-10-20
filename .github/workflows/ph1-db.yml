@@ -1,0 +1,70 @@
+name: CSDL riêng của PH1 (Supabase)
+# BẢN TÁCH PH1: chỉ ghi vào project Supabase RIÊNG của PH1 (secret PH1_SUPABASE_DB_URL).
+# Chặn cứng nếu chuỗi kết nối trỏ vào project của bản chính. Không đi theo patch ghép về repo chính.
+#   • setup       — chạy MỘT lần trên project mới: toàn bộ migration + dữ liệu mẫu, rồi ghi lịch sử migration.
+#   • migrate     — chạy migration mới (tự chạy khi đẩy lên main có thay đổi ở supabase/migrations, sau khi kiểm thử xanh).
+#   • grant_admin — cấp quyền Quản trị nền tảng cho một email đã đăng ký trên CSDL PH1.
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Việc cần làm'
+        type: choice
+        options: [migrate, setup, grant_admin]
+        default: migrate
+      email:
+        description: 'grant_admin: email đã đăng ký trên trang PH1'
+        type: string
+        default: ''
+
+concurrency: { group: ph1-db, cancel-in-progress: false }
+
+jobs:
+  ph1-db:
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.PH1_SUPABASE_DB_URL }}
+      ACTION: ${{ github.event_name == 'push' && 'migrate' || inputs.action }}
+      EMAIL: ${{ inputs.email }}
+      MAIN_REF: tsvujwddjpnchkdxqjza   # project Supabase của bản chính — không bao giờ ghi vào
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiểm tra chuỗi kết nối
+        run: |
+          [ -n "$DB_URL" ] || { echo "::error::Chưa có secret PH1_SUPABASE_DB_URL (Session pooler của project Supabase riêng cho PH1)"; exit 1; }
+          case "$DB_URL" in *"$MAIN_REF"*) echo "::error::PH1_SUPABASE_DB_URL đang trỏ vào CSDL của BẢN CHÍNH — dừng."; exit 1;; esac
+          sudo apt-get install -y -qq postgresql-client > /dev/null
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.121.0 }
+
+      - name: Dựng CSDL lần đầu (migration + dữ liệu mẫu)
+        if: env.ACTION == 'setup'
+        run: |
+          N=$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")
+          [ "$N" = "0" ] || { echo "::error::CSDL đã có bảng organizations — setup chỉ chạy trên project mới, dùng migrate."; exit 1; }
+          for f in supabase/migrations/*.sql; do
+            echo "→ $(basename "$f")"
+            PGOPTIONS="-c app.seed_demo=on" psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f" > /dev/null \
+              || { echo "::error title=setup::Lỗi ở $(basename "$f")"; exit 1; }
+          done
+          V=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1)
+          supabase migration repair --db-url "$DB_URL" --status applied $V --yes < /dev/null
+          echo "::notice title=setup::Đã dựng $(echo $V | wc -w) migration có dữ liệu mẫu"
+
+      - name: Chạy migration mới
+        if: env.ACTION == 'migrate'
+        run: |
+          N=$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")
+          [ "$N" = "1" ] || { echo "::error::CSDL PH1 chưa dựng — chạy workflow bằng tay với action = setup trước."; exit 1; }
+          supabase db push --db-url "$DB_URL" --dry-run --yes < /dev/null
+          supabase db push --db-url "$DB_URL" --yes < /dev/null
+
+      - name: Cấp quyền Quản trị nền tảng
+        if: env.ACTION == 'grant_admin'
+        run: |
+          [ -n "$EMAIL" ] || { echo "::error::Nhập email"; exit 1; }
+          echo "select public.grant_platform_admin(:'email');" | psql "$DB_URL" -v ON_ERROR_STOP=1 -v email="$EMAIL"
+          echo "::notice title=grant_admin::Đã cấp Quản trị nền tảng cho $EMAIL"

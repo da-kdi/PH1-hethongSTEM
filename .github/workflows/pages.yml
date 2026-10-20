@@ -1,6 +1,6 @@
 name: Xem thử trên GitHub Pages
 # BẢN TÁCH PH1: dựng giao diện và đưa lên https://da-kdi.github.io/PH1-hethongSTEM/ mỗi khi đẩy lên main.
-# Dùng CSDL demo của .env.example (khoá publishable, chỉ dành cho trình duyệt). Không đi theo patch ghép về repo chính.
+# Dùng CSDL RIÊNG của PH1: biến repo PH1_SUPABASE_URL, PH1_SUPABASE_ANON_KEY (khoá publishable). Không đi theo patch ghép về repo chính.
 on:
   push:
     branches: [main]
@@ -19,8 +19,14 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
-      - run: cp .env.example .env && npm run build
-        env: { VITE_BASE: '/${{ github.event.repository.name }}/' }
+      - name: Dựng giao diện (trỏ vào CSDL riêng của PH1)
+        env:
+          VITE_BASE: '/${{ github.event.repository.name }}/'
+          VITE_SUPABASE_URL: ${{ vars.PH1_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.PH1_SUPABASE_ANON_KEY }}
+        run: |
+          [ -n "$VITE_SUPABASE_URL" ] && [ -n "$VITE_SUPABASE_ANON_KEY" ] || { echo "::error::Chưa đặt biến repo PH1_SUPABASE_URL / PH1_SUPABASE_ANON_KEY"; exit 1; }
+          npm run build
       # Mở thẳng một đường dẫn con / tải lại trang vẫn vào ứng dụng
       - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

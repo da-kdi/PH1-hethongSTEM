@@ -9,7 +9,7 @@ FROM=$(cat UPSTREAM_BASE)
 [ "$FROM" = "$TO" ] && { echo "Đã ở $TO, không có gì mới."; exit 0; }
 git diff --quiet HEAD || { echo "Còn thay đổi chưa commit — commit trước rồi đồng bộ."; exit 1; }
 # File của repo chính mà bản tách vẫn giữ (bỏ App.tsx, lib/nav.ts, workflow, wrangler, README — đã chỉnh riêng cho bản tách)
-KEEP=$(git ls-files | grep -vxE 'src/App.tsx|src/lib/nav.ts|\.github/workflows/db-tests.yml|wrangler.jsonc|README.md' || true)
+KEEP=$(git ls-files | grep -vxE 'src/App.tsx|src/lib/nav.ts|\.github/workflows/db-tests.yml|wrangler.jsonc|README.md|vite.config.ts|\.env.example' || true)
 # File mới ở repo chính: chỉ lấy nếu nằm ngoài src/pages (màn mới của phân hệ khác không cần)
 NEWF=$(git -C "$MAIN" diff --name-only --diff-filter=A "$FROM" "$TO" | grep -v '^src/pages/' || true)
 PATCH=$(mktemp)

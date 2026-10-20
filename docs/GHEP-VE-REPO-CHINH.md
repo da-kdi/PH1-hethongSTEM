@@ -18,12 +18,18 @@ Các mã trang (chuỗi trong menu) **không được đổi** — chúng là kh
 
 ## 2. Môi trường chạy
 
-- **Không** dùng chung CSDL Supabase demo của repo chính để thử migration mới. Mỗi người tạo một project Supabase riêng (gói miễn phí) hoặc Postgres trên máy, rồi dựng CSDL có dữ liệu mẫu:
-  ```bash
-  for f in supabase/migrations/*.sql; do PGOPTIONS="-c app.seed_demo=on" psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"; done
-  ```
-  rồi sửa `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) trỏ vào project đó.
-- Chỉ đọc giao diện thì có thể dùng `.env.example` (CSDL demo) như repo chính.
+PH1 dùng **project Supabase riêng**, tách hẳn khỏi CSDL của bản chính (`tsvujwddjpnchkdxqjza`). `vite.config.ts` và hai workflow `pages.yml`, `ph1-db.yml` đều dừng nếu cấu hình trỏ vào project của bản chính.
+
+Dựng lần đầu (một lần):
+1. supabase.com → **New project** (region Singapore như bản chính, gói Free được). Lưu mật khẩu CSDL ở chỗ riêng của bạn.
+2. Project → **Connect → Session pooler**: chép chuỗi kết nối (thay `[YOUR-PASSWORD]`) → GitHub repo → Settings → Secrets and variables → Actions → **Secrets** → `PH1_SUPABASE_DB_URL`.
+3. Project → **Settings → API**: chép Project URL và khoá *publishable* → GitHub → **Variables** (không phải Secrets): `PH1_SUPABASE_URL`, `PH1_SUPABASE_ANON_KEY`. Điền hai giá trị này vào `.env` trên máy (sao từ `.env.example`).
+4. GitHub → Actions → **CSDL riêng của PH1** → Run workflow, *action* = `setup`: chạy toàn bộ migration + dữ liệu mẫu, ghi lịch sử migration.
+5. Supabase → **Authentication → URL Configuration**: Site URL `https://da-kdi.github.io/PH1-hethongSTEM/`, thêm Redirect URL đó và `http://localhost:5173`.
+6. Actions → **Xem thử trên GitHub Pages** → Run workflow (dựng lại trang trỏ vào CSDL mới). Mở trang → *Đăng ký* bằng email của bạn, xác nhận email.
+7. Actions → **CSDL riêng của PH1** → Run workflow, *action* = `grant_admin`, *email* = email vừa đăng ký → có quyền Quản trị nền tảng trên CSDL PH1. Vai trò ở trường/Sở mẫu gán bằng SQL Editor của project PH1 (README gốc, mục *Chạy trên máy*).
+
+Sau đó: đẩy migration mới (`supabase/migrations/**`) lên `main` → workflow tự chạy `supabase db push` **chỉ lên CSDL PH1**. Hàm máy chủ (`school-accounts`, `ai-assistant`) chưa đưa lên project PH1 — tài khoản mã và Trợ lý AI chưa dùng được, không ảnh hưởng các màn PH1.
 - CI của repo này chỉ chạy kiểm thử trên CSDL tạm (`supabase/tests/run.sh`). Các job `migrate`, `deploy-functions`, `schema-diff` đã bị bỏ để không bao giờ ghi vào Supabase thật. Worker Cloudflare đổi tên `lms-ph1` để không đè bản chính.
 
 ## 3. Migration mới của PH1
