@@ -1,3 +1,15 @@
+# KDISTEM · Bản tách Phân hệ 1 — Chương trình & học liệu
+
+Bản sao của `luantrandata-maker/KDISTEM` (commit trong `UPSTREAM_BASE`) chỉ giữ khung giao diện và các màn của **PH1 · 1.1 Chương trình giáo dục & học liệu** (6 chức năng theo đề án Ver9). Dùng để nhóm PH1 build song song rồi ghép về repo chính.
+
+- Quy tắc làm việc, môi trường, migration, đồng bộ và ghép về: [docs/GHEP-VE-REPO-CHINH.md](docs/GHEP-VE-REPO-CHINH.md)
+- Hiện trạng – đề xuất – chia việc cho 6 chức năng: [docs/PH1-phan-tich-1.1.md](docs/PH1-phan-tich-1.1.md)
+- Menu & bảng trang PH1: `src/modules/ph1/`
+
+Chạy: `npm install && npm run dev` (sao `.env.example` thành `.env`). Phần dưới là README gốc của repo chính.
+
+---
+
 # Hệ thống Quản trị STEM
 
 Giai đoạn 1–2: nền tảng + vận hành trường. React + TypeScript + Vite, Supabase.

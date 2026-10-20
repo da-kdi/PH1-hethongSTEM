@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense, type ComponentType } from 'react'
+import { useEffect, useState, Suspense, type ComponentType } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { NAV, ROLE_LABEL, MODULE_OF, ENT_MODULE_OF, RoleKey, UPSELL_PORTALS, PHASE_OF, labelOf } from './lib/nav'
@@ -8,7 +8,6 @@ import { useYears, yearLabel } from './lib/year'
 import Bell from './components/Bell'
 import { navigatePage, onHistoryPage } from './lib/history'
 import MfaGate from './components/MfaGate'
-import Years from './pages/Years'
 import logo from './assets/kdi-logo.png'
 import logoWhite from './assets/kdi-logo-white.png'
 import { NavIcon } from './components/NavIcon'
@@ -17,361 +16,20 @@ import Login, { SetPassword } from './pages/Login'
 import { mustChangePassword } from './lib/login'
 import { useBranding, DEFAULT_TITLE } from './lib/branding'
 import LegalGate from './components/LegalGate'
-import Dashboard from './pages/Dashboard'
-import Teachers from './pages/Teachers'
-import MobileAppPage from './pages/MobileApp'
 import OfflineBar from './components/OfflineBar'
 import HelpWidget from './components/HelpWidget'
-import TerminologyPage from './pages/platform/Terminology'
-import AssistantPage, { PlatformAI } from './pages/ai'
-import ElearningManage from './pages/elearning/Manage'
-import QuestionBank from './pages/elearning/Bank'
-import StudentElearning from './pages/elearning/Student'
-import { saveQuizToBank } from './pages/elearning/common'
-import { SysWarranty, SysBuildings, SysTeachers, SysTeaching, SysStudents, SysGuardians, SysEduPlan, SysRegistrations, SysHomework, SysCurriculum, SysLessons, SysTrainingLessons, SysCertificates } from './pages/platform/SystemViews'
-import Classes from './pages/Classes'
-import Rooms from './pages/Rooms'
-import Equipment from './pages/Equipment'
-import Warranty from './pages/Warranty'
-import Assignments from './pages/Assignments'
-import Timetable from './pages/Timetable'
-import Registrations from './pages/Registrations'
-import Students from './pages/Students'
-import Buildings from './pages/Buildings'
-import Periods from './pages/Periods'
-import Roles from './pages/Roles'
-import Accounts from './pages/Accounts'
-import Packages from './pages/Packages'
-import EduPlan from './pages/EduPlan'
-import StemAssign from './pages/StemAssign'
-import { Curriculum, SchoolProfile } from './pages/School'
-import { TrainingPlans, TrainingSchedule, TrainingLessons, VirtualClass, Certificates } from './pages/Training'
-import { TeacherHome, TeacherSchedule, TeacherClasses, TeacherBooking } from './pages/TeacherPortal'
-import { TeacherAssignments, TeacherGrading } from './pages/teacher/Assignments'
-import { TeacherLessonStudio } from './pages/teacher/Lessons'
-import { TeacherClassroom } from './pages/teacher/Classroom'
-import { TeacherTrainingSchedule, TeacherTrainingLessons } from './pages/teacher/Training'
-import { TeacherActivities } from './pages/teacher/Activities'
-import { TeacherSelfStudy } from './pages/teacher/SelfStudy'
-import { TeacherAttendance, SchoolSessions } from './pages/attendance/Sessions'
-// Dashboard điểm danh & TKB toàn hệ thống (027): tải riêng khi mở
-const AttendanceDashboard = lazy(() => import('./pages/attendance/Dashboard').then(m => ({ default: m.AttendanceDashboard })))
-const TimetableOverview = lazy(() => import('./pages/attendance/Dashboard').then(m => ({ default: m.TimetableOverview })))
-import { StudentHome } from './pages/student/Home'
-import { StudentAssignments } from './pages/student/Assignments'
-import { StudentSchedule } from './pages/student/Schedule'
-import { StudentClassroom } from './pages/student/Classroom'
-import { StudentTopics } from './pages/student/Topics'
-import { StudentSelfStudy } from './pages/student/SelfStudy'
-import { StudentAttendance } from './pages/student/Attendance'
-import { Holidays } from './pages/Holidays'
-import { TabbedPages } from './components/TabbedPages'
-import { DeptDashboard, DeptWardKpi, DeptSchools, DeptPrograms, DeptSubjects, DeptTrainingMonitor, DeptRoomEffect } from './pages/department/Overview'
-const DeptAlerts = lazy(() => import('./pages/department/Governance').then(m => ({ default: m.DeptAlerts })))
-const DeptTargets = lazy(() => import('./pages/department/Governance').then(m => ({ default: m.DeptTargets })))
-import { DeptReports } from './pages/department/Reports'
-import { DeptAdmin } from './pages/department/Admin'
-// Kho học liệu dùng chung (023)
-const LibraryBrowse = lazy(() => import('./pages/library/Browse').then(m => ({ default: m.LibraryBrowse })))
-const LibraryManage = lazy(() => import('./pages/library/Manage').then(m => ({ default: m.LibraryManage })))
-// Phê duyệt (022): tải riêng khi mở
-const ApprovalInbox = lazy(() => import('./pages/approvals/Inbox').then(m => ({ default: m.ApprovalInbox })))
-const ApprovalWorkflows = lazy(() => import('./pages/approvals/Workflows').then(m => ({ default: m.ApprovalWorkflows })))
-const PackageOrders = lazy(() => import('./pages/approvals/PackageOrders').then(m => ({ default: m.PackageOrders })))
-// Cổng quản trị nền tảng: tải riêng khi mở (không làm nặng bản tải chung của trường/giáo viên/học sinh)
-const PlatformOverview = lazy(() => import('./pages/platform/Overview').then(m => ({ default: m.PlatformOverview })))
-const PlatformOrgs = lazy(() => import('./pages/platform/Orgs').then(m => ({ default: m.PlatformOrgs })))
-const PlatformUsers = lazy(() => import('./pages/platform/Users').then(m => ({ default: m.PlatformUsers })))
-const PlatformInvites = lazy(() => import('./pages/platform/Users').then(m => ({ default: m.PlatformInvites })))
-const PlatformAudit = lazy(() => import('./pages/platform/Audit').then(m => ({ default: m.PlatformAudit })))
-// Khung giao diện cho phân hệ chưa build + Sơ đồ hệ thống
-const PlannedPage = lazy(() => import('./pages/platform/Planned').then(m => ({ default: m.PlannedPage })))
-const SystemMap = lazy(() => import('./pages/platform/Planned').then(m => ({ default: m.SystemMap })))
-// Đợt 1 (024): khách hàng, gói & hợp đồng, bảo mật, hỗ trợ
-const PlatformCustomers = lazy(() => import('./pages/platform/Commerce').then(m => ({ default: m.PlatformCustomers })))
-const PlatformContracts = lazy(() => import('./pages/platform/Commerce').then(m => ({ default: m.PlatformContracts })))
-const PlatformSecurity = lazy(() => import('./pages/platform/Security').then(m => ({ default: m.PlatformSecurity })))
-const PlatformLegal = lazy(() => import('./pages/platform/Legal').then(m => ({ default: m.PlatformLegal })))
-const ClassCompetencies = lazy(() => import('./pages/competency').then(m => ({ default: m.ClassCompetencies })))
-const SurveyManager = lazy(() => import('./pages/surveys').then(m => ({ default: m.SurveyManager })))
-const MySurveys = lazy(() => import('./pages/surveys').then(m => ({ default: m.MySurveys })))
-const StudentMyCompetencies = lazy(() => import('./pages/competency').then(m => ({ default: m.StudentMyCompetencies })))
-const TeacherCompetencyProfile = lazy(() => import('./pages/competency').then(m => ({ default: m.TeacherCompetencyProfile })))
-const SchoolTeacherAssessments = lazy(() => import('./pages/competency').then(m => ({ default: m.SchoolTeacherAssessments })))
-const PlatformSupport = lazy(() => import('./pages/support/Support').then(m => ({ default: m.PlatformSupport })))
-// Đợt 2 (025): triển khai khách hàng, danh mục gói, đơn đặt gói, thông báo hàng loạt, tích hợp
-const PlatformRollout = lazy(() => import('./pages/platform/Rollout').then(m => ({ default: m.PlatformRollout })))
-const PlatformCatalog = lazy(() => import('./pages/platform/Catalog').then(m => ({ default: m.PlatformCatalog })))
-const PlatformOrders = lazy(() => import('./pages/platform/Catalog').then(m => ({ default: m.PlatformOrders })))
-const PlatformBroadcast = lazy(() => import('./pages/platform/Broadcast').then(m => ({ default: m.PlatformBroadcast })))
-const PlatformIntegrations = lazy(() => import('./pages/platform/Integrations').then(m => ({ default: m.PlatformIntegrations })))
-// S3 (029): phòng STEM & lịch phòng, thiết bị toàn hệ thống
-const RoomsOverview = lazy(() => import('./pages/platform/Resources').then(m => ({ default: m.RoomsOverview })))
-const ModuleUsage = lazy(() => import('./pages/platform/Modules').then(m => ({ default: m.ModuleUsage })))
-const DefaultPermissions = lazy(() => import('./pages/platform/Modules').then(m => ({ default: m.DefaultPermissions })))
-const PlatformSchools = lazy(() => import('./pages/platform/Schools').then(m => ({ default: m.PlatformSchools })))
-const BrandingPage = lazy(() => import('./pages/branding').then(m => ({ default: m.BrandingPage })))
-const ParentP = (n: string) => lazy(() => import('./pages/parent').then(m => ({ default: (m as any)[n] })))
-const GuardiansPage = lazy(() => import('./pages/Guardians'))
-const PARENT: PageMap = {
-  'Ứng dụng di động': MobileAppPage,
-  'Tổng quan': ParentP('ParentHome'), 'Lịch học': ParentP('ParentSchedule'), 'Chuyên cần của con': ParentP('ParentAttendance'),
-  'Bài tập & điểm': ParentP('ParentAssignments'), 'Năng lực của con': ParentP('ParentCompetency'), 'Cài đặt & đồng ý': ParentP('ParentSettings'),
-  'Khảo sát': lazy(() => import('./pages/surveys').then(m => ({ default: m.MySurveys }))),
-  'Sự kiện': lazy(() => import('./pages/events').then(m => ({ default: m.MyEvents }))),
-  'Dự án STEM': lazy(() => import('./pages/contest/Projects').then(m => ({ default: m.ParentProjects }))),
-}
-const StemIndexPage = lazy(() => import('./pages/department/StemIndex').then(m => ({ default: m.StemIndexPage })))
-const IndexConfigPage = lazy(() => import('./pages/department/StemIndex').then(m => ({ default: m.IndexConfigPage })))
-const ComparePage = lazy(() => import('./pages/department/StemIndex').then(m => ({ default: m.ComparePage })))
-const EventManager = lazy(() => import('./pages/events').then(m => ({ default: m.EventManager })))
-const MyEvents = lazy(() => import('./pages/events').then(m => ({ default: m.MyEvents })))
-const ProjectsPage = lazy(() => import('./pages/contest/Projects').then(m => ({ default: m.ProjectsPage })))
-const CompetitionsPage = lazy(() => import('./pages/contest/Competitions').then(m => ({ default: m.CompetitionsPage })))
-const JudgingPage = lazy(() => import('./pages/contest/Judging').then(m => ({ default: m.JudgingPage })))
-const JUDGE: PageMap = { 'Chấm thi': JudgingPage }
-const DataExportPage = lazy(() => import('./pages/dataexport').then(m => ({ default: m.DataExportPage })))
-const PlatformRevenue = lazy(() => import('./pages/platform/Revenue').then(m => ({ default: m.PlatformRevenue })))
-const SupplyRequestsPage = lazy(() => import('./pages/stockflow').then(m => ({ default: m.SupplyRequestsPage })))
-const TransfersPage = lazy(() => import('./pages/stockflow').then(m => ({ default: m.TransfersPage })))
-const SuppliesPage = lazy(() => import('./pages/inventory').then(m => ({ default: m.SuppliesPage })))
-const StocktakePage = lazy(() => import('./pages/inventory').then(m => ({ default: m.StocktakePage })))
-const EquipmentOverview = lazy(() => import('./pages/platform/Resources').then(m => ({ default: m.EquipmentOverview })))
-const CustomerSupport = lazy(() => import('./pages/support/Support').then(m => ({ default: m.CustomerSupport })))
+// BẢN TÁCH PH1: chỉ nối các màn của Phân hệ 1 · Chương trình & học liệu (src/modules/ph1/pages.tsx).
+// Repo chính giữ bảng trang đầy đủ; khi ghép về chỉ trộn PH1_PAGES vào các bảng đó (docs/GHEP-VE-REPO-CHINH.md).
+import { PH1_PAGES } from './modules/ph1/pages'
 
 type PageMap = Record<string, ComponentType<any>>
-const SCHOOL: PageMap = {
-  'Dự án STEM': ProjectsPage,
-  'Cuộc thi': CompetitionsPage,
-  'Sự kiện': EventManager,
-  'Đánh giá năng lực GV': SchoolTeacherAssessments,
-  'Khảo sát': SurveyManager,
-  'Năng lực học sinh': ClassCompetencies,
-  'Dashboard Trường': Dashboard,
-  'Giáo viên': Teachers,
-  'Lớp học': Classes,
-  'Quản lý Phòng STEM': Rooms,
-  'Quản lý Thiết bị': Equipment,
-  'Vật tư tiêu hao': SuppliesPage,
-  'Đề xuất mua vật tư': SupplyRequestsPage,
-  'Vận chuyển vật tư': TransfersPage,
-  'Kiểm kê': StocktakePage,
-  'Bảo hành thiết bị': Warranty,
-  'Phân công giảng dạy': Assignments,
-  'Thời khóa biểu': Timetable,
-  'Duyệt đăng ký dạy STEM': Registrations,
-  'Học sinh': Students,
-  'Phụ huynh': GuardiansPage,
-  'Tòa nhà & Tầng': Buildings,
-  'Cấu hình tiết học': Periods,
-  'Vai trò và phân quyền': Roles,
-  'Tài khoản': Accounts,
-  'Gói STEM': Packages,
-  'Kế hoạch GD toàn trường': EduPlan,
-  'Phân công GV dạy STEM': StemAssign,
-  'Phân phối chương trình': Curriculum,
-  'Hồ sơ Trường học': SchoolProfile,
-  'Kế hoạch tập huấn': TrainingPlans,
-  'Lịch tập huấn': TrainingSchedule,
-  'Bài giảng': TrainingLessons,
-  'Lớp học ảo': VirtualClass,
-  'Chứng chỉ': Certificates,
-  'Năm học & học kỳ': Years,
-  'Hộp phê duyệt': ApprovalInbox,
-  'Quy trình phê duyệt': ApprovalWorkflows,
-  'Đề xuất mua gói': PackageOrders,
-  'Kho học liệu dùng chung': LibraryBrowse,
-  'Phát hành học liệu': LibraryManage,
-  'Hỗ trợ từ KDI': CustomerSupport,
-  'Ứng dụng di động': MobileAppPage,
-  'Trợ lý AI': (p: any) => <AssistantPage {...p} onSaveQuiz={(i: any, m: any) => saveQuizToBank(p.orgId, i, m)} />,
-  'E-learning & luyện thi': ElearningManage,
-  'Ngân hàng câu hỏi': QuestionBank,
-  'Buổi dạy & điểm danh': SchoolSessions,
-  'Dashboard điểm danh': AttendanceDashboard,
-  'Sao lưu & xuất dữ liệu': DataExportPage,
-  'Giao diện & thương hiệu': BrandingPage,
-  'Ngày nghỉ & lễ': Holidays,
-}
-const TEACHER: PageMap = {
-  'Ứng dụng di động': MobileAppPage,
-  'Trợ lý AI': (p: any) => <AssistantPage {...p} onSaveQuiz={(i: any, m: any) => saveQuizToBank(p.orgId, i, m)} />,
-  'E-learning & luyện thi': ElearningManage,
-  'Ngân hàng câu hỏi': QuestionBank,
-  'Dự án STEM': ProjectsPage,
-  'Cuộc thi': CompetitionsPage,
-  'Chấm thi': JudgingPage,
-  'Sự kiện': MyEvents,
-  'Tổng quan': TeacherHome,
-  'Kế hoạch giáo dục': TeacherSchedule,
-  'Lớp giảng dạy': TeacherClasses,
-  'Điểm danh': TeacherAttendance,
-  'Đặt phòng STEM': TeacherBooking,
-  'Bài tập': TeacherAssignments,
-  'Chấm bài': TeacherGrading,
-  'Năng lực học sinh': ClassCompetencies,
-  'Hồ sơ năng lực': TeacherCompetencyProfile,
-  'Khảo sát': MySurveys,
-  'Giáo dục STEM': TeacherClassroom,
-  'Soạn bài giảng': TeacherLessonStudio,
-  'Hộp phê duyệt': ApprovalInbox,
-  'Thư viện STEM': LibraryBrowse,
-  'Lịch tập huấn': TeacherTrainingSchedule,
-  'Bài giảng tập huấn': TeacherTrainingLessons,
-  'Hỗ trợ từ KDI': CustomerSupport,
-  'Kho hoạt động & Bài giảng': TeacherActivities,
-  'Học trước & tự học': TeacherSelfStudy,
-}
-const STUDENT: PageMap = {
-  'E-learning & luyện thi': StudentElearning,
-  'Dự án STEM': ProjectsPage,
-  'Sự kiện': MyEvents,
-  'Tổng quan': StudentHome,
-  'Năng lực của em': StudentMyCompetencies,
-  'Khảo sát': MySurveys,
-  'Bài tập': StudentAssignments,
-  'Lịch học': StudentSchedule,
-  'Giáo dục STEM': StudentClassroom,
-  'Chủ đề': StudentTopics,
-  'Học trước & tự học': StudentSelfStudy,
-  'Chuyên cần': StudentAttendance,
-}
-const DEPARTMENT: PageMap = {
-  'Trợ lý AI': (p: any) => <AssistantPage {...p} onSaveQuiz={(i: any, m: any) => saveQuizToBank(p.orgId, i, m)} />,
-  'E-learning & luyện thi': ElearningManage,
-  'Ngân hàng câu hỏi': QuestionBank,
-  'Dự án STEM': (p: any) => <ProjectsPage {...p} readOnly />,
-  'Cuộc thi': CompetitionsPage,
-  'Chấm thi': JudgingPage,
-  'Sự kiện': EventManager,
-  'Chỉ số STEM': StemIndexPage,
-  'So sánh trường / địa bàn': ComparePage,
-  'Bộ chỉ số': IndexConfigPage,
-  'Dashboard toàn Sở': DeptDashboard,
-  'KPI & Xếp hạng Xã/Phường': DeptWardKpi,
-  'Cảnh báo & trường cần chú ý': DeptAlerts,
-  'Giao chỉ tiêu': DeptTargets,
-  'Khảo sát': SurveyManager,
-  'Danh sách Trường': DeptSchools,
-  'Dashboard điểm danh': AttendanceDashboard,
-  'Chương trình CT1–CT5': DeptPrograms,
-  'Theo dõi Môn học STEM': DeptSubjects,
-  'Giám sát Tập huấn GV': DeptTrainingMonitor,
-  'Kế hoạch tập huấn': TrainingPlans,
-  'Lịch tập huấn': TrainingSchedule,
-  'Hiệu quả Phòng STEM': DeptRoomEffect,
-  'Phòng STEM & lịch phòng': RoomsOverview,
-  'Thiết bị & kho': EquipmentOverview,
-  'Sao lưu & xuất dữ liệu': DataExportPage,
-  'Giao diện & thương hiệu': BrandingPage,
-  'Ngày nghỉ & lễ': Holidays,
-  'Báo cáo Bộ GD&ĐT': DeptReports,
-  'Điều hành & Cấu hình': DeptAdmin,
-  'Hộp phê duyệt': ApprovalInbox,
-  'Quy trình phê duyệt': ApprovalWorkflows,
-  'Phát hành học liệu': LibraryManage,
-  'Kho học liệu dùng chung': LibraryBrowse,
-  'Hỗ trợ từ KDI': CustomerSupport,
-}
-// Cổng Quản trị nền tảng: chỉ nối các trang đọc được dữ liệu toàn hệ thống (trang nền tảng, trang cấp Sở, học liệu, phê duyệt, tập huấn).
-// Mục menu không có ở đây hiện khung giao diện (PlannedPage); build xong phân hệ nào thì thêm trang vào đây.
-const PLATFORM: PageMap = {
-  'Dự án STEM': (p: any) => <ProjectsPage {...p} readOnly />,
-  'Cuộc thi STEM': (p: any) => <CompetitionsPage {...p} platform />,
-  'Chấm thi': JudgingPage,
-  'Sự kiện': EventManager,
-  'Chỉ số STEM (STEM Index)': (p: any) => <StemIndexPage {...p} platform />,
-  'Điều hành toàn tỉnh': (p: any) => <StemIndexPage {...p} platform groupBy="department" />,
-  'So sánh trường / địa bàn': ComparePage,
-  'Bộ chỉ số': (p: any) => <IndexConfigPage {...p} platform />,
-  'Dashboard tổng hợp': DeptDashboard,
-  'Nghiệm thu & doanh thu': PlatformRevenue,
-  'Sao lưu & xuất dữ liệu': (p: any) => <DataExportPage {...p} platform />,
-  'Giao diện & thương hiệu': (p: any) => <BrandingPage {...p} platform />,
-  'Tổng quan hệ thống': PlatformOverview,
-  'Nhật ký hệ thống': PlatformAudit,
-  'Cấu hình chung (năm học)': DeptAdmin,
-  'Cây tổ chức': PlatformOrgs,
-  'Người dùng & vai trò': PlatformUsers,
-  'Lời mời': PlatformInvites,
-  'Hộp phê duyệt': ApprovalInbox,
-  'Quy trình phê duyệt': ApprovalWorkflows,
-  'Thông báo': PlatformBroadcast,
-  'Cơ sở giáo dục': DeptSchools,
-  'Cơ sở triển khai': PlatformSchools,
-  'Vai trò & quyền mặc định': DefaultPermissions,
-  'Bảo mật tài khoản': PlatformSecurity,
-  'Điều khoản & dữ liệu cá nhân': PlatformLegal,
-  'Đánh giá năng lực giáo viên': SchoolTeacherAssessments,
-  'Đánh giá năng lực người học': ClassCompetencies,
-  'Khảo sát': SurveyManager,
-  'Vấn đề & phản hồi': PlatformSupport,
-  'Thông tin khách hàng': PlatformCustomers,
-  'Gói dịch vụ & hợp đồng': PlatformContracts,
-  'Triển khai khách hàng': PlatformRollout,
-  'Đơn đặt gói STEM': PlatformOrders,
-  'Tích hợp & dữ liệu': PlatformIntegrations,
-  // 1. Đào tạo & đánh giá năng lực nhà giáo
-  'Kế hoạch tập huấn': TrainingPlans,
-  'Lịch tập huấn': TrainingSchedule,
-  'Giám sát tập huấn nhà giáo': DeptTrainingMonitor,
-  // 2. Chương trình & học liệu
-  'Chương trình giáo dục': PlatformCatalog,
-  'Học liệu': (p: any) => <TabbedPages {...p} tabs={[['Phát hành học liệu', LibraryManage], ['Kho học liệu dùng chung', LibraryBrowse]]} />,
-  'Theo dõi chương trình CT1–CT5 (Môn học)': (p: any) => <TabbedPages {...p} tabs={[['Chương trình CT1–CT5', DeptPrograms], ['Môn học STEM', DeptSubjects]]} />,
-  // 3. Vật tư, thiết bị dạy & học
-  'Thiết bị & vật tư': EquipmentOverview,
-  'Kho & tồn kho': SuppliesPage,
-  'Mua hàng & đề xuất vật tư': SupplyRequestsPage,
-  'Vận chuyển vật tư': TransfersPage,
-  'Cấp phát & bàn giao': (p: any) => <SuppliesPage {...p} initialTab="moves" />,
-  'Kiểm kê': StocktakePage,
-  'Phòng STEM & lịch phòng': RoomsOverview,
-  'Hiệu quả sử dụng phòng STEM': DeptRoomEffect,
-  // 4. Vận hành giảng dạy & đánh giá người học
-  'Thời khóa biểu & xếp lịch': TimetableOverview,
-  'Buổi dạy & điểm danh': AttendanceDashboard,
-  // 5. Hệ thống quản lý vận hành
-  'Báo cáo vận hành': DeptDashboard,
-  'KPI & xếp hạng': DeptWardKpi,
-  'Báo cáo cấp trên (Bộ GD&ĐT)': DeptReports,
-  'Cảnh báo & trường cần chú ý': DeptAlerts,
-  'Giao chỉ tiêu': DeptTargets,
-  'Điều hành & cấu hình (Sở)': DeptAdmin,
-  // 5.5–5.6: tên theo file rà soát, dùng lại màn chung
-  'Tổ chức & phân quyền': (p: any) => <TabbedPages {...p} tabs={[['Cây tổ chức', PlatformOrgs], ['Người dùng & vai trò', PlatformUsers], ['Lời mời', PlatformInvites]]} />,
-  'Nhật ký hoạt động': PlatformAudit,
-  'Lộ trình triển khai': PlatformRollout,
-  'Cấu hình chung (kỳ học...)': DeptAdmin,
-  'Thuật ngữ chuẩn': TerminologyPage,
-  'Ứng dụng di động & ngoại tuyến': MobileAppPage,
-  'Trợ lý AI': PlatformAI,
-  'E-learning & luyện thi': ElearningManage,
-  // Màn xem toàn hệ thống (gom dữ liệu mọi trường, lọc theo Sở / trường) — pages/platform/SystemViews.tsx
-  'Bảo hành & bảo trì thiết bị': SysWarranty,
-  'Tòa nhà, tầng & tiết học': SysBuildings,
-  'Nhà giáo & trợ giảng': SysTeachers,
-  'Phân công giảng dạy': SysTeaching,
-  'Người học': SysStudents,
-  'Công cụ người học & phụ huynh': SysGuardians,
-  'Kế hoạch giáo dục toàn trường': SysEduPlan,
-  'Duyệt đăng ký dạy STEM': SysRegistrations,
-  'Bài tập & chấm bài': SysHomework,
-  'Phân phối chương trình': SysCurriculum,
-  'Soạn bài giảng & kho hoạt động': SysLessons,
-  'Bài giảng tập huấn & lớp học ảo': SysTrainingLessons,
-  'Chứng chỉ tập huấn': SysCertificates,
-}
-const PLATFORM_LIVE = new Set(Object.keys(PLATFORM))
-PLATFORM['Sơ đồ hệ thống'] = (p: any) => <SystemMap {...p} live={PLATFORM_LIVE} />
-PLATFORM['Phân hệ & mức sử dụng'] = (p: any) => <ModuleUsage {...p} live={PLATFORM_LIVE} />
-PLATFORM_LIVE.add('Phân hệ & mức sử dụng')
+const PLATFORM_LIVE = new Set(Object.keys(PH1_PAGES.platform ?? {}))
 // Tên trang cũ (liên kết nội bộ của trang Sở) → tên trong menu Quản trị nền tảng
 const PLATFORM_ALIAS: Record<string, string> = {
   'KPI & Xếp hạng Xã/Phường': 'KPI & xếp hạng', 'Thiết bị & kho': 'Thiết bị & vật tư', 'Hiệu quả Phòng STEM': 'Hiệu quả sử dụng phòng STEM',
   'Dashboard điểm danh': 'Buổi dạy & điểm danh', 'Thời khoá biểu & xếp lịch': 'Thời khóa biểu & xếp lịch',
 }
-export const PAGES: Partial<Record<RoleKey, PageMap>> = { school_admin: SCHOOL, teacher: TEACHER, student: STUDENT, department: DEPARTMENT, platform: PLATFORM, parent: PARENT, judge: JUDGE }
+export const PAGES: Partial<Record<RoleKey, PageMap>> = PH1_PAGES
 // Khi dev: mục menu không có trang (thường do sửa chuỗi mã trong NAV thay vì thêm LABEL — xem lib/nav.ts)
 if (import.meta.env.DEV) (Object.keys(PAGES) as RoleKey[]).filter(r => r !== 'platform').forEach(r =>
   NAV[r].flatMap(g => g.items).filter(i => !PAGES[r]![i]).forEach(i => console.warn(`[menu] ${r}: "${i}" không có trang`)))
@@ -413,7 +71,8 @@ function Shell({ session }: { session: Session }) {
   const [changingPw, setChangingPw] = useState(false)
   const yrs = useYears(access.profile?.org_id)
 
-  const views: RoleKey[] = access.portals
+  // Bản tách PH1: bỏ cổng không có mục nào (phụ huynh, giám khảo)
+  const views: RoleKey[] = access.portals.filter(v => NAV[v].length > 0)
 
   useEffect(() => {
     if (!access.loading && !role && views.length) {
@@ -511,7 +170,7 @@ function Shell({ session }: { session: Session }) {
     if (g.section && last?.section === g.section) last.groups.push(g)
     else blocks.push({ section: g.section, groups: [g] })
   })
-  const Page: ComponentType<any> | undefined = PAGES[role]?.[page] ?? (role === 'platform' ? PlannedPage : undefined)
+  const Page: ComponentType<any> | undefined = PAGES[role]?.[page]
   const goPage = (p: string) => show(role, role === 'platform' ? PLATFORM_ALIAS[p] ?? p : p)
   // Tài khoản mã: hiện tên đăng nhập thay cho email nội bộ
   const email = (session.user.user_metadata?.login as string | undefined) ?? session.user.email ?? ''
