@@ -7,6 +7,7 @@ declare
     'ai_settings',          -- cấu hình trợ lý AI mặc định (052, một dòng, tắt)
     'audit_log',            -- nhật ký do chính migration ghi khi cập nhật danh mục gói
     'competencies',         -- khung năng lực HS/GV (042)
+    'curriculum_catalog',   -- danh mục mặc định của chương trình đào tạo: CT1–CT5, cấp học, môn, lĩnh vực… (057)
     'integrations',         -- danh mục kết nối tích hợp (K12Online, VNeID, email, Zalo, Excel)
     'organizations',        -- chỉ đơn vị cung cấp KDI Education (kiểm tra riêng bên dưới)
     'role_permissions',     -- ma trận quyền mặc định
