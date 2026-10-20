@@ -5,7 +5,7 @@
 -- Kèm một sửa quyền (áp cho mọi CSDL): mục danh mục do KDI (đơn vị chủ nền tảng) thêm là mặc định cho mọi đơn vị, như mục hệ thống.
 
 create or replace function public.curriculum_is_platform_org(p_org uuid) returns boolean
-language sql stable security definer set search_path = public as $ select coalesce((select is_platform from organizations where id = p_org), false) $;
+language sql stable security definer set search_path = public as $$ select coalesce((select is_platform from organizations where id = p_org), false) $$;
 grant execute on function public.curriculum_is_platform_org(uuid) to authenticated;
 drop policy if exists curriculum_catalog_read on curriculum_catalog;
 create policy curriculum_catalog_read on curriculum_catalog for select to authenticated using (
