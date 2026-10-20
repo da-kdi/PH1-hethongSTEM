@@ -1799,9 +1799,12 @@ select pg_temp.chk('admin_ph', 'CTĐT: bản đã ban hành không sửa đượ
   $q$update curriculum_versions set change_note = 'ISO sửa' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, 'ERR');
 select pg_temp.chk('admin_ph', 'CTĐT: không xoá chương trình đã ban hành', $q$delete from curricula where name = 'ISO CT trường A'$q$, 'rows:0');
 select pg_temp.chk('admin_kb', 'CTĐT: chương trình phạm vi "trong trường" không lộ sang trường khác', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '0');
+select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_new_version(c.id, null, 'ISO v2')::text from curricula c where c.name = 'ISO CT trường A'$q$, true);
 select pg_temp.chk('admin_ph', 'CTĐT: phiên bản mới sao chép nội dung bản hiệu lực',
-  $q$select (select count(*) from curriculum_lessons l where l.version_id = x.v)::text
-     from (select curriculum_new_version(c.id, null, 'ISO v2') as v from curricula c where c.name = 'ISO CT trường A') x$q$, '1');
+  $q$select count(*) from curriculum_lessons l join curriculum_versions v on v.id = l.version_id join curricula c on c.id = v.curriculum_id
+     where c.name = 'ISO CT trường A' and v.status = 'draft' and v.label = 'ISO v2'$q$, '1');
+select pg_temp.chk('admin_ph', 'CTĐT: chỉ một phiên bản đang soạn mỗi chương trình',
+  $q$select curriculum_new_version(c.id)::text from curricula c where c.name = 'ISO CT trường A'$q$, 'ERR*');
 select pg_temp.chk('admin_ph', 'CTĐT: hàm cho Phân phối chương trình trả chương trình đang hiệu lực của trường',
   $q$select count(*) from curriculum_available() where name = 'ISO CT trường A' and is_own$q$, '1');
 -- Kế thừa chương trình KDI
