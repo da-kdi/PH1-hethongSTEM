@@ -58,10 +58,16 @@ scripts/ph1-sync-upstream.sh ../KDISTEM
    ```bash
    git apply -3 /đường/dẫn/KDISTEM-PH1/docs/ghep-lan-dau.diff
    ```
-   - `src/lib/nav.ts`: nhóm "Chương trình & học liệu" của cổng KDI, Trường, Sở được thay bằng `...PH1_NAV.<cổng>`.
+   - `src/lib/nav.ts`: nhóm "Chương trình & học liệu" của cổng KDI, Trường, Sở được thay bằng `...PH1_NAV.<cổng>`; trộn `PH1_LABEL` (tên hiển thị), `PH1_MODULE_OF` (quyền / gói của các mã trang mới).
    - `src/App.tsx`: `PH1_PAGES` được trộn vào SCHOOL / TEACHER / STUDENT / DEPARTMENT / PLATFORM (mục trùng mã lấy bản PH1).
    - Cổng **Giáo viên** và **Học sinh** giữ menu của repo chính (mục PH1 nằm lẫn trong nhóm theo công việc, có cả Trợ lý AI, Học trước & tự học…). Mục **mới** của PH1 ở hai cổng này phải thêm tay vào `NAV` repo chính khi ghép; màn thì đã tự có qua `PH1_PAGES`.
    - Từ lần ghép sau, cổng KDI/Trường/Sở không cần sửa `App.tsx`/`nav.ts` nữa: mục/màn mới của PH1 chỉ khai báo trong `src/modules/ph1/`.
    - Trước khi `git apply`, cây làm việc của repo chính phải sạch (`git status` trống); nếu báo `does not match index` thì chạy `git update-index --refresh`.
 4. Đổi số migration nếu trùng, chạy `npm run build` và `supabase/tests/run.sh`, mở PR theo quy trình repo chính (CI xanh → merge → CI tự chạy migration lên Supabase).
 5. Lưu ý thứ tự đề án Ver9: Chương trình & học liệu là **PH1**, Đào tạo nhà giáo là **PH2** (repo chính hiện đánh số ngược: "1. Đào tạo…", "2. Chương trình…"). Đổi số tiêu đề nhóm ở repo chính là việc của người giữ menu chung, làm cùng lúc cho cả 5 phân hệ.
+
+## 6. Mục 1.1 trong bản tách (cập nhật)
+
+- Migration của PH1: `057_ph1_curriculum.sql` (chương trình, phiên bản, nội dung, phê duyệt), `058_ph1_framework.sql` (môn học trong chương trình, gói chương trình, học liệu & định mức, phân phối, giáo án, liên kết e-learning), `059_ph1_demo.sql` (dữ liệu mẫu). Repo chính đã có 057–061 của nhóm khác (`edu_programs`…) trùng phạm vi: khi ghép phải chọn mô hình và đổi số migration.
+- Mã trang: `Chương trình giáo dục`, `Học liệu`, `Phân phối chương trình`, `Soạn bài giảng & kho hoạt động`, `Theo dõi chương trình CT1–CT5 (Môn học)` (hiển thị *Theo dõi triển khai chương trình*), `E-learning & luyện thi`; danh mục gói STEM thương mại của KDI chuyển sang mã `Gói STEM (KDI)`.
+- Dựng lại CSDL PH1 khi cấu trúc lại migration: đổi nội dung `supabase/ph1-reset.txt` rồi đẩy lên `main` (quản trị nền tảng được cấp lại quyền tự động).
