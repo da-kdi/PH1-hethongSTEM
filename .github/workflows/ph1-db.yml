@@ -59,8 +59,17 @@ jobs:
         run: |
           N=$(psql "$DB_URL" -At -c "select count(*) from information_schema.tables where table_schema='public' and table_name='organizations'")
           [ "$N" = "1" ] || { echo "::error::CSDL PH1 chưa dựng — chạy workflow bằng tay với action = setup trước."; exit 1; }
-          supabase db push --db-url "$DB_URL" --dry-run --yes < /dev/null
-          supabase db push --db-url "$DB_URL" --yes < /dev/null
+          # CSDL PH1 là CSDL demo: chạy migration mới CÓ dữ liệu mẫu (như setup), rồi ghi lịch sử migration
+          OUT=$(supabase db push --db-url "$DB_URL" --dry-run --yes < /dev/null 2>&1); echo "$OUT"
+          P=$(echo "$OUT" | grep -oE '[0-9]+_[a-z0-9_]+\.sql' | sort -u)
+          [ -n "$P" ] || { echo "::notice title=migrate::Không có migration chờ"; exit 0; }
+          for f in $P; do
+            echo "→ $f"
+            PGOPTIONS="-c app.seed_demo=on" psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f" > /dev/null \
+              || { echo "::error title=migrate::Lỗi ở $f"; exit 1; }
+            supabase migration repair --db-url "$DB_URL" --status applied "${f%%_*}" --yes < /dev/null
+          done
+          echo "::notice title=migrate::Đã chạy (kèm dữ liệu mẫu): $(echo $P)"
 
       - name: Cấp quyền Quản trị nền tảng
         if: env.ACTION == 'grant_admin'
