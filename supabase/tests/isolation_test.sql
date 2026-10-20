@@ -1827,7 +1827,7 @@ select pg_temp.chk('admin_kb', 'CTĐT danh mục: trường khác không thấy 
 select pg_temp.chk('admin_ph', 'CTĐT danh mục: trường không sửa danh mục hệ thống',
   $q$update curriculum_catalog set name = 'ISO đổi' where owner_org_id is null and code = 'CT1'$q$, 'rows:0');
 select pg_temp.chk('admin_ph', 'CTĐT danh mục: trường ẩn mục hệ thống cho mình',
-  $q$insert into curriculum_catalog_hidden (org_id, item_id) select my_org_id(), id from curriculum_catalog where owner_org_id is null and code = 'thpt'$q$, 'rows:1');
+  $q$insert into curriculum_catalog_hidden (org_id, item_id) select my_org_id(), id from curriculum_catalog where owner_org_id is null and code = 'tieuhoc'$q$, 'rows:1');
 select pg_temp.chk('iso_gv', 'CTĐT danh mục: giáo viên không thêm danh mục',
   $q$insert into curriculum_catalog (owner_org_id, kind, code, name) values (my_org_id(), 'subject', 'iso_gv', 'ISO')$q$, 'ERR');
 

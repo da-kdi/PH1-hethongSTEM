@@ -4,10 +4,13 @@
 -- Chạy lại được: bỏ qua nếu đã có chương trình mã 'DEMO-%'.
 -- Kèm một sửa quyền (áp cho mọi CSDL): mục danh mục do KDI (đơn vị chủ nền tảng) thêm là mặc định cho mọi đơn vị, như mục hệ thống.
 
+create or replace function public.curriculum_is_platform_org(p_org uuid) returns boolean
+language sql stable security definer set search_path = public as $ select coalesce((select is_platform from organizations where id = p_org), false) $;
+grant execute on function public.curriculum_is_platform_org(uuid) to authenticated;
 drop policy if exists curriculum_catalog_read on curriculum_catalog;
 create policy curriculum_catalog_read on curriculum_catalog for select to authenticated using (
   owner_org_id is null or owner_org_id in (select public.my_scope_orgs()) or owner_org_id in (select public.my_org_tree())
-  or owner_org_id in (select id from organizations where is_platform));
+  or public.curriculum_is_platform_org(owner_org_id));
 
 -- Tạo nội dung một phiên bản từ JSON:
 --   [{t: tên chủ đề, g: khối, p: số tiết, s: môn chủ đạo, i: [môn tích hợp], r: phòng, d: mô tả,
