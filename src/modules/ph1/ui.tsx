@@ -64,7 +64,7 @@ export function useRpcBool(fn: string) {
 }
 
 export const SCHOOL_YEAR = '2026-2027'
-export const fmtD = (d: string | null | undefined) => (d ? new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '—')
+export const fmtD = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}` : '—')
 export const fmtDY = (d: string | null | undefined) => (d ? new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('vi-VN') : '—')
 export const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const addD = (d: string, n: number) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return iso(x) }
@@ -123,7 +123,7 @@ export function Drawer({ color, badges, title, onClose, children, footer, wide }
   </>)
 }
 // Thẻ có dải màu theo chương trình (thay ảnh bìa)
-export function VCard({ color, code, icon, status, title, subtitle, desc, chips, foot, onClick, more = 'Xem chi tiết ›' }: {
+export function VCard({ color, code, status, title, subtitle, desc, chips, foot, onClick, more = 'Xem chi tiết ›' }: {
   color?: string | null; code?: string | null; icon?: ReactNode; status?: ReactNode; title: ReactNode; subtitle?: ReactNode; desc?: ReactNode
   chips?: ReactNode[]; foot?: ReactNode; onClick: () => void; more?: string
 }) {
@@ -132,7 +132,7 @@ export function VCard({ color, code, icon, status, title, subtitle, desc, chips,
     <button type="button" className="p1-card" onClick={onClick}>
       <div className="p1-banner" style={{ background: `linear-gradient(135deg, ${c}, ${shade(c, -30)})` }}>
         {code && <span className="tag">{code}</span>}{status && <span className="tag2">{status}</span>}
-        <span className="icon">{icon}</span>{code && <span className="big">{code}</span>}
+        {code && <span className="big">{code}</span>}
       </div>
       <div className="p1-cardbody">
         <h4>{title}</h4>{subtitle && <span className="subj">{subtitle}</span>}{desc && <p>{desc}</p>}

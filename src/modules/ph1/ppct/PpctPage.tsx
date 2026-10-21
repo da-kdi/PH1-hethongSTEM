@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
-import { Code, CtBadge, Drawer, Empty, Mini, Pill, Progress, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, addD, errMsg, fmtD, fmtDY, norm, today, useOrgList, useRpcBool, useViewMode } from '../ui'
+import { Code, CtBadge, Drawer, Empty, Mini, Pill, Progress, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, SCHOOL_YEAR, addD, errMsg, fmtD, fmtDY, norm, today, useOrgList, useRpcBool, useViewMode } from '../ui'
 import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { BASIS, needQty, type Norm } from '../materials/MaterialsPage'
+import { ItemDrawer, WeekGrid, YearGrid, weekOfYear, yearStart } from './Calendar'
 
 export type Plan = { id: string; org_id: string; package_school_id: string | null; curriculum_id: string | null; version_id: string | null; material_set_id: string | null
   title: string; subject: string | null; grade: number | null; class_ids: string[]; school_year: string; start_date: string; periods_per_week: number; teach_weekday: number
@@ -38,6 +39,10 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
   const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
   const [view, setView] = useViewMode('ppct', 'table')
   const [msg, setMsg] = useState('')
+  const [mode, setMode] = useState<'year' | 'week' | 'list'>('year')
+  const [range, setRange] = useState('all')
+  const [monday, setMonday] = useState(() => { const t = today(); const d = new Date(t + 'T00:00:00'); return addD(t, -((d.getDay() + 6) % 7)) })
+  const [itemPeek, setItemPeek] = useState<string | null>(null)
   const canManage = useRpcBool('curriculum_can_manage')
   const orgs = useOrgList()
   const { all, hidden } = useCatalog()
@@ -48,10 +53,12 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
     const [p, c, i] = await Promise.all([
       supabase.from('ppct_plans').select('*').order('grade').order('title'),
       supabase.from('curricula').select('*').order('code'),
-      supabase.from('ppct_items').select('id, plan_id, status, planned_date, periods, week_no, title, curriculum_unit_id, part, seq'),
+      supabase.from('ppct_items').select('*').order('week_no').order('seq'),
     ])
     if (p.error) return setMsg(errMsg(p.error.message))
-    setPlans((p.data as Plan[]) ?? []); setProgs((c.data as Curriculum[]) ?? []); setItems((i.data as Item[]) ?? [])
+    const ps = (p.data as Plan[]) ?? []
+    setPlans(ps); setProgs((c.data as Curriculum[]) ?? []); setItems((i.data as Item[]) ?? [])
+    setF(x => x.org || !ps.length ? x : { ...x, org: (ps.find(z => z.org_id === orgId) ?? ps[0]).org_id })
     if (pick) setOpen(pick)
   }
   useEffect(() => { load() }, [orgId])
@@ -73,6 +80,15 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
   const prog = (p: Plan) => progs.find(c => c.id === p.curriculum_id)
   const WDS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
   const pp = plans.find(p => p.id === peek)
+  const ystart = yearStart(plans[0]?.school_year ?? SCHOOL_YEAR)
+  const shownIds = new Set(shown.map(p => p.id))
+  const wk = (i: Item) => (i.planned_date ? weekOfYear(ystart, i.planned_date) : i.week_no)
+  const maxWeek = Math.max(35, ...items.filter(i => shownIds.has(i.plan_id)).map(wk))
+  const periodsIn = (a: number, b: number) => items.filter(i => shownIds.has(i.plan_id) && wk(i) >= a && wk(i) <= b && i.status !== 'skipped').reduce((x, i) => x + Number(i.periods), 0)
+  const months = Array.from(new Set(Array.from({ length: maxWeek }, (_, k) => addD(ystart, k * 7).slice(0, 7))))
+  const yr = range === 'hk1' ? { from: 1, to: 18 } : range === 'hk2' ? { from: 19, to: maxWeek } : range.startsWith('m:')
+    ? (() => { const ws = Array.from({ length: maxWeek }, (_, k) => k + 1).filter(w => addD(ystart, (w - 1) * 7).slice(0, 7) === range.slice(2)); return { from: ws[0] ?? 1, to: ws[ws.length - 1] ?? 1 } })()
+    : { from: 1, to: maxWeek }
   return (
     <>
       {msg && <p className="msg">{msg}</p>}
@@ -82,15 +98,29 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
         <Stat label="Mục đến hạn đã dạy" value={`${Math.round(items.filter(i => i.status === 'done').length * 100 / Math.max(1, items.filter(i => i.planned_date && i.planned_date <= today() && i.status !== 'skipped').length))}%`} />
         <Stat label="Chậm tiến độ" value={items.filter(isLate).length} tone={items.some(isLate) ? 'bad' : ''} sub="mục quá ngày chưa dạy" />
       </div>
-      <div className="bar"><div><h3 style={{ margin: 0 }}>Kế hoạch phân phối</h3><p className="sub" style={{ margin: '2px 0 0' }}>Gói đã chọn → kế hoạch theo trường, khối, lớp, tuần, số tiết.</p></div>
-        {canManage && <button type="button" className="primary" onClick={() => setCreating(true)}>+ Kế hoạch mới</button>}</div>
-      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã công bố', base.filter(p => p.status === 'published').length],
-        ['draft', 'Bản nháp', base.filter(p => p.status === 'draft').length], ['late', 'Có mục chậm', base.filter(p => stat(p).late > 0).length]]} value={status} onChange={setStatus} />
-      <Toolbar q={q} onQ={setQ} placeholder="Tìm kế hoạch, trường…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
+      <div className="p1-calbar">
+        <div className="segmented" role="tablist">{([['year', 'Kế hoạch năm'], ['week', 'TKB tuần'], ['list', 'Danh sách kế hoạch']] as const).map(([k, l]) =>
+          <button type="button" key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>)}</div>
+        {mode === 'year' && <><div className="p1-statustabs" style={{ border: 0, margin: 0 }}>{([['all', 'Cả năm', 1, maxWeek], ['hk1', 'Học kỳ I', 1, 18], ['hk2', 'Học kỳ II', 19, Math.max(35, maxWeek)]] as const).map(([k, l, a, b]) =>
+          <button type="button" key={k} className={range === k ? 'on' : ''} onClick={() => setRange(k)}>{l} <small>({periodsIn(a, b)} tiết)</small></button>)}</div>
+          <select value={range.startsWith('m:') ? range : ''} onChange={e => setRange(e.target.value || 'all')} aria-label="Chọn tháng"><option value="">Chọn tháng…</option>
+            {months.map(m => <option key={m} value={'m:' + m}>Tháng {Number(m.slice(5))}/{m.slice(0, 4)}</option>)}</select></>}
+        {mode === 'week' && <div className="p1-weeknav"><button type="button" onClick={() => { const t = today(); setMonday(addD(t, -((new Date(t + 'T00:00:00').getDay() + 6) % 7))) }}>Hôm nay</button>
+          <button type="button" aria-label="Tuần trước" onClick={() => setMonday(addD(monday, -7))}>‹</button><button type="button" aria-label="Tuần sau" onClick={() => setMonday(addD(monday, 7))}>›</button>
+          <div><b>Tháng {Number(monday.slice(5, 7))}, {monday.slice(0, 4)}</b><small>Tuần {weekOfYear(ystart, monday)} · {fmtD(monday)} – {fmtD(addD(monday, 5))}</small></div></div>}
+        {canManage && <button type="button" className="primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}>+ Kế hoạch mới</button>}
+      </div>
+      <Toolbar q={q} onQ={setQ} placeholder="Tìm kế hoạch, trường…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={mode === 'list' ? view : undefined} onView={setView} filters={[
         { key: 'org', label: 'Tất cả trường', options: Array.from(new Set(plans.map(p => p.org_id))).map(o => ({ value: o, label: orgs.find(z => z.id === o)?.name ?? o })) },
         { key: 'prog', label: 'Tất cả chương trình', options: progs.filter(c => plans.some(p => p.curriculum_id === c.id)).map(c => ({ value: c.id, label: `${c.code} · ${c.name}` })) },
         { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(plans.map(p => p.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
       ]} />
+      {mode === 'year' && (shown.length ? <YearGrid plans={shown} items={items} progs={progs} orgName={id => orgs.find(o => o.id === id)?.name ?? ''} range={yr}
+        onPlan={setOpen} onItem={setItemPeek} /> : <Empty>Không có kế hoạch phù hợp bộ lọc.</Empty>)}
+      {mode === 'week' && <WeekGrid plans={shown} items={items} progs={progs} monday={monday} onItem={setItemPeek} onPlan={setOpen} />}
+      {mode === 'list' && <>
+      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã công bố', base.filter(p => p.status === 'published').length],
+        ['draft', 'Bản nháp', base.filter(p => p.status === 'draft').length], ['late', 'Có mục chậm', base.filter(p => stat(p).late > 0).length]]} value={status} onChange={setStatus} />
       {shown.length === 0 ? <Empty>Không có kế hoạch phù hợp.</Empty> : view === 'table' ? (
         <table className="p1-list"><thead><tr><th>Kế hoạch</th><th>CT</th><th>Khối · lớp</th><th>Nhịp độ</th><th>Tiến độ (đã dạy / đến hạn)</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody>{shown.map(p => { const s = stat(p); const c = prog(p); const v = s.due ? Math.round(s.done * 100 / s.due) : 0
@@ -108,6 +138,10 @@ export function PpctPage({ orgId }: { orgId: string | null }) {
         return <VCard key={p.id} color={c?.color} code={c?.code} icon="📅" status={<Pill tone={p.status === 'published' ? 'good' : ''}>{p.status === 'published' ? 'Đã công bố' : 'Bản nháp'}</Pill>}
           title={p.title} subtitle={orgs.find(o => o.id === p.org_id)?.name} chips={[`${p.periods_per_week} tiết/tuần`, `${p.class_ids.length} lớp`, `${s.done}/${s.total} đã dạy`, s.late ? `${s.late} chậm` : '']}
           foot={<Progress value={s.due ? s.done * 100 / s.due : 0} />} onClick={() => setPeek(p.id)} /> })}</div>}
+      </>}
+      {itemPeek && (() => { const it = items.find(i => i.id === itemPeek); const p = it && plans.find(x => x.id === it.plan_id); if (!it || !p) return null
+        return <ItemDrawer key={it.id} item={it} plan={p} prog={prog(p) ?? null} orgName={orgs.find(o => o.id === p.org_id)?.name ?? ''} canEdit={canManage}
+          onClose={() => setItemPeek(null)} onOpenPlan={() => { setOpen(p.id); setItemPeek(null) }} onChanged={() => load()} /> })()}
 
       {pp && (() => { const s = stat(pp); const c = prog(pp); const its = items.filter(i => i.plan_id === pp.id).sort((a, b) => a.week_no - b.week_no || a.seq - b.seq)
         const next = its.filter(i => i.status !== 'done' && (i.planned_date ?? '') >= today()).slice(0, 6); const late = its.filter(isLate)

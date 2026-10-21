@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
 import { CtBadge, Drawer, Empty, Mini, Pill, Section, StatusTabs, Thumb, Toolbar, VCard, errMsg, fmtDY, norm, timeAgo, useOrgList, useViewMode } from '../ui'
+import { Drill, useDrill } from '../drill'
 import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { BASIS, NORM_CAT, type MLesson, type Norm } from '../materials/MaterialsPage'
 
@@ -25,6 +26,7 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
   const [status, setStatus] = useState<'all' | 'published' | 'review' | 'draft'>('all')
   const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
   const [view, setView] = useViewMode('designs', 'table')
+  const [path, setPath] = useDrill()
   const [open, setOpen] = useState<string | null>(null)
   const [peek, setPeek] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
@@ -82,20 +84,7 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
     && (!qq || norm(`${x.title} ${x.objectives ?? ''} ${catName(cat, 'subject', x.subject)}`).includes(qq)))
   const shown = base.filter(x => status === 'all' || x.status === status)
   const acts = (x: Design) => x.sessions.reduce((a, s) => a + s.activities.length, 0)
-  const pd = list.find(x => x.id === peek)
-  return (
-    <>
-      {msg && <p className="msg">{msg}</p>}
-      <div className="bar"><div><h3 style={{ margin: 0 }}>Giáo án triển khai</h3><p className="sub" style={{ margin: '2px 0 0' }}>Tạo từ học liệu gốc rồi chỉnh theo lớp — học liệu gốc không bị thay đổi.</p></div>
-        <button type="button" className="primary" onClick={() => setPicking(true)}>+ Tạo giáo án</button></div>
-      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã phát hành', base.filter(x => x.status === 'published').length],
-        ['review', 'Chờ duyệt', base.filter(x => x.status === 'review').length], ['draft', 'Bản nháp', base.filter(x => x.status === 'draft').length]]} value={status} onChange={setStatus} />
-      <Toolbar q={q} onQ={setQ} placeholder="Tìm theo tên bài, môn học, mục tiêu…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
-        { key: 'prog', label: 'Tất cả chương trình', options: progs.map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
-        { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(list.map(x => x.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
-        { key: 'org', label: 'Mọi đơn vị', options: Array.from(new Set(list.map(x => x.org_id))).map(o => ({ value: o, label: orgs.find(z => z.id === o)?.name ?? o })) },
-      ]} />
-      {shown.length === 0 ? <Empty>Chưa có giáo án{status !== 'all' ? ' ở trạng thái này' : ''}. Bấm “+ Tạo giáo án” để chọn bài từ học liệu.</Empty> : view === 'table' ? (
+  const renderDesigns = (shown: Design[]) => view === 'table' ? (
         <table className="p1-list"><thead><tr><th>Giáo án</th><th>CT</th><th>Khối</th><th>Môn</th><th>Trạng thái</th><th>Buổi / hoạt động</th><th>Cập nhật</th><th></th></tr></thead>
           <tbody>{shown.map(x => { const p = progOf(x)
             return <tr key={x.id} onClick={() => setOpen(x.id)}>
@@ -109,7 +98,24 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
       ) : <div className="p1-grid">{shown.map(x => { const p = progOf(x)
         return <VCard key={x.id} color={p?.color} code={p?.code} icon="✏️" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill>} title={x.title}
           subtitle={`${catName(cat, 'subject', x.subject)}${x.grade != null ? ' · ' + gradeLabel(x.grade) : ''}`} desc={srcOf(x)}
-          chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${x.version_no}`]} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>}
+          chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${x.version_no}`]} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>
+  const pd = list.find(x => x.id === peek)
+  return (
+    <>
+      {msg && <p className="msg">{msg}</p>}
+      <div className="bar"><div><h3 style={{ margin: 0 }}>Giáo án triển khai</h3><p className="sub" style={{ margin: '2px 0 0' }}>Tạo từ học liệu gốc rồi chỉnh theo lớp — học liệu gốc không bị thay đổi.</p></div>
+        <button type="button" className="primary" onClick={() => setPicking(true)}>+ Tạo giáo án</button></div>
+      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã phát hành', base.filter(x => x.status === 'published').length],
+        ['review', 'Chờ duyệt', base.filter(x => x.status === 'review').length], ['draft', 'Bản nháp', base.filter(x => x.status === 'draft').length]]} value={status} onChange={setStatus} />
+      <Toolbar q={q} onQ={setQ} placeholder="Tìm theo tên bài, môn học, mục tiêu…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
+        { key: 'prog', label: 'Tất cả chương trình', options: progs.map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
+        { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(list.map(x => x.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
+        { key: 'org', label: 'Mọi đơn vị', options: Array.from(new Set(list.map(x => x.org_id))).map(o => ({ value: o, label: orgs.find(z => z.id === o)?.name ?? o })) },
+      ]} />
+      {shown.length === 0 ? <Empty>Chưa có giáo án{status !== 'all' ? ' ở trạng thái này' : ''}. Bấm “+ Tạo giáo án” để chọn bài từ học liệu.</Empty>
+        : (q || Object.values(f).some(Boolean)) ? renderDesigns(shown)
+        : <Drill items={shown} keyOf={x => ({ prog: progOf(x)?.id ?? null, grade: x.grade, subject: x.subject })} progs={progs} cat={cat} path={path} setPath={setPath}
+            unit="giáo án" icon="✏️" renderItems={renderDesigns} />}
 
       {pd && <Drawer color={progOf(pd)?.color} title={pd.title} onClose={() => setPeek(null)}
         badges={[progOf(pd)?.code, STATUS[pd.status]?.[0], `${catName(cat, 'subject', pd.subject)}${pd.grade != null ? ' · ' + gradeLabel(pd.grade) : ''}`, `${pd.sessions.reduce((a, s) => a + s.activities.reduce((x, y) => x + (y.minutes ?? 0), 0), 0)} phút`]}
@@ -170,10 +176,12 @@ function DesignEditor({ d, prog, source, cat, orgs, back, reload, onCopy, onDele
         {d.status === 'published' && <button type="button" onClick={() => upd({ status: 'draft', version_no: d.version_no + 1 })}>Sửa (tạo phiên bản {d.version_no + 1})</button>}</>}>
         <div className="p1-form">
           <label style={{ gridColumn: 'span 2' }}><span>Tên giáo án</span><input defaultValue={d.title} onBlur={e => e.target.value && e.target.value !== d.title && upd({ title: e.target.value })} /></label>
-          <label><span>Khối</span><input type="number" min={0} max={12} defaultValue={d.grade ?? ''} onBlur={e => upd({ grade: e.target.value === '' ? null : Number(e.target.value) })} /></label>
           <label className="wide"><span>Mục tiêu</span><textarea rows={2} defaultValue={d.objectives ?? ''} onBlur={e => upd({ objectives: e.target.value || null })} /></label>
           <label className="wide"><span>Ghi chú điều chỉnh theo lớp</span><textarea rows={2} defaultValue={d.notes ?? ''} onBlur={e => upd({ notes: e.target.value || null })} /></label>
         </div>
+        <details className="p1-adv"><summary>Thiết lập nâng cao</summary><div className="p1-form">
+          <label><span>Khối</span><input type="number" min={0} max={12} defaultValue={d.grade ?? ''} onBlur={e => upd({ grade: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+        </div></details>
       </Section>
       <div className="bar"><Tabs items={[['flow', 'Buổi & hoạt động', d.sessions.length], ['norms', 'Vật tư', d.norms.length], ['files', 'Tài liệu', d.files.length], ['criteria', 'Tiêu chí', d.criteria.length]] as [T, string, number?][]} value={tab} onChange={setTab} /></div>
       {tab === 'flow' && <>
