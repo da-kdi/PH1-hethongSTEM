@@ -28,7 +28,7 @@ alter table curriculum_lessons drop constraint if exists curriculum_lessons_sess
 alter table curriculum_lessons add constraint curriculum_lessons_sessions_check check (sessions between 1 and 50);
 -- Sao chép phiên bản / kế thừa giữ số buổi
 create or replace function public.curriculum_copy_content(p_from uuid, p_to uuid) returns void
-language plpgsql security definer set search_path = public as $
+language plpgsql security definer set search_path = public as $$
 begin
   create temp table if not exists _cur_map (old_id uuid primary key, new_id uuid not null) on commit drop;
   delete from _cur_map;
@@ -53,7 +53,7 @@ begin
            a.rubric_id, a.criteria, a.evidence, a.weight
       from curriculum_assessments a left join _cur_map mu on mu.old_id = a.unit_id left join _cur_map ml on ml.old_id = a.lesson_id
      where a.version_id = p_from;
-end $;
+end $$;
 revoke execute on function public.curriculum_copy_content(uuid, uuid) from public, anon, authenticated;
 
 -- ===== 3. Học liệu: link "Bài giảng" =====
@@ -77,7 +77,7 @@ create policy ppct_docs_read on ppct_docs for select to authenticated using (
 -- Dựng lịch từ các môn đã chọn: p_items = [{curriculum_id, subject}] theo thứ tự dạy.
 -- Mỗi môn → một khối lịch (chương), mỗi bài học đúng khối → một dòng (số tiết, số buổi của bài); học kỳ chia theo sức chứa HK I.
 create or replace function public.ppct_doc_build_internal(p_doc uuid, p_items jsonb, p_replace boolean default true) returns int
-language plpgsql security definer set search_path = public as $
+language plpgsql security definer set search_path = public as $$
 declare d ppct_docs; it jsonb; c curricula; l record; v_ch uuid; n int := 0; k int; v_seq int := 0; v_sem int; v_cum numeric := 0; v_cap numeric;
 begin
   select * into d from ppct_docs where id = p_doc;
@@ -106,11 +106,11 @@ begin
 end $$;
 revoke execute on function public.ppct_doc_build_internal(uuid, jsonb, boolean) from public, anon, authenticated;
 create or replace function public.ppct_doc_build(p_doc uuid, p_items jsonb, p_replace boolean default true) returns int
-language plpgsql security definer set search_path = public as $
+language plpgsql security definer set search_path = public as $$
 begin
   if not exists (select 1 from ppct_docs where id = p_doc and public.ph1_can_write(org_id)) then raise exception 'Bạn không có quyền với bản phân phối này' using errcode = '42501'; end if;
   return public.ppct_doc_build_internal(p_doc, p_items, p_replace);
-end $;
+end $$;
 grant execute on function public.ppct_doc_build(uuid, jsonb, boolean) to authenticated;
 
 -- Sao chép văn bản giữ cột mới
@@ -165,4 +165,4 @@ begin
       from (select distinct c.id cid, c.code, u.subject_main subject from curricula c join curriculum_units u on u.version_id = c.current_version_id
             where c.owner_org_id = v_kdi and c.code in ('CT1', 'CT2') and u.grade = 6 and u.subject_main is not null) x), '[]'::jsonb));
   end if;
-end $;
+end $$;
