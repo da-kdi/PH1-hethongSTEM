@@ -1903,6 +1903,21 @@ select pg_temp.probe('kdi@iso-test.local', $q$delete from curricula where name =
 select pg_temp.chk('kdi', 'Xoá chương trình: KDI xoá được chương trình đã ban hành của mình', $q$select count(*) from curricula where name = 'ISO CT KDI'$q$, '0');
 select pg_temp.chk('admin_kb', 'Xoá chương trình: bản kế thừa vẫn còn, gỡ liên kết nguồn',
   $q$select count(*) from curricula where name = 'ISO CT kế thừa' and source_curriculum_id is null$q$, '1');
+-- Cây tổ chức (061)
+select pg_temp.chk('admin_ph', 'Danh mục: khối 8 thuộc cấp THCS', $q$select parent_code from curriculum_catalog where kind = 'grade' and code = '8' and owner_org_id is null$q$, 'thcs');
+select pg_temp.chk('admin_ph', 'Danh mục: lớp mẫu của trường thuộc khối', $q$select parent_code from curriculum_catalog where kind = 'class' and code = '8A1' and owner_org_id = my_org_id()$q$, '8');
+select pg_temp.chk('admin_ph', 'Danh mục: mã khối phải là số 0–12', $q$insert into curriculum_catalog (owner_org_id, kind, code, name) values (my_org_id(), 'grade', 'k13', 'ISO khối')$q$, 'ERR*');
+select pg_temp.chk('admin_ph', 'Phân phối khối 6 (KDI, tất cả trường): mỗi môn một khối lịch, dòng đúng khối 6',
+  $q$select (count(distinct c.id) > 0 and bool_and(c.subject is not null) and bool_and(u.grade = 6))::text from ppct_docs d join ppct_chapters c on c.doc_id = d.id
+     join ppct_rows r on r.chapter_id = c.id join curriculum_lessons l on l.id = r.curriculum_lesson_id join curriculum_units u on u.id = l.unit_id
+     where d.grade = 6 and d.subject is null and d.title like 'Phân phối STEM khối 6%'$q$, 'true');
+select pg_temp.probe('admin_kb@iso-test.local', $q$insert into ppct_docs (org_id, target_org_id, level, grade, school_year, title, weeks_hk1, weeks_hk2, ppw_hk1, ppw_hk2)
+  values (my_org_id(), my_org_id(), 'thcs', 6, '2026-2027', 'ISO phân phối khối 6', 18, 17, 2, 2)$q$, true);
+select pg_temp.chk('admin_kb', 'Phân phối: dựng lịch từ môn đã chọn của chương trình',
+  format($q$select (ppct_doc_build(id, jsonb_build_array(jsonb_build_object('curriculum_id', %L, 'subject', 'khtn'))) > 0)::text from ppct_docs where title = 'ISO phân phối khối 6'$q$,
+    (select id from curricula where code = 'CT2' and owner_org_id = pg_temp.oid_('@platform'))), 'true');
+select pg_temp.chk('admin_ph', 'Phân phối: trường khác không dựng lịch của trường B',
+  $q$select ppct_doc_build(id, '[{"subject":"khtn"}]')::text from ppct_docs where title = 'ISO phân phối khối 6'$q$, 'null');
 -- Giáo án triển khai
 select pg_temp.chk('iso_gv', 'Giáo án: giáo viên soạn giáo án của trường mình',
   $q$insert into lesson_designs (org_id, title) values (my_org_id(), 'ISO giáo án')$q$, 'rows:1');

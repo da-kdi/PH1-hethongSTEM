@@ -1,12 +1,12 @@
 import type { NavGroup, RoleKey } from '../../lib/nav'
 
-// Phân hệ 1 · Chương trình & học liệu (đề án Ver9: PH1 → nhóm 1.1, 6 chức năng).
+// Phân hệ 1 · Chương trình & học liệu (đề án Ver9: PH1 → nhóm 1.1; cấu trúc 5 mục theo docs/PH1-cau-truc-1.1.md).
 // Đây là NGUỒN DUY NHẤT của menu PH1. Khi ghép về repo chính, các nhóm này thay cho nhóm
 // "Chương trình & học liệu" hiện có trong NAV của từng cổng (xem docs/GHEP-VE-REPO-CHINH.md).
 // Quy tắc mã trang giữ như lib/nav.ts: KHÔNG đổi chuỗi mã của mục đã có; muốn đổi tên hiển thị thì dùng PH1_LABEL.
 const SECTION = '1. Chương trình & học liệu'
-// 6 chức năng của 1.1 (cùng mã trang ở mọi cổng)
-const CORE = ['Chương trình giáo dục', 'Học liệu', 'Phân phối chương trình', 'Soạn bài giảng & kho hoạt động', 'Theo dõi chương trình CT1–CT5 (Môn học)', 'E-learning & luyện thi']
+// 5 mục của 1.1 theo thứ tự luồng (cùng mã trang ở mọi cổng). "Theo dõi chương trình CT1–CT5 (Môn học)" nằm thành tab trong Phân phối.
+const CORE = ['Chương trình giáo dục', 'Phân phối chương trình', 'Học liệu', 'Soạn bài giảng & kho hoạt động', 'E-learning & luyện thi']
 
 export const PH1_NAV: Record<RoleKey, NavGroup[]> = {
   platform: [
@@ -19,7 +19,7 @@ export const PH1_NAV: Record<RoleKey, NavGroup[]> = {
     { title: 'Chương trình & học liệu', items: [...CORE, 'Ngân hàng câu hỏi', 'Chương trình CT1–CT5', 'Theo dõi Môn học STEM', 'Phát hành học liệu', 'Kho học liệu dùng chung'] },
   ],
   teacher: [
-    { title: 'Soạn giảng', items: ['Chương trình giáo dục', 'Học liệu', 'Phân phối chương trình', 'Soạn bài giảng & kho hoạt động', 'Soạn bài giảng', 'Kho hoạt động & Bài giảng', 'Thư viện STEM', 'Ngân hàng câu hỏi', 'E-learning & luyện thi'] },
+    { title: 'Soạn giảng', items: ['Chương trình giáo dục', 'Phân phối chương trình', 'Học liệu', 'Soạn bài giảng & kho hoạt động', 'Soạn bài giảng', 'Kho hoạt động & Bài giảng', 'Thư viện STEM', 'Ngân hàng câu hỏi', 'E-learning & luyện thi'] },
   ],
   student: [
     { title: 'Học tập', items: ['Chủ đề', 'E-learning & luyện thi'] },
