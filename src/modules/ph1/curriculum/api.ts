@@ -3,8 +3,9 @@ import { supabase } from '../../../lib/supabase'
 
 // Chương trình giáo dục (migration 057_ph1_curriculum.sql, 058_ph1_framework.sql)
 
-export type CatKind = 'category' | 'level' | 'subject' | 'field' | 'outcome_type' | 'assessment_method' | 'package_tier'
-export type CatItem = { id: string; owner_org_id: string | null; kind: CatKind; code: string; name: string; description: string | null; color: string | null; sort: number }
+export type CatKind = 'level' | 'grade' | 'class' | 'category' | 'subject' | 'field' | 'outcome_type' | 'assessment_method' | 'package_tier'
+// parent_code: khối → mã cấp học; lớp → mã khối (061)
+export type CatItem = { id: string; owner_org_id: string | null; kind: CatKind; code: string; name: string; description: string | null; color: string | null; sort: number; parent_code: string | null }
 export type Labels = { unit: string; lesson: string; period: string }
 export type Scope = 'own' | 'children' | 'selected' | 'public'
 export type Curriculum = {
@@ -25,7 +26,7 @@ export type Unit = {
 }
 export type PeriodRow = { title: string; minutes?: number; note?: string }
 export type Lesson = {
-  id: string; version_id: string; unit_id: string; seq: number; code: string | null; title: string; summary: string | null; periods: number
+  id: string; version_id: string; unit_id: string; seq: number; code: string | null; title: string; summary: string | null; periods: number; sessions: number
   minutes_per_period: number; period_plan: PeriodRow[]; library_item_id: string | null; notes: string | null
 }
 export type Outcome = {
@@ -50,15 +51,25 @@ export const STATUS: Record<VStatus, [string, string, string]> = {
 export const SCOPE: Record<Scope, string> = {
   own: 'Chỉ trong đơn vị', children: 'Đơn vị trực thuộc', selected: 'Đơn vị được chọn', public: 'Công khai toàn hệ thống',
 }
+// Thứ tự theo cây: Cấp học › Khối › Lớp; Nhóm chương trình; Môn học — các loại sau là danh mục phụ (chờ xem lại)
 export const CAT_KIND: Record<CatKind, [string, string]> = {
-  category: ['Loại chương trình', 'CT1–CT5 hoặc loại riêng của đơn vị'],
-  level: ['Cấp học', ''], subject: ['Môn học', 'Môn chủ đạo, môn tích hợp'], field: ['Lĩnh vực', ''],
+  level: ['Cấp học', ''], grade: ['Khối', 'Mỗi khối thuộc một cấp học; mã khối là số 0–12'], class: ['Lớp', 'Mỗi lớp thuộc một khối'],
+  category: ['Nhóm chương trình', 'CT1–CT5 hoặc nhóm riêng của đơn vị'],
+  subject: ['Môn học', 'Môn chủ đạo, môn tích hợp'], field: ['Lĩnh vực', ''],
   outcome_type: ['Loại chuẩn đầu ra', 'Kiến thức, kỹ năng, năng lực…'], assessment_method: ['Hình thức đánh giá', ''],
   package_tier: ['Hạng gói', 'Cơ bản, Nâng cao, gói riêng…'],
 }
 export const ROOM_KIND: Record<string, string> = { stem: 'Phòng STEM', classroom: 'Phòng học', lab: 'Phòng thí nghiệm', outdoor: 'Ngoài trời' }
 export const GRADES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-export const gradeLabel = (g: number) => (g === 0 ? 'Mầm non' : `Lớp ${g}`)
+export const gradeLabel = (g: number) => (g === 0 ? 'Mầm non' : `Khối ${g}`)
+export const MAIN_KINDS: CatKind[] = ['level', 'grade', 'class', 'category', 'subject']
+// Cấp học của một khối: theo danh mục Khối (parent_code), không có thì theo quy ước 1–5 / 6–9 / 10–12
+export const levelOfGrade = (cat: CatItem[], g: number) =>
+  cat.find(i => i.kind === 'grade' && i.code === String(g))?.parent_code ?? (g === 0 ? 'mamnon' : g <= 5 ? 'tieuhoc' : g <= 9 ? 'thcs' : 'thpt')
+export const gradesOfLevel = (cat: CatItem[], level: string) => {
+  const gs = cat.filter(i => i.kind === 'grade' && i.parent_code === level).map(i => Number(i.code)).filter(n => !Number.isNaN(n))
+  return (gs.length ? Array.from(new Set(gs)) : GRADES.filter(g => levelOfGrade([], g) === level)).sort((a, b) => a - b)
+}
 export const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('vi-VN') : '—')
 export const vName = (v: Pick<Version, 'version_no' | 'label'>) => `Phiên bản ${v.version_no}${v.label ? ` · ${v.label}` : ''}`
 

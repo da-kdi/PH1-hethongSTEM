@@ -6,6 +6,7 @@ import { StructureEditor, MultiPick } from './Structure'
 import { OutcomesEditor } from './Outcomes'
 import { VersionsPanel, VStatusPill } from './Versions'
 import { SubjectsEditor } from './Subjects'
+import { ObjectsEditor } from './Objects'
 import { PackagesPanel } from '../packages/Packages'
 import { Code, Empty, Pill, Section, SideNav, Stat, Thumb, Toolbar, VCard, norm, useViewMode } from '../ui'
 import {
@@ -15,9 +16,10 @@ import {
 import './curriculum.css'
 
 type Top = 'programs' | 'packages' | 'catalog'
-type Info = { units: number; lessons: number; subjects: { subject: string; grade: number }[]; periods: number }
+type Info = { units: number; lessons: number; subjects: { subject: string; grade: number }[]; periods: number; grades: number[] }
 
-// 1.1.1 Chương trình giáo dục — định nghĩa nội dung & quy định chuyên môn. Mã CT1, CT2… CTn là dữ liệu: thêm chương trình mới
+// 1.1.1 Chương trình giáo dục — View tổng quan · Thiết lập chương trình (Thông tin, Đối tượng: Cấp học › Khối › Môn › Bài học) · Danh mục
+// (docs/PH1-cau-truc-1.1.md). Định nghĩa nội dung & quy định chuyên môn. Mã CT1, CT2… CTn là dữ liệu: thêm chương trình mới
 // không cần sửa hệ thống. Gói chương trình (Cơ bản / Nâng cao / riêng) chọn chương trình, môn, khối, phiên bản để cung cấp cho trường.
 export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
   const [canManage, setCanManage] = useState(false)
@@ -56,13 +58,15 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
     if (!ids.length) return setInfo(new Map())
     const [su, un, le] = await Promise.all([
       supabase.from('curriculum_subjects').select('version_id, subject, grade, periods_total').in('version_id', ids),
-      supabase.from('curriculum_units').select('version_id, periods').in('version_id', ids),
+      supabase.from('curriculum_units').select('version_id, periods, grade, subject_main').in('version_id', ids),
       supabase.from('curriculum_lessons').select('version_id').in('version_id', ids),
     ])
     const m2 = new Map<string, Info>()
     for (const [cid, vid] of key) {
       const s = ((su.data as any[]) ?? []).filter(x => x.version_id === vid)
-      m2.set(cid, { subjects: s, periods: s.reduce((a, x) => a + x.periods_total, 0) || ((un.data as any[]) ?? []).filter(x => x.version_id === vid).reduce((a, x) => a + x.periods, 0),
+      const us = ((un.data as any[]) ?? []).filter(x => x.version_id === vid)
+      const subj = Array.from(new Map([...s, ...us.filter(u => u.subject_main && u.grade != null).map(u => ({ subject: u.subject_main, grade: u.grade }))].map(x => [x.subject + '|' + x.grade, x])).values())
+      m2.set(cid, { subjects: subj, grades: Array.from(new Set(subj.map(x => x.grade as number))).sort((a, b) => a - b), periods: s.reduce((a, x) => a + x.periods_total, 0) || ((un.data as any[]) ?? []).filter(x => x.version_id === vid).reduce((a, x) => a + x.periods, 0),
         units: ((un.data as any[]) ?? []).filter(x => x.version_id === vid).length, lessons: ((le.data as any[]) ?? []).filter(x => x.version_id === vid).length })
     }
     setInfo(m2)
@@ -79,7 +83,7 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
 
   const qq = norm(q)
   const match = (c: Curriculum) => (!qq || norm(`${c.code} ${c.name} ${c.summary ?? ''}`).includes(qq)) && (!pf.level || c.levels.includes(pf.level))
-    && (!pf.grade || c.grades.includes(Number(pf.grade))) && (!pf.subject || (info.get(c.id)?.subjects ?? []).some(s => s.subject === pf.subject))
+    && (!pf.grade || gradesOf(c).includes(Number(pf.grade))) && (!pf.subject || (info.get(c.id)?.subjects ?? []).some(s => s.subject === pf.subject))
   const mine = list.filter(c => c.owner_org_id === orgId && match(c))
   const shared = list.filter(c => c.owner_org_id !== orgId && !below.has(c.owner_org_id) && c.current_version_id && match(c))
   const children = list.filter(c => below.has(c.owner_org_id) && match(c))
@@ -91,6 +95,8 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
     if (error) return setMsg(errText(error.message))
     setNote(`Đã tạo “${name}” (bản nháp) từ ${c.owner_name}.`); await load(); setOpenId(data as string)
   }
+  // Khối của chương trình = các khối có môn (Đối tượng); chưa có thì theo khai báo cũ
+  function gradesOf(c: Curriculum) { const g = info.get(c.id)?.grades ?? []; return g.length ? g : c.grades }
   const stateOf = (c: Curriculum) => { const vs = versions.filter(v => v.curriculum_id === c.id)
     return { vs, cur: vs.find(v => v.id === c.current_version_id), wip: vs.find(v => ['draft', 'pending', 'approved', 'rejected'].includes(v.status)) } }
   const statusPill = (c: Curriculum) => { const { cur, wip } = stateOf(c)
@@ -98,28 +104,28 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
   const subjOf = (c: Curriculum) => Array.from(new Set((info.get(c.id)?.subjects ?? []).map(s => s.subject)))
   const card = (c: Curriculum, showOwner: boolean) => { const i = info.get(c.id); const sj = subjOf(c)
     return <VCard key={c.id} color={c.color} code={c.code} icon={<span style={{ fontSize: 15, fontWeight: 700 }}>{c.levels.map(l => catName(cat, 'level', l)).join(' · ')}</span>}
-      status={statusPill(c)} title={c.name} subtitle={showOwner ? c.owner_name : (c.grades.length ? 'Khối ' + c.grades.join(', ') : 'Chưa chọn khối')} desc={c.summary}
+      status={statusPill(c)} title={c.name} subtitle={showOwner ? c.owner_name : (gradesOf(c).length ? 'Khối ' + gradesOf(c).join(', ') : 'Chưa có khối')} desc={c.summary}
       chips={[...sj.slice(0, 3).map(s => catName(cat, 'subject', s)), sj.length > 3 ? `+${sj.length - 3} môn` : '']}
-      foot={<small>{i?.units ?? 0} chủ đề · {i?.periods ?? 0} tiết · {stateOf(c).vs.length} phiên bản</small>} onClick={() => setOpenId(c.id)} /> }
+      foot={<small>{sj.length} môn · {i?.lessons ?? 0} bài · {i?.periods ?? 0} tiết</small>} onClick={() => setOpenId(c.id)} /> }
   const table = (rows: Curriculum[], showOwner: boolean, withClone = false) => (
     <table className="p1-list"><thead><tr><th>Chương trình</th><th>Cấp · khối</th><th>Môn học</th><th>Quy mô</th><th>Phiên bản hiệu lực</th>{withClone && <th></th>}</tr></thead>
       <tbody>{rows.map(c => { const i = info.get(c.id); const sj = subjOf(c)
         return <tr key={c.id} onClick={() => setOpenId(c.id)}>
           <td><div className="titlecell"><Thumb color={c.color} code={c.code} /><div><b>{c.name}</b><small>{showOwner ? c.owner_name : c.summary}</small></div></div></td>
-          <td>{c.levels.map(l => catName(cat, 'level', l)).join(', ') || '—'}<br /><small className="sub">{c.grades.length ? 'Khối ' + c.grades.join(', ') : ''}</small></td>
+          <td>{c.levels.map(l => catName(cat, 'level', l)).join(', ') || '—'}<br /><small className="sub">{gradesOf(c).length ? 'Khối ' + gradesOf(c).join(', ') : ''}</small></td>
           <td>{sj.map(s => catName(cat, 'subject', s)).join(', ') || '—'}</td>
-          <td>{i?.units ?? 0} chủ đề · {i?.lessons ?? 0} bài<br /><small className="sub">{i?.periods ?? 0} tiết</small></td>
+          <td>{sj.length} môn · {i?.lessons ?? 0} bài<br /><small className="sub">{i?.periods ?? 0} tiết</small></td>
           <td>{statusPill(c)}</td>
           {withClone && <td>{canManage && <button type="button" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button>}</td>}
         </tr> })}</tbody></table>)
   const levels = Array.from(new Set(list.flatMap(c => c.levels)))
-  const grades = Array.from(new Set(list.flatMap(c => c.grades))).sort((a, b) => a - b)
+  const grades = Array.from(new Set(list.flatMap(c => gradesOf(c)))).sort((a, b) => a - b)
   const subjects = Array.from(new Set([...info.values()].flatMap(i => i.subjects.map(s => s.subject))))
 
   return (
     <>
       <div className="bar">
-        <Tabs items={[['programs', 'Chương trình', list.length], ['packages', 'Gói chương trình'], ['catalog', 'Danh mục']] as [Top, string, number?][]}
+        <Tabs items={[['programs', 'Tổng quan', list.length], ['catalog', 'Danh mục'], ['packages', 'Gói chương trình (chờ xem lại)']] as [Top, string, number?][]}
           value={top} onChange={t => { setTop(t); setCreating(false) }} />
         {top === 'programs' && canManage && <button type="button" className="primary" onClick={() => { setCreating(true); setMsg(''); setNote('') }}>+ Chương trình mới</button>}
       </div>
@@ -133,10 +139,6 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
             const { data, error } = await supabase.rpc('curriculum_create', { p: v })
             if (error) return errText(error.message)
             if (v.color) await supabase.from('curricula').update({ color: v.color }).eq('id', data as string)
-            if (v.load.length) {
-              const ver = await supabase.from('curriculum_versions').select('id').eq('curriculum_id', data as string).order('version_no').limit(1).single()
-              if (ver.data) await supabase.from('curriculum_subjects').insert(v.load.map((r, i) => ({ version_id: (ver.data as { id: string }).id, seq: i + 1, ...r })))
-            }
             setCreating(false); await load(); setOpenId(data as string); return null
           }} />}
         <Toolbar q={q} onQ={setQ} placeholder="Tìm theo mã, tên, mục tiêu chương trình…" values={pf} onFilter={(k, v) => setPf({ ...pf, [k]: v })} view={view} onView={setView} filters={[
@@ -164,63 +166,47 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
 }
 
 // ===== Thông tin chung (tạo mới / sửa) =====
-type InfoVals = { name: string; code: string; color: string; summary: string; issuer: string; levels: string[]; grades: number[]; subjects: string[]
-  fields: string[]; scope: Scope; require_approval: boolean; structure_labels: Labels; targets: string[]; load: LoadRow[] }
-type LoadRow = { subject: string; grade: number; periods_total: number; periods_per_week: number }
-// Biểu mẫu gọn: cấp trên (Sở / KDI) chỉ cần mã, tên, mục tiêu, khối và khối lượng môn / tiết.
-// Nội dung chủ đề, bài học do đơn vị triển khai soạn sau. Các thiết lập khác nằm trong "Thiết lập nâng cao".
+type InfoVals = { name: string; code: string; color: string; summary: string; issuer: string; category: string; levels: string[]; grades: number[]; subjects: string[]
+  fields: string[]; scope: Scope; require_approval: boolean; structure_labels: Labels; targets: string[] }
+// Thông tin: tên, mô tả, nhóm chương trình. Cấp học › Khối › Môn › Bài học khai báo ở "Đối tượng". Các thiết lập khác nằm trong "Thiết lập nâng cao".
 function InfoForm({ cur, cat, orgs, below, me, isPlatform, targets, onSave, onCancel, readOnly, suggestCode }: {
   cur?: Curriculum; cat: CatItem[]; orgs: { id: string; name: string; type: string; parent_id: string | null }[]; below: Set<string>
   me: { id: string; name: string; type: string } | null; isPlatform: boolean; targets?: string[]
   onSave: (v: InfoVals) => Promise<string | null>; onCancel?: () => void; readOnly?: boolean; suggestCode?: string
 }) {
   const [v, setV] = useState<InfoVals>(() => ({
-    name: cur?.name ?? '', code: cur?.code ?? suggestCode ?? '', color: cur?.color ?? '#2a78d6', summary: cur?.summary ?? '', issuer: cur?.issuer ?? me?.name ?? '',
+    name: cur?.name ?? '', code: cur?.code ?? suggestCode ?? '', color: cur?.color ?? '#2a78d6', summary: cur?.summary ?? '', issuer: cur?.issuer ?? me?.name ?? '', category: cur?.category ?? '',
     levels: cur?.levels ?? [], grades: cur?.grades ?? [], subjects: cur?.subjects ?? [], fields: cur?.fields ?? [],
     scope: cur?.scope ?? (me?.type === 'school' ? 'own' : me?.type === 'provider' ? 'public' : 'children'), require_approval: cur?.require_approval ?? false,
-    structure_labels: labelsOf(cur ?? null), targets: targets ?? [], load: [],
+    structure_labels: labelsOf(cur ?? null), targets: targets ?? [],
   }))
-  const [row, setRow] = useState({ subject: '', grade: 0, periods_total: 35, periods_per_week: 1 })
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
   const canPublic = me?.type === 'provider' || isPlatform
   const ro = !!readOnly
   const belowList = orgs.filter(o => below.has(o.id))
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!v.name.trim() || !v.code.trim()) return setErr('Nhập mã và tên chương trình.')
+    e.preventDefault(); if (!v.name.trim()) return setErr('Nhập tên chương trình.')
     if (v.scope === 'selected' && v.targets.length === 0) return setErr('Chọn ít nhất một đơn vị nhận.')
     setBusy(true); const m = await onSave({ ...v, name: v.name.trim(), code: v.code.trim() }); setBusy(false); setErr(m ?? '')
   }
-  const addRow = () => { if (!row.subject || !row.grade) return setErr('Chọn môn và khối.'); setErr('')
-    setV({ ...v, load: [...v.load.filter(r => !(r.subject === row.subject && r.grade === row.grade)), row], grades: Array.from(new Set([...v.grades, row.grade])).sort((a, b) => a - b) }) }
   return (
     <form className="p1-section" onSubmit={submit}>
-      {!cur && <header><h3>Chương trình mới</h3><small className="sub">Khai báo mục tiêu và khối lượng; nội dung chủ đề, bài học do trường / giáo viên soạn sau.</small></header>}
+      {!cur && <header><h3>Chương trình mới</h3><small className="sub">Bước 1 · Thông tin. Sau khi tạo, khai báo Cấp học › Khối › Môn › Bài học ở mục “Đối tượng”.</small></header>}
       <div className="p1-form">
-        <label><span>Mã chương trình *</span><input required disabled={ro} value={v.code} onChange={e => setV({ ...v, code: e.target.value })} placeholder="CT1, CT6…" /></label>
         <label style={{ gridColumn: 'span 2' }}><span>Tên chương trình *</span><input required disabled={ro} value={v.name} onChange={e => setV({ ...v, name: e.target.value })} placeholder="VD: Tích hợp nội môn" /></label>
-        <label className="wide"><span>Mục tiêu / đối tượng áp dụng</span><textarea rows={3} disabled={ro} value={v.summary} onChange={e => setV({ ...v, summary: e.target.value })}
+        <label><span>Nhóm chương trình</span><select disabled={ro} value={v.category} onChange={e => { const c = catOf(cat, 'category').find(x => x.code === e.target.value)
+          setV({ ...v, category: e.target.value, color: c?.color ?? v.color }) }}>
+          <option value="">— chọn —</option>{catOf(cat, 'category').map(c => <option key={c.id} value={c.code}>{c.code} · {c.name}</option>)}</select></label>
+        <label className="wide"><span>Mô tả</span><textarea rows={3} disabled={ro} value={v.summary} onChange={e => setV({ ...v, summary: e.target.value })}
           placeholder="Chương trình nhằm… dành cho học sinh…" /></label>
-        <div className="wide"><span className="sub">Khối lớp áp dụng</span>
-          <div className="cur-chips">{GRADES.filter(g => g > 0).map(g => { const on = v.grades.includes(g); return <button type="button" key={g} disabled={ro} className={'chip' + (on ? ' on' : '')} aria-pressed={on}
-            onClick={() => setV({ ...v, grades: on ? v.grades.filter(x => x !== g) : [...v.grades, g].sort((a, b) => a - b) })}>{gradeLabel(g)}</button> })}</div></div>
       </div>
-
-      {!cur && <div style={{ marginTop: 16 }}>
-        <b>Khối lượng: môn học & số tiết</b>
-        {v.load.length > 0 && <table className="p1-table" style={{ marginTop: 8 }}><thead><tr><th>Môn</th><th>Khối</th><th>Tổng tiết / năm</th><th>Tiết / tuần</th><th></th></tr></thead>
-          <tbody>{v.load.map((r, i) => <tr key={i}><td>{catName(cat, 'subject', r.subject)}</td><td>{gradeLabel(r.grade)}</td><td>{r.periods_total}</td><td>{r.periods_per_week}</td>
-            <td><button type="button" className="danger" onClick={() => setV({ ...v, load: v.load.filter((_, j) => j !== i) })}>Bỏ</button></td></tr>)}</tbody></table>}
-        <div className="p1-actions" style={{ marginTop: 8 }}>
-          <select value={row.subject} onChange={e => setRow({ ...row, subject: e.target.value })} aria-label="Môn"><option value="">Môn học…</option>{catOf(cat, 'subject').map(s => <option key={s.id} value={s.code}>{s.name}</option>)}</select>
-          <select value={row.grade} onChange={e => setRow({ ...row, grade: Number(e.target.value) })} aria-label="Khối"><option value={0}>Khối…</option>{GRADES.filter(g => g > 0).map(g => <option key={g} value={g}>{gradeLabel(g)}</option>)}</select>
-          <label>Tổng tiết <input type="number" min={0} value={row.periods_total} onChange={e => setRow({ ...row, periods_total: Number(e.target.value) || 0 })} style={{ width: 80 }} /></label>
-          <label>Tiết/tuần <input type="number" min={0.5} step={0.5} value={row.periods_per_week} onChange={e => setRow({ ...row, periods_per_week: Number(e.target.value) || 1 })} style={{ width: 70 }} /></label>
-          <button type="button" onClick={addRow}>+ Thêm dòng</button>
-        </div>
-      </div>}
 
       <details className="p1-adv"><summary>Thiết lập nâng cao</summary>
         <div className="p1-form">
+        <label><span>Mã chương trình</span><input disabled={ro} value={v.code} onChange={e => setV({ ...v, code: e.target.value })} placeholder="CT1, CT6…" /></label>
+        <div className="wide"><span className="sub">Khối lớp áp dụng (cách khai báo cũ — chờ xem lại; khối nay lấy theo Đối tượng)</span>
+          <div className="cur-chips">{GRADES.filter(g => g > 0).map(g => { const on = v.grades.includes(g); return <button type="button" key={g} disabled={ro} className={'chip' + (on ? ' on' : '')} aria-pressed={on}
+            onClick={() => setV({ ...v, grades: on ? v.grades.filter(x => x !== g) : [...v.grades, g].sort((a, b) => a - b) })}>{gradeLabel(g)}</button> })}</div></div>
           <label><span>Màu nhận diện</span><input type="color" disabled={ro} value={v.color} onChange={e => setV({ ...v, color: e.target.value })} style={{ height: 40, padding: 4 }} /></label>
           <label><span>Đơn vị xây dựng / ban hành</span><input disabled={ro} value={v.issuer} onChange={e => setV({ ...v, issuer: e.target.value })} /></label>
           <label><span>Phạm vi áp dụng</span><select disabled={ro} value={v.scope} onChange={e => setV({ ...v, scope: e.target.value as Scope })}>
@@ -248,7 +234,7 @@ function InfoForm({ cur, cat, orgs, below, me, isPlatform, targets, onSave, onCa
 }
 
 // ===== Chi tiết một chương trình =====
-type DTab = 'overview' | 'subjects' | 'content' | 'versions' | 'info'
+type DTab = 'overview' | 'info' | 'objects' | 'content' | 'versions'
 function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlatform, sourceName, newerSource, back, reload }: {
   cur: Curriculum; orgId: string; cat: CatItem[]; canManage: boolean; userId: string | null; orgs: { id: string; name: string; type: string; parent_id: string | null }[]
   below: Set<string>; isPlatform: boolean; sourceName: string | null; newerSource: boolean; back: () => void; reload: () => void; go?: (p: string) => void
@@ -259,7 +245,7 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
   const [targets, setTargets] = useState<string[]>([])
   const [pkgs, setPkgs] = useState<{ name: string; tier: string | null; subject: string | null; grades: number[] }[]>([])
   const [tab, setTab] = useState<DTab>('overview')
-  const [sub, setSub] = useState<'s' | 'o'>('s')
+  const [sub, setSub] = useState<'s' | 'o' | 'q'>('s')
   const [filter, setFilter] = useState<{ subject: string | null; grade: number | null }>({ subject: null, grade: null })
   const [msg, setMsg] = useState(''); const [note, setNote] = useState('')
   const isOwner = cur.owner_org_id === orgId
@@ -290,7 +276,7 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
 
   async function saveInfo(v: InfoVals) {
     const { error } = await supabase.from('curricula').update({
-      name: v.name, code: v.code || null, color: v.color, summary: v.summary.trim() || null, issuer: v.issuer.trim() || null,
+      name: v.name, code: v.code || null, color: v.color, category: v.category || null, summary: v.summary.trim() || null, issuer: v.issuer.trim() || null,
       levels: v.levels, grades: v.grades, subjects: v.subjects, fields: v.fields, scope: v.scope, require_approval: v.require_approval, structure_labels: v.structure_labels,
     }).eq('id', cur.id)
     if (error) return errText(error.message)
@@ -332,8 +318,9 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
         onClick={() => setFilter({ subject: c.subject, grade: c.grade })}>{catName(cat, 'subject', c.subject)} · {gradeLabel(c.grade)}</button>)}
     </div>
   )
-  const nav: [DTab, string, number?][] = [['overview', 'Tổng quan'], ['subjects', 'Khối lượng (môn & tiết)', content?.subjects.length],
-    ['content', 'Nội dung chi tiết', content?.units.length], ['versions', 'Phiên bản', versions.length], ['info', 'Thông tin']]
+  // Thiết lập chương trình: Thông tin · Đối tượng (Cấp học › Khối › Môn › Bài học); Nội dung chi tiết, Phiên bản giữ như bản trước
+  const nav: [DTab, string, number?][] = [['overview', 'Tổng quan'], ['info', 'Thông tin'], ['objects', 'Đối tượng', content?.lessons.length],
+    ['content', 'Nội dung chi tiết', content?.units.length], ['versions', 'Phiên bản', versions.length]]
 
   return (
     <>
@@ -364,11 +351,13 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
           {tab === 'versions' && <VersionsPanel cur={cur} versions={versions} selected={version} onSelect={id => setSel(id)} canManage={canManage} isOwner={isOwner}
             userId={userId} labels={labels} reload={refresh} setMsg={setMsg} setInfo={setNote} />}
           {!['info', 'versions'].includes(tab) && (!version ? <Empty>Chương trình chưa có phiên bản.</Empty> : !content || !fc ? <p className="sub">Đang tải…</p> : <Fragment key={version.id}>
-            {tab === 'overview' && <Overview cur={cur} content={content} cat={cat} pkgs={pkgs} version={version} onOpen={(s, g) => { setFilter({ subject: s, grade: g }); setTab('content') }} />}
-            {tab === 'subjects' && <SubjectsEditor versionId={version.id} content={content} cat={cat} editable={editable} reload={loadC} setMsg={setMsg}
-              onOpen={(s, g) => { setFilter({ subject: s, grade: g }); setTab('content') }} />}
-            {tab === 'content' && <div className="p1-alert info">Nội dung chi tiết (chủ đề, bài học, yêu cầu cần đạt, tiêu chí) thường do đơn vị triển khai soạn sau khi nhận chương trình; cấp ban hành chỉ cần khai báo khối lượng.</div>}
-            {tab === 'content' && <div className="bar"><Tabs items={[['s', 'Chủ đề & bài học', fc.units.length], ['o', 'Yêu cầu cần đạt & đánh giá', fc.outcomes.length]] as ['s' | 'o', string, number?][]} value={sub} onChange={setSub} /></div>}
+            {tab === 'overview' && <Overview cur={cur} content={content} cat={cat} pkgs={pkgs} version={version} onOpen={() => setTab('objects')} />}
+            {tab === 'objects' && <>{!editable && isOwner && canManage && <div className="p1-alert info">Phiên bản này đã ban hành — bấm “Tạo phiên bản mới để sửa” để thêm khối, môn, bài.</div>}
+              <ObjectsEditor versionId={version.id} content={content} cat={cat} editable={editable} reload={loadC} setMsg={setMsg} /></>}
+            {tab === 'content' && <div className="p1-alert info">Nội dung chi tiết (chủ đề, yêu cầu cần đạt, tiêu chí, thời lượng quy định) giữ như bản trước — chờ xem lại. Khối › Môn › Bài học khai báo ở “Đối tượng”.</div>}
+            {tab === 'content' && <div className="bar"><Tabs items={[['s', 'Chủ đề & bài học', fc.units.length], ['o', 'Yêu cầu cần đạt & đánh giá', fc.outcomes.length], ['q', 'Thời lượng quy định', content.subjects.length]] as ['s' | 'o' | 'q', string, number?][]} value={sub} onChange={setSub} /></div>}
+            {tab === 'content' && sub === 'q' && <SubjectsEditor versionId={version.id} content={content} cat={cat} editable={editable} reload={loadC} setMsg={setMsg}
+              onOpen={(s, g) => { setFilter({ subject: s, grade: g }); setSub('s') }} />}
             {tab === 'content' && sub === 's' && <>{filterBar}<StructureEditor key={`${filter.subject}-${filter.grade}`} versionId={version.id} content={fc} cat={cat} labels={labels} editable={editable}
               reload={loadC} setMsg={setMsg} defaults={{ subject_main: filter.subject, grade: filter.grade }} /></>}
             {tab === 'content' && sub === 'o' && <>{filterBar}<OutcomesEditor versionId={version.id} content={fc} cat={cat} labels={labels} editable={editable} reload={loadC} setMsg={setMsg} /></>}
@@ -381,26 +370,32 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
 
 function Overview({ cur, content, cat, pkgs, version, onOpen }: {
   cur: Curriculum; content: Content; cat: CatItem[]; pkgs: { name: string; tier: string | null; subject: string | null; grades: number[] }[]; version: Version
-  onOpen: (s: string, g: number) => void
+  onOpen: () => void
 }) {
-  const periods = content.subjects.reduce((a, s) => a + s.periods_total, 0)
-  const bySubject = new Map<string, typeof content.subjects>()
-  content.subjects.forEach(s => bySubject.set(s.subject, [...(bySubject.get(s.subject) ?? []), s]))
+  // Môn × khối: theo bài học đã khai báo ở Đối tượng (số bài · số tiết)
+  const unitOf = new Map(content.units.map(u => [u.id, u]))
+  const cells = new Map<string, { lessons: number; sessions: number; periods: number }>()
+  const add = (s: string, g: number) => { const k = s + '|' + g; if (!cells.has(k)) cells.set(k, { lessons: 0, sessions: 0, periods: 0 }); return cells.get(k)! }
+  content.subjects.forEach(s => add(s.subject, s.grade))
+  content.lessons.forEach(l => { const u = unitOf.get(l.unit_id); if (!u?.subject_main || u.grade == null) return; const c = add(u.subject_main, u.grade); c.lessons++; c.sessions += l.sessions; c.periods += l.periods })
+  const subjects = Array.from(new Set([...cells.keys()].map(k => k.split('|')[0])))
+  const grades = Array.from(new Set([...cells.keys()].map(k => Number(k.split('|')[1])))).sort((a, b) => a - b)
+  const periods = [...cells.values()].reduce((a, c) => a + c.periods, 0)
   return (<>
     <div className="p1-stats">
-      <Stat label="Môn học" value={bySubject.size} sub={`${content.subjects.length} môn – khối`} />
-      <Stat label="Chủ đề / bài học" value={`${content.units.length} / ${content.lessons.length}`} />
-      <Stat label="Tổng thời lượng" value={periods} sub="tiết theo quy định" />
-      <Stat label="Yêu cầu cần đạt" value={content.outcomes.length} sub={`${content.assessments.length} tiêu chí đánh giá`} />
+      <Stat label="Khối" value={grades.length} sub={grades.length ? 'Khối ' + grades.join(', ') : 'chưa có'} />
+      <Stat label="Môn học" value={subjects.length} sub={`${cells.size} môn – khối`} />
+      <Stat label="Bài học" value={content.lessons.length} sub={`${content.lessons.reduce((a, l) => a + l.sessions, 0)} buổi`} />
+      <Stat label="Tổng số tiết" value={periods} />
     </div>
-    {cur.summary && <Section title="Mục tiêu"><p style={{ margin: 0 }}>{cur.summary}</p></Section>}
-    <Section title="Môn học theo khối">
-      {bySubject.size === 0 ? <Empty>Chưa khai báo môn học.</Empty> : (
+    {cur.summary && <Section title="Mô tả"><p style={{ margin: 0 }}>{cur.summary}</p></Section>}
+    <Section title="Môn học theo khối" actions={<button type="button" onClick={onOpen}>Mở Đối tượng ›</button>}>
+      {cells.size === 0 ? <Empty>Chưa khai báo khối, môn, bài học.</Empty> : (
         <table className="p1-table">
-          <thead><tr><th>Môn học</th>{cur.grades.map(g => <th key={g}>{gradeLabel(g)}</th>)}</tr></thead>
-          <tbody>{[...bySubject.entries()].map(([s, rows]) => (
+          <thead><tr><th>Môn học</th>{grades.map(g => <th key={g}>{gradeLabel(g)}</th>)}</tr></thead>
+          <tbody>{subjects.map(s => (
             <tr key={s}><td><b>{catName(cat, 'subject', s)}</b></td>
-              {cur.grades.map(g => { const r = rows.find(x => x.grade === g); return <td key={g}>{r ? <button type="button" className="linkbtn" onClick={() => onOpen(s, g)}>{r.periods_total} tiết{r.periods_per_week ? ` · ${r.periods_per_week}/tuần` : ''}{!r.is_required ? ' · tự chọn' : ''}</button> : <span className="sub">—</span>}</td> })}
+              {grades.map(g => { const c = cells.get(s + '|' + g); return <td key={g}>{c ? <button type="button" className="linkbtn" onClick={onOpen}>{c.lessons} bài · {c.periods} tiết</button> : <span className="sub">—</span>}</td> })}
             </tr>))}</tbody>
         </table>)}
     </Section>

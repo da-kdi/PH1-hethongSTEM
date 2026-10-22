@@ -333,3 +333,42 @@
 .main .p1-head button.danger{background:var(--surface);color:#b42318;border-color:#f3c4c4}
 .main .p1-head button.danger:hover{background:#fdecec}
 .main .p1-dfoot button.danger{background:var(--surface);color:#b42318;border-color:#f3c4c4}
+
+/* ===== Đối tượng: Cấp học › Khối › Môn › Bài học ===== */
+.p1-obj{display:grid;gap:16px}
+.p1-objadd{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.p1-objadd select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--surface);color:var(--text)}
+.p1-objtag{display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:var(--soft);border-radius:6px;padding:2px 6px;margin-right:8px;vertical-align:2px}
+.p1-objlv{border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--surface)}
+.p1-objlv>h3{margin:0 0 10px;font-size:16px}
+.p1-objgrade{border-left:3px solid #c9dbf5;padding:4px 0 6px 14px;margin:10px 0 14px;display:grid;gap:10px}
+.p1-objgrade>h4{margin:0;font-size:15px;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.p1-objgrade>h4 small{color:var(--muted);font-weight:500;margin-left:6px}
+.p1-objsub{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
+.p1-objsub .head{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.p1-objsub .head small{color:var(--muted)}
+.main .p1-objsub .head button.danger{margin-left:auto;background:var(--surface);color:#b42318;border-color:#f3c4c4;padding:3px 10px;font-size:12.5px}
+.p1-objsub .p1-table input{padding:6px 8px}
+.main .p1-objsub td button.danger{background:var(--surface);color:#b42318;border-color:#f3c4c4;padding:3px 9px;font-size:12.5px}
+.p1-objnew td{background:var(--surface)}
+
+/* ===== Thiết lập phân phối theo bước ===== */
+.p1-steps{display:grid;gap:12px}
+.p1-step{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+.p1-step .no{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:800}
+.p1-step.off .no{background:var(--soft);color:var(--muted)}
+.p1-step.off h4{color:var(--muted)}
+.p1-step h4{margin:4px 0 8px;font-size:14.5px}
+.p1-step h4 small{color:var(--muted);font-weight:500}
+.p1-step select{padding:8px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--surface);color:var(--text);min-width:240px}
+.p1-pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.p1-pick{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;background:var(--surface)}
+.p1-pick.on{border-color:var(--primary);background:#eef4fd}
+.p1-pick small{width:100%;color:var(--muted)}
+.p1-order{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.p1-order li{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--surface)}
+.p1-order li .no{font-weight:800;color:var(--muted);width:20px}
+.p1-order li small{color:var(--muted)}
+.main .p1-addcard{display:grid;place-items:center;gap:4px;min-height:140px;border:1px dashed var(--line);border-radius:16px;background:none;color:var(--muted)}
+.main .p1-addcard:hover{border-color:var(--primary);color:var(--primary);background:none}
+.p1-addcard b{font-size:16px;color:var(--text)}

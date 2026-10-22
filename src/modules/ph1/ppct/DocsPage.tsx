@@ -2,19 +2,23 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
 import { CtBadge, Empty, Pill, SCHOOL_YEAR, Stat, VCard, errMsg, norm, useOrgList, useRpcBool } from '../ui'
-import { catName, catOf, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
+import { catName, catOf, effectiveCatalog, gradeLabel, gradesOfLevel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
 import { PpctPage } from './PpctPage'
+import { TrackingPage } from '../tracking/TrackingPage'
 
-// 1.1.3 Phân phối chương trình — văn bản PPCT theo cấp – môn – khối (migration 060_ph1_ppct_docs.sql):
-// thời lượng (tuần × tiết/tuần từng học kỳ, số phút/tiết), bảng phân bổ tiết theo mạch nội dung, bảng Tuần | Tiết PPCT | Chương – Bài học.
-// Lịch & tiến độ triển khai (kế hoạch theo lớp, ngày dạy) giữ ở tab thứ hai.
+// 1.1.3 Phân phối chương trình (docs/PH1-cau-truc-1.1.md) — đi tiếp từ Chương trình giáo dục:
+//   View tổng quan theo Cấp học › Khối → bản phân phối;
+//   Thiết lập: (Trường — tuỳ chọn) › Cấp học › Khối › Chương trình phù hợp (gợi ý theo khối) › Môn học › Xếp lịch Học kỳ › Tuần › Buổi.
+// Bản phân phối (ppct_docs, 060–061): mỗi môn đã chọn là một khối lịch (ppct_chapters), mỗi bài học là một dòng (số tiết, số buổi).
+// Văn bản PPCT một môn kiểu cũ (Toán 8…) vẫn mở được. Lịch & tiến độ, Theo dõi giữ ở các tab sau (chờ xem lại).
 
-export type Doc = { id: string; org_id: string; level: string | null; subject: string; grade: number; school_year: string; title: string | null
+export type Doc = { id: string; org_id: string; target_org_id: string | null; level: string | null; subject: string | null; grade: number; school_year: string; title: string | null
   weeks_hk1: number; weeks_hk2: number; ppw_hk1: number; ppw_hk2: number; minutes_per_period: number; curriculum_id: string | null
   status: string; issuer: string | null; notes: string | null; based_on_id: string | null; updated_at: string }
 export type Strand = { id: string; doc_id: string; seq: number; name: string }
-export type Chapter = { id: string; doc_id: string; semester: number; seq: number; title: string; strand_id: string | null; curriculum_unit_id: string | null; note: string | null }
-export type Row = { id: string; doc_id: string; chapter_id: string; seq: number; title: string; periods: number; part_label: string | null; kind: string
+export type Chapter = { id: string; doc_id: string; semester: number; seq: number; title: string; strand_id: string | null; curriculum_unit_id: string | null
+  curriculum_id: string | null; subject: string | null; note: string | null }
+export type Row = { id: string; doc_id: string; chapter_id: string; seq: number; title: string; periods: number; sessions: number; part_label: string | null; kind: string
   strand_id: string | null; week_override: number | null; curriculum_lesson_id: string | null; material_lesson_id: string | null; note: string | null }
 
 export const KIND: Record<string, [string, string]> = {
@@ -22,7 +26,7 @@ export const KIND: Record<string, [string, string]> = {
 }
 const DOC_STATUS: Record<string, [string, '' | 'good' | 'warn']> = { draft: ['Bản nháp', ''], published: ['Đã ban hành', 'good'], archived: ['Lưu trữ', 'warn'] }
 const LEVEL_COLOR: Record<string, string> = { mamnon: '#ea580c', tieuhoc: '#16a34a', thcs: '#2a78d6', thpt: '#7c3aed' }
-export const levelOf = (g: number) => (g === 0 ? 'mamnon' : g <= 5 ? 'tieuhoc' : g <= 9 ? 'thcs' : 'thpt')
+export const levelOf = (g: number) => levelOfGrade([], g)
 const DEFAULT_STRANDS: Record<string, string[]> = {
   toan: ['Số & Đại số', 'Thống kê & Xác suất', 'Hình học', 'Ôn tập – KT', 'Trải nghiệm thực hành'],
   khtn: ['Chất và sự biến đổi', 'Vật sống', 'Năng lượng', 'Trái Đất & bầu trời', 'Ôn tập – KT'],
@@ -50,24 +54,27 @@ export function number(doc: Doc, chapters: Chapter[], rows: Row[]) {
   return lines
 }
 const tiet = (l: Line) => (l.to === l.from ? String(l.from) : l.to === l.from + 1 ? `${l.from}, ${l.to}` : `${l.from}–${l.to}`)
+const docName = (d: Doc, cat: CatItem[]) => d.title || (d.subject ? `Phân phối môn ${catName(cat, 'subject', d.subject)} ${d.grade}` : `Phân phối ${gradeLabel(d.grade)}`)
 
-// ===== Màn chính: 2 tab =====
+// ===== Màn chính =====
 export function PpctHome({ orgId }: { orgId: string | null }) {
-  const [tab, setTab] = useState<'docs' | 'cal'>('docs')
+  const [tab, setTab] = useState<'docs' | 'cal' | 'track'>('docs')
   return <>
-    <div className="p1-tabbar"><Tabs items={[['docs', 'Phân phối chương trình'], ['cal', 'Lịch & tiến độ triển khai']] as ['docs' | 'cal', string][]} value={tab} onChange={setTab} /></div>
-    {tab === 'docs' ? <PpctDocs orgId={orgId} /> : <PpctPage orgId={orgId} />}
+    <div className="p1-tabbar"><Tabs items={[['docs', 'Phân phối chương trình'], ['cal', 'Lịch & tiến độ (chờ xem lại)'], ['track', 'Theo dõi (chờ xem lại)']] as ['docs' | 'cal' | 'track', string][]} value={tab} onChange={setTab} /></div>
+    {tab === 'docs' ? <PpctDocs orgId={orgId} /> : tab === 'cal' ? <PpctPage orgId={orgId} /> : <TrackingPage orgId={orgId} />}
   </>
 }
 
-type Path = { level?: string; grade?: number; subject?: string; doc?: string }
+type Path = { level?: string; grade?: number; doc?: string }
+type ChMeta = { doc_id: string; subject: string | null; curriculum_id: string | null }
 export function PpctDocs({ orgId }: { orgId: string | null }) {
   const [docs, setDocs] = useState<Doc[]>([])
   const [sums, setSums] = useState<Record<string, number>>({})
+  const [chs, setChs] = useState<ChMeta[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
   const [path, setPath] = useState<Path>({})
-  const [org, setOrg] = useState(''); const [year, setYear] = useState(SCHOOL_YEAR); const [q, setQ] = useState('')
-  const [creating, setCreating] = useState<Partial<Doc> | null>(null)
+  const [school, setSchool] = useState(''); const [year, setYear] = useState(SCHOOL_YEAR); const [q, setQ] = useState('')
+  const [creating, setCreating] = useState<{ level?: string; grade?: number } | null>(null)
   const [msg, setMsg] = useState('')
   const canManage = useRpcBool('curriculum_can_manage')
   const orgs = useOrgList()
@@ -76,61 +83,59 @@ export function PpctDocs({ orgId }: { orgId: string | null }) {
   const cat = effectiveCatalog(all, hidden, below)
 
   async function load(open?: string) {
-    const [d, r, c] = await Promise.all([
-      supabase.from('ppct_docs').select('*').order('grade').order('subject'),
+    const [d, r, c, ch] = await Promise.all([
+      supabase.from('ppct_docs').select('*').order('grade').order('title'),
       supabase.from('ppct_rows').select('doc_id, periods'),
       supabase.from('curricula').select('*').order('code'),
+      supabase.from('ppct_chapters').select('doc_id, subject, curriculum_id'),
     ])
     if (d.error) return setMsg(errMsg(d.error.message))
-    const ds = (d.data as Doc[]) ?? []
     const s: Record<string, number> = {}; ((r.data as { doc_id: string; periods: number }[]) ?? []).forEach(x => { s[x.doc_id] = (s[x.doc_id] ?? 0) + x.periods })
-    setDocs(ds); setSums(s); setProgs((c.data as Curriculum[]) ?? [])
-    setOrg(o => o || (ds.find(x => x.org_id === orgId) ?? ds[0])?.org_id || '')
+    setDocs((d.data as Doc[]) ?? []); setSums(s); setProgs((c.data as Curriculum[]) ?? []); setChs((ch.data as ChMeta[]) ?? [])
     if (open) setPath(p => ({ ...p, doc: open }))
   }
   useEffect(() => { load() }, [orgId])
 
-  const orgName = (id: string) => orgs.find(o => o.id === id)?.name ?? ''
+  const orgName = (id: string | null) => (id ? orgs.find(o => o.id === id)?.name ?? '' : 'Tất cả trường')
+  const subjectsOf = (d: Doc) => Array.from(new Set([d.subject, ...chs.filter(c => c.doc_id === d.id).map(c => c.subject)].filter(Boolean) as string[]))
+  const progsOf = (d: Doc) => progs.filter(p => p.id === d.curriculum_id || chs.some(c => c.doc_id === d.id && c.curriculum_id === p.id))
   const doc = docs.find(d => d.id === path.doc)
   if (creating) return <><button type="button" className="p1-back" onClick={() => setCreating(null)}>← Quay lại</button>
-    <CreateDoc init={creating} orgId={org || orgId} orgs={orgs} cat={cat} progs={progs} docs={docs}
+    <CreateDoc init={creating} orgId={orgId} orgs={orgs} cat={cat} progs={progs} docs={docs} school={school}
       onDone={id => { setCreating(null); load(id) }} /></>
-  if (doc) return <DocView key={doc.id} doc={doc} prog={progs.find(c => c.id === doc.curriculum_id) ?? null} progs={progs} cat={cat} orgName={orgName(doc.org_id)}
-    canManage={canManage} back={() => { setPath({ ...path, doc: undefined }); load() }} reload={() => load()} onCopied={id => load(id)}
+  if (doc) return <DocView key={doc.id} doc={doc} prog={progs.find(c => c.id === doc.curriculum_id) ?? null} progs={progs} cat={cat} orgName={orgs.find(o => o.id === doc.org_id)?.name ?? ''}
+    target={orgName(doc.target_org_id)} canManage={canManage} back={() => { setPath({ ...path, doc: undefined }); load() }} reload={() => load()} onCopied={id => load(id)}
     onDeleted={() => { setPath({ ...path, doc: undefined }); load() }} crumbs={<Crumbs path={path} setPath={setPath} cat={cat} doc={doc} />} />
 
   const qq = norm(q)
-  const scope = docs.filter(d => (!org || d.org_id === org) && d.school_year === year)
-  const lv = (d: Doc) => d.level ?? levelOf(d.grade)
+  // Trường: bản cho tất cả trường + bản riêng của trường đó (+ bản trường tự lập)
+  const scope = docs.filter(d => d.school_year === year && (!school || d.target_org_id == null || d.target_org_id === school || d.org_id === school))
+  const lv = (d: Doc) => d.level ?? levelOfGrade(cat, d.grade)
   const years = Array.from(new Set([SCHOOL_YEAR, ...docs.map(d => d.school_year)])).sort()
-  const stat = (list: Doc[]) => ({ n: list.length, periods: list.reduce((a, d) => a + (sums[d.id] ?? 0), 0), subs: new Set(list.map(d => d.subject)).size,
+  const stat = (list: Doc[]) => ({ n: list.length, periods: list.reduce((a, d) => a + (sums[d.id] ?? 0), 0), subs: new Set(list.flatMap(subjectsOf)).size,
     pub: list.filter(d => d.status === 'published').length })
-  const filters = (
-    <div className="p1-toolbar">
-      <div className="p1-search"><input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm môn, khối, văn bản…" aria-label="Tìm kiếm" /></div>
-      <select value={org} onChange={e => { setOrg(e.target.value); setPath({}) }} aria-label="Đơn vị"><option value="">Tất cả đơn vị</option>
-        {Array.from(new Set(docs.map(d => d.org_id))).map(o => <option key={o} value={o}>{orgName(o)}</option>)}</select>
-      <select value={year} onChange={e => setYear(e.target.value)} aria-label="Năm học">{years.map(y => <option key={y} value={y}>Năm học {y}</option>)}</select>
-      {canManage && <button type="button" className="primary" style={{ marginLeft: 'auto' }}
-        onClick={() => setCreating({ org_id: org || orgId || undefined, school_year: year, level: path.level, grade: path.grade, subject: path.subject })}>+ Lập PPCT</button>}
-    </div>
-  )
-  const s = stat(scope)
+  const schools = orgs.filter(o => o.type === 'school')
   const head = <>
     {msg && <p className="msg">{msg}</p>}
     <div className="p1-stats">
-      <Stat label="Văn bản PPCT" value={s.n} sub={`${s.subs} môn · năm học ${year}`} />
-      <Stat label="Đã ban hành" value={s.pub} tone="good" />
-      <Stat label="Tổng số tiết phân phối" value={s.periods} />
-      <Stat label="Cấp học" value={new Set(scope.map(lv)).size} />
+      <Stat label="Bản phân phối" value={stat(scope).n} sub={`năm học ${year}`} />
+      <Stat label="Đã ban hành" value={stat(scope).pub} tone="good" />
+      <Stat label="Môn học" value={stat(scope).subs} />
+      <Stat label="Tổng số tiết" value={stat(scope).periods} />
     </div>
-    {filters}
+    <div className="p1-toolbar">
+      <div className="p1-search"><input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm bản phân phối, môn, khối…" aria-label="Tìm kiếm" /></div>
+      <select value={school} onChange={e => setSchool(e.target.value)} aria-label="Trường"><option value="">Tất cả trường</option>
+        {schools.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
+      <select value={year} onChange={e => setYear(e.target.value)} aria-label="Năm học">{years.map(y => <option key={y} value={y}>Năm học {y}</option>)}</select>
+      {canManage && <button type="button" className="primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating({ level: path.level, grade: path.grade })}>+ Thiết lập phân phối</button>}
+    </div>
   </>
+  const table = (list: Doc[]) => <DocTable list={list} sums={sums} cat={cat} subjectsOf={subjectsOf} progsOf={progsOf} orgName={orgName} onOpen={id => setPath({ ...path, doc: id })} />
 
-  // Tìm kiếm: danh sách phẳng
   if (qq) {
-    const list = scope.filter(d => norm(`${d.title ?? ''} ${catName(cat, 'subject', d.subject)} lớp ${d.grade} ${orgName(d.org_id)}`).includes(qq))
-    return <>{head}{list.length ? <DocTable list={list} sums={sums} cat={cat} progs={progs} orgName={orgName} onOpen={id => setPath({ ...path, doc: id })} /> : <Empty>Không tìm thấy văn bản.</Empty>}</>
+    const list = scope.filter(d => norm(`${docName(d, cat)} ${subjectsOf(d).map(s => catName(cat, 'subject', s)).join(' ')} khối ${d.grade} ${orgName(d.target_org_id)}`).includes(qq))
+    return <>{head}{list.length ? table(list) : <Empty>Không tìm thấy bản phân phối.</Empty>}</>
   }
   // Tầng 1: cấp học
   if (!path.level) {
@@ -139,129 +144,163 @@ export function PpctDocs({ orgId }: { orgId: string | null }) {
       {lvls.length ? <div className="p1-grid">{lvls.map(l => { const list = scope.filter(d => lv(d) === l.code); const st = stat(list)
         const grades = Array.from(new Set(list.map(d => d.grade))).sort((a, b) => a - b)
         return <VCard key={l.code} color={l.color ?? LEVEL_COLOR[l.code] ?? '#475569'} code={l.name} title={`Cấp ${l.name}`} subtitle={'Khối ' + grades.join(', ')}
-          chips={[`${st.n} văn bản`, `${st.subs} môn`, `${st.periods} tiết`, st.pub ? `${st.pub} đã ban hành` : '']}
-          desc={Array.from(new Set(list.map(d => catName(cat, 'subject', d.subject)))).join(' · ')} onClick={() => setPath({ level: l.code })} more="Mở ›" /> })}</div>
-        : <Empty>Chưa có văn bản phân phối chương trình cho năm học {year}{canManage ? ' — bấm “+ Lập PPCT” để tạo.' : '.'}</Empty>}
+          chips={[`${st.n} bản phân phối`, `${st.subs} môn`, `${st.periods} tiết`]} onClick={() => setPath({ level: l.code })} more="Mở ›" /> })}</div>
+        : <Empty>Chưa có bản phân phối cho năm học {year}{canManage ? ' — bấm “+ Thiết lập phân phối”.' : '.'}</Empty>}
     </>
   }
   const inLv = scope.filter(d => lv(d) === path.level)
-  // Tầng 3: nhiều văn bản trong một ô
-  if (path.subject) {
-    const list = inLv.filter(d => d.subject === path.subject && d.grade === path.grade)
+  // Tầng 3: các bản phân phối của một khối
+  if (path.grade != null) {
+    const list = inLv.filter(d => d.grade === path.grade)
     return <>{head}<Crumbs path={path} setPath={setPath} cat={cat} />
-      {list.length ? <DocTable list={list} sums={sums} cat={cat} progs={progs} orgName={orgName} onOpen={id => setPath({ ...path, doc: id })} /> : <Empty>Chưa có văn bản.</Empty>}</>
+      {list.length ? table(list) : <Empty>Khối này chưa có bản phân phối.</Empty>}</>
   }
-  // Tầng 2: bảng khối × môn
-  const grades = Array.from(new Set(inLv.map(d => d.grade))).sort((a, b) => a - b)
-  const subs = catOf(cat, 'subject').map(x => x.code).filter(c => inLv.some(d => d.subject === c))
+  // Tầng 2: các khối của cấp học
   const color = LEVEL_COLOR[path.level] ?? '#2a78d6'
+  const grades = gradesOfLevel(cat, path.level)
   return <>{head}<Crumbs path={path} setPath={setPath} cat={cat} />
-    <div className="p1-matrixwrap">
-      <table className="p1-matrix p1-ppctmatrix">
-        <thead><tr><th>Khối \ Môn</th>{subs.map(c => <th key={c}>{catName(cat, 'subject', c)}</th>)}<th>Cộng</th></tr></thead>
-        <tbody>{grades.map(g => <tr key={g}><th>{gradeLabel(g)}</th>
-          {subs.map(c => { const l = inLv.filter(d => d.grade === g && d.subject === c); const d0 = l[0]
-            return <td key={c}>{d0 ? <button type="button" style={{ borderColor: color + '66', background: color + '12' }}
-              onClick={() => setPath(l.length === 1 ? { ...path, grade: g, subject: c, doc: d0.id } : { ...path, grade: g, subject: c })}>
-              <b>{l.length === 1 ? sums[d0.id] ?? 0 : l.length}</b>{l.length === 1 ? 'tiết' : 'văn bản'}
-              <small>{l.length === 1 ? `${num(d0.ppw_hk1)} tiết/tuần · ${DOC_STATUS[d0.status]?.[0]}` : ''}</small></button>
-              : canManage ? <button type="button" className="add" onClick={() => setCreating({ org_id: org || orgId || undefined, school_year: year, level: path.level, grade: g, subject: c })}>+ Lập</button>
-              : <span className="sub">—</span>}</td> })}
-          <td><b>{inLv.filter(d => d.grade === g).reduce((a, d) => a + (sums[d.id] ?? 0), 0)}</b> <small className="sub">tiết</small></td></tr>)}</tbody>
-      </table>
-    </div>
-    <p className="sub">Mỗi ô là văn bản PPCT của một môn · khối (số tiết đã phân phối). Bấm để mở văn bản.</p>
+    <div className="p1-grid">{grades.map(g => { const list = inLv.filter(d => d.grade === g); const st = stat(list)
+      return list.length ? <VCard key={g} color={color} code={gradeLabel(g)} title={gradeLabel(g)} subtitle={`${st.n} bản phân phối · ${st.periods} tiết`}
+        chips={Array.from(new Set(list.flatMap(subjectsOf))).slice(0, 4).map(s => catName(cat, 'subject', s))}
+        desc={list.map(d => `${docName(d, cat)} — ${orgName(d.target_org_id)}`).join(' · ')} onClick={() => setPath({ ...path, grade: g })} more="Mở ›" />
+        : canManage ? <button key={g} type="button" className="p1-addcard" onClick={() => setCreating({ level: path.level, grade: g })}><b>{gradeLabel(g)}</b><span>+ Thiết lập phân phối</span></button> : null })}</div>
   </>
 }
 
 function Crumbs({ path, setPath, cat, doc }: { path: Path; setPath: (p: Path) => void; cat: CatItem[]; doc?: Doc }) {
-  const lv = path.level ?? (doc ? doc.level ?? levelOf(doc.grade) : undefined)
+  const lv = path.level ?? (doc ? doc.level ?? levelOfGrade(cat, doc.grade) : undefined)
+  const g = path.grade ?? doc?.grade
   return <nav className="p1-crumbs" aria-label="Đường dẫn">
     <button type="button" onClick={() => setPath({})}>Tất cả cấp học</button>
     {lv && <><span>›</span><button type="button" onClick={() => setPath({ level: lv })}>{catName(cat, 'level', lv)}</button></>}
-    {doc ? <><span>›</span><b>{catName(cat, 'subject', doc.subject)} · {gradeLabel(doc.grade)}</b></>
-      : path.subject && <><span>›</span><b>{catName(cat, 'subject', path.subject)} · {path.grade != null ? gradeLabel(path.grade) : ''}</b></>}
+    {g != null && <><span>›</span>{doc ? <button type="button" onClick={() => setPath({ level: lv, grade: g })}>{gradeLabel(g)}</button> : <b>{gradeLabel(g)}</b>}</>}
+    {doc && <><span>›</span><b>{docName(doc, cat)}</b></>}
   </nav>
 }
 
-function DocTable({ list, sums, cat, progs, orgName, onOpen }: { list: Doc[]; sums: Record<string, number>; cat: CatItem[]; progs: Curriculum[]; orgName: (id: string) => string; onOpen: (id: string) => void }) {
-  return <table className="p1-list"><thead><tr><th>Văn bản</th><th>Môn · khối</th><th>Thời lượng</th><th>Đã phân phối</th><th>Chương trình</th><th>Trạng thái</th></tr></thead>
-    <tbody>{list.map(d => { const p = progs.find(c => c.id === d.curriculum_id); const cap = capOf(d, 1) + capOf(d, 2)
+function DocTable({ list, sums, cat, subjectsOf, progsOf, orgName, onOpen }: {
+  list: Doc[]; sums: Record<string, number>; cat: CatItem[]; subjectsOf: (d: Doc) => string[]; progsOf: (d: Doc) => Curriculum[]; orgName: (id: string | null) => string; onOpen: (id: string) => void
+}) {
+  return <table className="p1-list"><thead><tr><th>Bản phân phối</th><th>Áp dụng</th><th>Chương trình · môn</th><th>Thời lượng</th><th>Đã phân phối</th><th>Trạng thái</th></tr></thead>
+    <tbody>{list.map(d => { const cap = capOf(d, 1) + capOf(d, 2)
       return <tr key={d.id} onClick={() => onOpen(d.id)}>
-        <td><b>{d.title || 'Phân phối chương trình'}</b><br /><small className="sub">{orgName(d.org_id)} · {d.school_year}</small></td>
-        <td>{catName(cat, 'subject', d.subject)} · {gradeLabel(d.grade)}</td>
+        <td><b>{docName(d, cat)}</b><br /><small className="sub">{gradeLabel(d.grade)} · {d.school_year}</small></td>
+        <td>{orgName(d.target_org_id)}<br /><small className="sub">lập bởi {orgName(d.org_id)}</small></td>
+        <td>{progsOf(d).map(p => <CtBadge key={p.id} color={p.color} code={p.code} />)} <small className="sub">{subjectsOf(d).map(s => catName(cat, 'subject', s)).join(', ')}</small></td>
         <td>{d.weeks_hk1 + d.weeks_hk2} tuần · {num(d.ppw_hk1)} tiết/tuần<br /><small className="sub">{d.minutes_per_period} phút/tiết</small></td>
         <td><b>{sums[d.id] ?? 0}</b>/{num(cap)} tiết {(sums[d.id] ?? 0) !== cap && <Pill tone="warn">lệch</Pill>}</td>
-        <td><CtBadge color={p?.color} code={p?.code} /></td>
         <td><Pill tone={DOC_STATUS[d.status]?.[1]}>{DOC_STATUS[d.status]?.[0]}</Pill></td>
       </tr> })}</tbody></table>
 }
 
-// ===== Tạo văn bản =====
-function CreateDoc({ init, orgId, orgs, cat, progs, docs, onDone }: {
-  init: Partial<Doc>; orgId: string | null; orgs: { id: string; name: string }[]; cat: CatItem[]; progs: Curriculum[]; docs: Doc[]; onDone: (id: string) => void
+// ===== Thiết lập phân phối: (Trường) › Cấp học › Khối › Chương trình phù hợp › Môn › Xếp lịch =====
+type Avail = { curriculum_id: string; subject: string; lessons: number; sessions: number; periods: number }
+function CreateDoc({ init, orgId, orgs, cat, progs, docs, school, onDone }: {
+  init: { level?: string; grade?: number }; orgId: string | null; orgs: { id: string; name: string; type: string }[]; cat: CatItem[]; progs: Curriculum[]; docs: Doc[]
+  school: string; onDone: (id: string) => void
 }) {
-  const [f, setF] = useState({ org_id: init.org_id ?? orgId ?? '', level: init.level ?? (init.grade != null ? levelOf(init.grade) : 'thcs'), subject: init.subject ?? 'toan',
-    grade: init.grade ?? 6, school_year: init.school_year ?? SCHOOL_YEAR, weeks_hk1: 18, weeks_hk2: 17, ppw_hk1: 4, ppw_hk2: 4, minutes_per_period: 45,
-    curriculum_id: '', source: 'blank' as 'blank' | 'curriculum' | 'copy', copy_id: '' })
+  const [target, setTarget] = useState(school)
+  const [level, setLevel] = useState(init.level ?? (init.grade != null ? levelOfGrade(cat, init.grade) : ''))
+  const [grade, setGrade] = useState<number | null>(init.grade ?? null)
+  const [picked, setPicked] = useState<string[]>([])
+  const [items, setItems] = useState<{ curriculum_id: string; subject: string }[]>([])
+  const [t, setT] = useState({ school_year: SCHOOL_YEAR, weeks_hk1: 18, weeks_hk2: 17, ppw_hk1: 2, ppw_hk2: 2, minutes_per_period: 45 })
+  const [avail, setAvail] = useState<Avail[]>([])
+  const [copyId, setCopyId] = useState('')
   const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false)
-  const set = (p: Partial<typeof f>) => setF({ ...f, ...p })
-  const same = docs.filter(d => d.subject === f.subject && d.grade === f.grade)
+
+  // Môn × khối của các chương trình đang hiệu lực (từ Đối tượng: chủ đề / bài học)
+  useEffect(() => {
+    const vids = progs.map(p => p.current_version_id).filter(Boolean) as string[]
+    if (!vids.length || grade == null) return setAvail([])
+    supabase.from('curriculum_units').select('version_id, subject_main, grade, curriculum_lessons(periods, sessions)').in('version_id', vids).eq('grade', grade).then(({ data }) => {
+      const m = new Map<string, Avail>()
+      for (const u of (data as any[]) ?? []) { if (!u.subject_main) continue
+        const p = progs.find(x => x.current_version_id === u.version_id); if (!p) continue
+        const k = p.id + '|' + u.subject_main; const a = m.get(k) ?? { curriculum_id: p.id, subject: u.subject_main, lessons: 0, sessions: 0, periods: 0 }
+        for (const l of u.curriculum_lessons ?? []) { a.lessons++; a.sessions += l.sessions ?? 1; a.periods += l.periods }
+        m.set(k, a) }
+      setAvail([...m.values()].filter(a => a.lessons > 0))
+    })
+  }, [grade, progs.length])
+
+  const grades = level ? gradesOfLevel(cat, level) : []
+  const matchProgs = progs.filter(p => avail.some(a => a.curriculum_id === p.id))
+  const total = items.reduce((s, it) => s + (avail.find(a => a.curriculum_id === it.curriculum_id && a.subject === it.subject)?.periods ?? 0), 0)
+  const cap = t.weeks_hk1 * t.ppw_hk1 + t.weeks_hk2 * t.ppw_hk2
+  const toggleProg = (id: string) => {
+    const on = picked.includes(id)
+    setPicked(on ? picked.filter(x => x !== id) : [...picked, id])
+    setItems(on ? items.filter(i => i.curriculum_id !== id) : [...items, ...avail.filter(a => a.curriculum_id === id).map(a => ({ curriculum_id: a.curriculum_id, subject: a.subject }))])
+  }
+  const has = (a: Avail) => items.some(i => i.curriculum_id === a.curriculum_id && i.subject === a.subject)
+  const toggleItem = (a: Avail) => setItems(has(a) ? items.filter(i => !(i.curriculum_id === a.curriculum_id && i.subject === a.subject)) : [...items, { curriculum_id: a.curriculum_id, subject: a.subject }])
+  const move = (k: number, d: -1 | 1) => { const x = [...items]; const o = x[k + d]; if (!o) return; x[k + d] = x[k]; x[k] = o; setItems(x) }
+  const same = docs.filter(d => grade != null && d.grade === grade)
+
   async function save() {
+    if (!orgId || grade == null) return
     setBusy(true); setMsg('')
-    if (f.source === 'copy') {
-      const { data, error } = await supabase.rpc('ppct_doc_copy', { p_doc: f.copy_id, p_org: f.org_id, p_year: f.school_year })
-      setBusy(false); if (error) return setMsg(errMsg(error.message)); return onDone(data as string)
-    }
-    const org = orgs.find(o => o.id === f.org_id)
-    const { data, error } = await supabase.from('ppct_docs').insert({ org_id: f.org_id, level: f.level, subject: f.subject, grade: f.grade, school_year: f.school_year,
-      title: `Phân phối chương trình môn ${catName(cat, 'subject', f.subject)} ${f.grade}`, weeks_hk1: f.weeks_hk1, weeks_hk2: f.weeks_hk2, ppw_hk1: f.ppw_hk1, ppw_hk2: f.ppw_hk2,
-      minutes_per_period: f.minutes_per_period, curriculum_id: f.curriculum_id || null, issuer: org?.name ?? null }).select('id').single()
+    if (copyId) { const { data, error } = await supabase.rpc('ppct_doc_copy', { p_doc: copyId, p_org: orgId, p_year: t.school_year }); setBusy(false)
+      if (error) return setMsg(errMsg(error.message)); return onDone(data as string) }
+    const tname = target ? orgs.find(o => o.id === target)?.name : 'tất cả trường'
+    const { data, error } = await supabase.from('ppct_docs').insert({ org_id: orgId, target_org_id: target || null, level, subject: null, grade, ...t,
+      title: `Phân phối ${gradeLabel(grade)} – ${tname}`, issuer: orgs.find(o => o.id === orgId)?.name ?? null }).select('id').single()
     if (error) { setBusy(false); return setMsg(errMsg(error.message)) }
     const id = (data as { id: string }).id
-    const names = DEFAULT_STRANDS[f.subject] ?? DEFAULT_STRANDS['*']
-    await supabase.from('ppct_strands').insert(names.map((name, k) => ({ doc_id: id, seq: k + 1, name })))
-    if (f.source === 'curriculum' && f.curriculum_id) { const r = await supabase.rpc('ppct_doc_from_curriculum', { p_doc: id, p_replace: true }); if (r.error) setMsg(errMsg(r.error.message)) }
-    setBusy(false); onDone(id)
+    const r = await supabase.rpc('ppct_doc_build', { p_doc: id, p_items: items, p_replace: true })
+    setBusy(false); if (r.error) setMsg(errMsg(r.error.message)); onDone(id)
   }
-  const total = f.weeks_hk1 * f.ppw_hk1 + f.weeks_hk2 * f.ppw_hk2
+
+  const step = (n: number, title: string, body: ReactNode, opt?: boolean, off?: boolean) =>
+    <div className={'p1-step' + (off ? ' off' : '')}><div className="no">{n}</div><div className="bd"><h4>{title}{opt && <small> · không bắt buộc</small>}</h4>{!off && body}</div></div>
   return (
     <section className="p1-section">
-      <header><h3>Lập văn bản phân phối chương trình</h3></header>
+      <header><h3>Thiết lập phân phối chương trình</h3><small className="sub">Đi theo từ Chương trình giáo dục: chọn đúng khối, hệ thống gợi ý chương trình và môn phù hợp.</small></header>
       {msg && <p className="msg">{msg}</p>}
-      <div className="p1-form">
-        <label>Đơn vị<select value={f.org_id} onChange={e => set({ org_id: e.target.value })}>{orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
-        <label>Năm học<input value={f.school_year} onChange={e => set({ school_year: e.target.value })} placeholder="2026-2027" /></label>
-        <label>Cấp học<select value={f.level} onChange={e => set({ level: e.target.value })}>{catOf(cat, 'level').map(l => <option key={l.code} value={l.code}>{l.name}</option>)}</select></label>
-        <label>Môn học<select value={f.subject} onChange={e => set({ subject: e.target.value })}>{catOf(cat, 'subject').map(l => <option key={l.code} value={l.code}>{l.name}</option>)}</select></label>
-        <label>Khối<select value={f.grade} onChange={e => set({ grade: Number(e.target.value), level: levelOf(Number(e.target.value)) })}>
-          {Array.from({ length: 13 }, (_, g) => <option key={g} value={g}>{gradeLabel(g)}</option>)}</select></label>
-        <label className="wide">Cách tạo<div className="p1-seg">
-          {([['blank', 'Văn bản trống'], ['curriculum', 'Dựng từ chương trình giáo dục'], ['copy', `Sao chép văn bản có sẵn (${same.length})`]] as const).map(([k, l]) =>
-            <button type="button" key={k} className={f.source === k ? 'on' : ''} onClick={() => set({ source: k })}>{l}</button>)}</div></label>
-        {f.source === 'copy' ? <label className="wide">Văn bản nguồn<select value={f.copy_id} onChange={e => set({ copy_id: e.target.value })}><option value="">— chọn —</option>
-          {same.map(d => <option key={d.id} value={d.id}>{d.title} · {orgs.find(o => o.id === d.org_id)?.name} · {d.school_year}</option>)}</select></label> : <>
-          <label>Học kì I<span className="p1-inline"><input type="number" min={0} value={f.weeks_hk1} onChange={e => set({ weeks_hk1: Number(e.target.value) })} /> tuần ×
-            <input type="number" min={0.5} step={0.5} value={f.ppw_hk1} onChange={e => set({ ppw_hk1: Number(e.target.value) })} /> tiết</span></label>
-          <label>Học kì II<span className="p1-inline"><input type="number" min={0} value={f.weeks_hk2} onChange={e => set({ weeks_hk2: Number(e.target.value) })} /> tuần ×
-            <input type="number" min={0.5} step={0.5} value={f.ppw_hk2} onChange={e => set({ ppw_hk2: Number(e.target.value) })} /> tiết</span></label>
-          <label>Số phút / tiết<input type="number" min={5} value={f.minutes_per_period} onChange={e => set({ minutes_per_period: Number(e.target.value) })} /></label>
-          <label>Gắn chương trình giáo dục{f.source === 'curriculum' ? ' *' : ' (tuỳ chọn)'}<select value={f.curriculum_id} onChange={e => set({ curriculum_id: e.target.value })}><option value="">— không —</option>
-            {progs.filter(p => p.current_version_id).map(p => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></label>
-          <p className="wide sub" style={{ margin: 0 }}>Cả năm: {f.weeks_hk1 + f.weeks_hk2} tuần · {num(total)} tiết · {Math.round(total * f.minutes_per_period / 60)} giờ.
-            {f.source === 'curriculum' && ' Chủ đề của chương trình → chương, bài học → dòng (bài nhiều tiết tách T1, T2…).'}</p>
-        </>}
+      <div className="p1-steps">
+        {step(0, 'Trường', <select value={target} onChange={e => setTarget(e.target.value)} aria-label="Trường"><option value="">Tất cả các trường</option>
+          {orgs.filter(o => o.type === 'school').map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>, true)}
+        {step(1, 'Cấp học', <div className="p1-seg">{catOf(cat, 'level').map(l => <button type="button" key={l.code} className={level === l.code ? 'on' : ''}
+          onClick={() => { setLevel(l.code); setGrade(null); setPicked([]); setItems([]) }}>{l.name}</button>)}</div>)}
+        {step(2, 'Khối', <div className="p1-seg">{grades.map(g => <button type="button" key={g} className={grade === g ? 'on' : ''}
+          onClick={() => { setGrade(g); setPicked([]); setItems([]); setCopyId('') }}>{gradeLabel(g)}</button>)}</div>, false, !level)}
+        {step(3, 'Chọn chương trình phù hợp', matchProgs.length ? <div className="p1-pickgrid">{matchProgs.map(p => { const as = avail.filter(a => a.curriculum_id === p.id)
+          return <label key={p.id} className={'p1-pick' + (picked.includes(p.id) ? ' on' : '')}><input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggleProg(p.id)} />
+            <CtBadge color={p.color} code={p.code} /><b>{p.name}</b><small>{as.length} môn · {as.reduce((a, x) => a + x.lessons, 0)} bài · {as.reduce((a, x) => a + x.periods, 0)} tiết ở {gradeLabel(grade!)}</small></label> })}</div>
+          : <Empty>Chưa có chương trình (đang hiệu lực) có bài học ở {grade != null ? gradeLabel(grade) : 'khối này'}.</Empty>, false, grade == null)}
+        {step(4, 'Chọn môn từ các chương trình', <div className="p1-pickgrid">{avail.filter(a => picked.includes(a.curriculum_id)).map(a => { const p = progs.find(x => x.id === a.curriculum_id)
+          return <label key={a.curriculum_id + a.subject} className={'p1-pick' + (has(a) ? ' on' : '')}><input type="checkbox" checked={has(a)} onChange={() => toggleItem(a)} />
+            <b>{catName(cat, 'subject', a.subject)}</b><CtBadge color={p?.color} code={p?.code} /><small>{a.lessons} bài · {a.sessions} buổi · {a.periods} tiết</small></label> })}</div>, false, !picked.length)}
+        {step(5, 'Xếp lịch: Học kỳ › Tuần › Buổi', <>
+          <ol className="p1-order">{items.map((it, k) => { const a = avail.find(x => x.curriculum_id === it.curriculum_id && x.subject === it.subject); const p = progs.find(x => x.id === it.curriculum_id)
+            return <li key={it.curriculum_id + it.subject}><span className="no">{k + 1}</span><b>{catName(cat, 'subject', it.subject)}</b><CtBadge color={p?.color} code={p?.code} />
+              <small>{a?.lessons} bài · {a?.periods} tiết</small><span className="p1-rowact"><button type="button" onClick={() => move(k, -1)} aria-label="Lên">↑</button><button type="button" onClick={() => move(k, 1)} aria-label="Xuống">↓</button></span></li> })}</ol>
+          <div className="p1-form" style={{ marginTop: 10 }}>
+            <label>Năm học<input value={t.school_year} onChange={e => setT({ ...t, school_year: e.target.value })} /></label>
+            <label>Học kỳ I<span className="p1-inline"><input type="number" min={0} value={t.weeks_hk1} onChange={e => setT({ ...t, weeks_hk1: Number(e.target.value) })} /> tuần ×
+              <input type="number" min={0.5} step={0.5} value={t.ppw_hk1} onChange={e => setT({ ...t, ppw_hk1: Number(e.target.value) })} /> tiết</span></label>
+            <label>Học kỳ II<span className="p1-inline"><input type="number" min={0} value={t.weeks_hk2} onChange={e => setT({ ...t, weeks_hk2: Number(e.target.value) })} /> tuần ×
+              <input type="number" min={0.5} step={0.5} value={t.ppw_hk2} onChange={e => setT({ ...t, ppw_hk2: Number(e.target.value) })} /> tiết</span></label>
+            <label>Số phút / tiết<input type="number" min={5} value={t.minutes_per_period} onChange={e => setT({ ...t, minutes_per_period: Number(e.target.value) })} /></label>
+          </div>
+          <p className="sub">Đã chọn {items.length} môn · {total} tiết / sức chứa {num(cap)} tiết {total > cap ? <Pill tone="warn">vượt {num(total - cap)} tiết</Pill> : null}.
+            Môn xếp lần lượt theo thứ tự trên vào Học kỳ I rồi Học kỳ II; sau khi tạo, đổi thứ tự môn / bài, học kỳ, tuần trong bản phân phối.</p>
+        </>, false, !items.length)}
       </div>
+      {same.length > 0 && <details className="p1-adv"><summary>Hoặc sao chép bản phân phối có sẵn của {grade != null ? gradeLabel(grade) : ''} ({same.length})</summary>
+        <select value={copyId} onChange={e => setCopyId(e.target.value)} style={{ marginTop: 8 }}><option value="">— không sao chép —</option>
+          {same.map(d => <option key={d.id} value={d.id}>{docName(d, cat)} · {d.school_year}</option>)}</select></details>}
       <div className="p1-actions" style={{ marginTop: 16 }}>
-        <button type="button" className="primary" disabled={busy || !f.org_id || (f.source === 'copy' && !f.copy_id) || (f.source === 'curriculum' && !f.curriculum_id)} onClick={save}>{busy ? 'Đang tạo…' : 'Tạo văn bản'}</button>
+        <button type="button" className="primary" disabled={busy || grade == null || (!copyId && !items.length)} onClick={save}>{busy ? 'Đang tạo…' : copyId ? 'Sao chép' : 'Tạo & xếp lịch'}</button>
       </div>
     </section>
   )
 }
 
 // ===== Văn bản PPCT =====
-function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCopied, onDeleted, crumbs }: {
-  doc: Doc; prog: Curriculum | null; progs: Curriculum[]; cat: CatItem[]; orgName: string; canManage: boolean
+function DocView({ doc, prog, progs, cat, orgName, target, canManage, back, reload, onCopied, onDeleted, crumbs }: {
+  doc: Doc; prog: Curriculum | null; progs: Curriculum[]; cat: CatItem[]; orgName: string; target: string; canManage: boolean
   back: () => void; reload: () => void; onCopied: (id: string) => void; onDeleted: () => void; crumbs: ReactNode
 }) {
   const [strands, setStrands] = useState<Strand[]>([])
@@ -292,9 +331,14 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
   const lines = number(doc, chapters, rows)
   const subj = catName(cat, 'subject', doc.subject)
   const used = (s: number) => lines.filter(l => chapters.find(c => c.id === l.chapter_id)?.semester === s).reduce((a, l) => a + l.periods, 0)
-  const by = (s: number, strand: string | null) => lines.filter(l => chapters.find(c => c.id === l.chapter_id)?.semester === s && l.strand === strand).reduce((a, l) => a + l.periods, 0)
-  const noStrand = lines.some(l => !l.strand)
-  const cols: [string | null, string][] = [...strands.map(s => [s.id, s.name] as [string, string]), ...(noStrand ? [[null, 'Chưa phân mạch'] as [null, string]] : [])]
+  // Bản nhiều môn: phân bổ theo môn (mỗi khối lịch là một môn); văn bản một môn: theo mạch nội dung
+  const multi = !doc.subject
+  const chOf = (l: Line) => chapters.find(c => c.id === l.chapter_id)
+  const keyOf = (l: Line) => (multi ? chOf(l)?.subject ?? null : l.strand)
+  const by = (s: number, k: string | null) => lines.filter(l => chOf(l)?.semester === s && keyOf(l) === k).reduce((a, l) => a + l.periods, 0)
+  const noStrand = lines.some(l => !keyOf(l))
+  const cols: [string | null, string][] = [...(multi ? Array.from(new Set(chapters.map(c => c.subject).filter(Boolean) as string[])).map(x => [x, catName(cat, 'subject', x)] as [string, string])
+    : strands.map(s => [s.id, s.name] as [string, string])), ...(noStrand ? [[null, multi ? 'Khác' : 'Chưa phân mạch'] as [null, string]] : [])]
   const sems = doc.weeks_hk2 > 0 || chapters.some(c => c.semester === 2) ? [1, 2] : [1]
   const chPeriods = (c: Chapter) => rows.filter(r => r.chapter_id === c.id).reduce((a, r) => a + r.periods, 0)
 
@@ -334,7 +378,7 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
     return chs.map(c => { const cl = sl.filter(l => l.chapter_id === c.id); const st = strands.find(x => x.id === c.strand_id); const p = chPeriods(c)
       return <Fragment key={c.id}>
         <tr className="p1-chrow">
-          <td colSpan={edit ? 5 : 3}>
+          <td colSpan={edit ? 6 : 4}>
             {chEdit === c.id ? <ChapterForm c={c} strands={strands} onCancel={() => setChEdit(null)}
               onSave={v => run(supabase.from('ppct_chapters').update(v).eq('id', c.id)).then(ok => ok && setChEdit(null))} />
               : <div className="p1-chhead"><b>{c.title.toUpperCase()} ({p} TIẾT)</b>{st && <span className="p1-strand">{st.name}</span>}
@@ -347,11 +391,12 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
                 </span>}</div>}
           </td>
         </tr>
-        {cl.map(l => rowEdit === l.id ? <tr key={l.id}><td colSpan={5}><RowForm r={l} strands={strands} onCancel={() => setRowEdit(null)}
+        {cl.map(l => rowEdit === l.id ? <tr key={l.id}><td colSpan={6}><RowForm r={l} strands={strands} onCancel={() => setRowEdit(null)}
             onSave={v => run(supabase.from('ppct_rows').update(v).eq('id', l.id)).then(ok => ok && setRowEdit(null))} /></td></tr>
           : <tr key={l.id} className={'k-' + l.kind}>
             {(edit || span[l.id] !== 0) && <td className="wk" rowSpan={edit ? 1 : span[l.id]}>{l.week}{l.week_override ? <sup title="Tuần đặt tay">*</sup> : null}</td>}
             <td className="tp">{tiet(l)}</td>
+            <td className="tp">{l.sessions}</td>
             <td><span className="ttl">{l.title}{l.part_label ? ` (${l.part_label})` : ''}</span>
               {l.kind !== 'bai_hoc' && <span className="p1-kind" style={{ color: KIND[l.kind]?.[1], borderColor: KIND[l.kind]?.[1] + '55' }}>{KIND[l.kind]?.[0]}</span>}
               {l.material_lesson_id && <span className="p1-kind" title="Có học liệu STEM">Học liệu</span>}
@@ -362,9 +407,9 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
               <button type="button" onClick={() => setRowEdit(l.id)}>Sửa</button>
               <button type="button" className="danger" title="Xoá dòng" onClick={() => run(supabase.from('ppct_rows').delete().eq('id', l.id))}>✕</button></span></td>}
           </tr>)}
-        {adding === c.id && <tr><td colSpan={5}><RowForm strands={strands} onCancel={() => setAdding(null)}
+        {adding === c.id && <tr><td colSpan={6}><RowForm strands={strands} onCancel={() => setAdding(null)}
           onSave={v => addRows(c, [{ title: v.title!, periods: v.periods ?? 1, kind: v.kind ?? 'bai_hoc', part: v.part_label }]).then(ok => ok && setAdding(null))} /></td></tr>}
-        {bulk === c.id && <tr><td colSpan={5}><BulkForm onCancel={() => setBulk(null)} onSave={items => addRows(c, items).then(ok => ok && setBulk(null))} /></td></tr>}
+        {bulk === c.id && <tr><td colSpan={6}><BulkForm onCancel={() => setBulk(null)} onSave={items => addRows(c, items).then(ok => ok && setBulk(null))} /></td></tr>}
       </Fragment> })
   }
 
@@ -391,8 +436,9 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
       <article className="p1-doc">
         <header className="p1-dochead">
           <div className="issuer">{(doc.issuer ?? orgName).split('·').map((x, i) => <div key={i}>{x.trim()}</div>)}</div>
-          <h2>PHÂN PHỐI CHƯƠNG TRÌNH MÔN: {subj.toUpperCase()} {doc.grade}</h2>
+          <h2>{multi ? `PHÂN PHỐI CHƯƠNG TRÌNH ${gradeLabel(doc.grade).toUpperCase()}` : `PHÂN PHỐI CHƯƠNG TRÌNH MÔN: ${subj.toUpperCase()} ${doc.grade}`}</h2>
           <div className="yr">NĂM HỌC {doc.school_year.replace('-', '–')}</div>
+          <div className="sub">Áp dụng: {target}</div>
         </header>
         <div className="p1-timebox">
           <div><b>Cả năm:</b> {doc.weeks_hk1 + doc.weeks_hk2} tuần{Number(doc.ppw_hk1) === Number(doc.ppw_hk2) ? ` × ${num(doc.ppw_hk1)} tiết/tuần` : ''} = <b>{num(capOf(doc, 1) + capOf(doc, 2))} tiết</b>
@@ -402,7 +448,7 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
               {' '}{u === cap ? <Pill tone="good">đã phân phối đủ</Pill> : <Pill tone="warn">đã phân phối {u}/{num(cap)}</Pill>}</div> })}
         </div>
 
-        <div className="p1-dochd"><h3>Phân bổ số tiết theo mạch nội dung</h3>{canManage && edit && <button type="button" onClick={() => setStrEdit(!strEdit)}>{strEdit ? 'Đóng' : 'Sửa các cột mạch'}</button>}</div>
+        <div className="p1-dochd"><h3>{multi ? 'Phân bổ số tiết theo môn học' : 'Phân bổ số tiết theo mạch nội dung'}</h3>{canManage && edit && !multi && <button type="button" onClick={() => setStrEdit(!strEdit)}>{strEdit ? 'Đóng' : 'Sửa các cột mạch'}</button>}</div>
         {strEdit && <StrandEditor doc={doc} strands={strands} run={run} />}
         <div className="p1-matrixwrap">
           <table className="p1-strandtbl">
@@ -423,11 +469,11 @@ function DocView({ doc, prog, progs, cat, orgName, canManage, back, reload, onCo
         {sems.filter(s => !sem || s === sem).map(s => <div key={s} className="p1-semblock">
           <h4>HỌC KÌ {s === 1 ? 'I' : 'II'} <small>({used(s)} tiết · tuần {s === 1 ? 1 : doc.weeks_hk1 + 1}–{s === 1 ? doc.weeks_hk1 : doc.weeks_hk1 + doc.weeks_hk2})</small></h4>
           <table className={'p1-ppcttbl' + (edit ? ' editing' : '')}>
-            <colgroup><col style={{ width: 70 }} /><col style={{ width: 90 }} /><col />{edit && <col style={{ width: 150 }} />}{edit && <col style={{ width: 190 }} />}</colgroup>
-            <thead><tr><th>Tuần</th><th>Tiết PPCT</th><th>Bài học</th>{edit && <th>Mạch</th>}{edit && <th></th>}</tr></thead>
+            <colgroup><col style={{ width: 70 }} /><col style={{ width: 90 }} /><col style={{ width: 64 }} /><col />{edit && <col style={{ width: 150 }} />}{edit && <col style={{ width: 190 }} />}</colgroup>
+            <thead><tr><th>Tuần</th><th>Tiết PPCT</th><th>Buổi</th><th>Bài học</th>{edit && <th>Mạch</th>}{edit && <th></th>}</tr></thead>
             <tbody>{semRows(s)}
-              {edit && <tr><td colSpan={5}>{newCh === s ? <ChapterForm strands={strands} onCancel={() => setNewCh(null)}
-                onSave={v => run(supabase.from('ppct_chapters').insert({ ...v, doc_id: doc.id, semester: s, seq: Math.max(0, ...chapters.filter(c => c.semester === s).map(c => c.seq)) + 1 })).then(ok => ok && setNewCh(null))} />
+              {edit && <tr><td colSpan={6}>{newCh === s ? <ChapterForm sem={s} strands={strands} onCancel={() => setNewCh(null)}
+                onSave={v => run(supabase.from('ppct_chapters').insert({ ...v, doc_id: doc.id, semester: v.semester ?? s, seq: Math.max(0, ...chapters.filter(c => c.semester === (v.semester ?? s)).map(c => c.seq)) + 1 })).then(ok => ok && setNewCh(null))} />
                 : <button type="button" className="p1-addline" onClick={() => setNewCh(s)}>+ Thêm chương / chủ đề vào học kì {s === 1 ? 'I' : 'II'}</button>}</td></tr>}
             </tbody>
           </table>
@@ -474,13 +520,15 @@ function StrandEditor({ doc, strands, run }: { doc: Doc; strands: Strand[]; run:
   </div>
 }
 
-function ChapterForm({ c, strands, onSave, onCancel }: { c?: Chapter; strands: Strand[]; onSave: (v: Partial<Chapter>) => void; onCancel: () => void }) {
+function ChapterForm({ c, sem, strands, onSave, onCancel }: { c?: Chapter; sem?: number; strands: Strand[]; onSave: (v: Partial<Chapter>) => void; onCancel: () => void }) {
   const [t, setT] = useState(c?.title ?? ''); const [s, setS] = useState(c?.strand_id ?? ''); const [n, setN] = useState(c?.note ?? '')
+  const [hk, setHk] = useState(c?.semester ?? sem ?? 1)
   return <div className="p1-inlineform">
-    <input autoFocus value={t} placeholder="VD: Chương I: Đa thức" onChange={e => setT(e.target.value)} style={{ flex: 3 }} />
+    <input autoFocus value={t} placeholder="VD: Khoa học tự nhiên · CT2 hoặc Chương I: Đa thức" onChange={e => setT(e.target.value)} style={{ flex: 3 }} />
+    <select value={hk} onChange={e => setHk(Number(e.target.value))} aria-label="Học kỳ"><option value={1}>Học kỳ I</option><option value={2}>Học kỳ II</option></select>
     <select value={s} onChange={e => setS(e.target.value)} aria-label="Mạch nội dung"><option value="">— mạch —</option>{strands.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
     <input value={n} placeholder="Ghi chú" onChange={e => setN(e.target.value)} style={{ flex: 2 }} />
-    <button type="button" onClick={onCancel}>Huỷ</button><button type="button" className="primary" disabled={!t.trim()} onClick={() => onSave({ title: t.trim(), strand_id: s || null, note: n || null })}>Lưu</button>
+    <button type="button" onClick={onCancel}>Huỷ</button><button type="button" className="primary" disabled={!t.trim()} onClick={() => onSave({ title: t.trim(), strand_id: s || null, note: n || null, semester: hk })}>Lưu</button>
   </div>
 }
 

@@ -5,7 +5,7 @@ import {
   CtBadge, Drawer, Empty, Mini, Pill, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, errMsg, norm, timeAgo, useRpcBool, useViewMode,
 } from '../ui'
 import { Drill, useDrill } from '../drill'
-import { catName, catOf, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
+import { catName, catOf, effectiveCatalog, gradeLabel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
 
 type MSet = { id: string; owner_org_id: string; code: string | null; name: string; curriculum_id: string | null; version_id: string | null; subject: string | null
   grade: number | null; description: string | null; status: string; version_no: number; updated_at: string }
@@ -18,7 +18,7 @@ type File = { id: string; lesson_id: string; seq: number; kind: string; title: s
 
 export const BASIS: Record<string, string> = { per_product: 'mỗi sản phẩm', per_group: 'mỗi nhóm', per_student: 'mỗi học sinh', per_class: 'mỗi lớp' }
 export const NORM_CAT: Record<string, string> = { vat_tu: 'Nguyên vật liệu', dung_cu: 'Dụng cụ', thiet_bi: 'Thiết bị dùng chung' }
-const FILE_KIND: Record<string, [string, string]> = { giao_an: ['Giáo án / KHBD', '📘'], huong_dan: ['Hướng dẫn giáo viên', '🧭'], phieu_hoc_tap: ['Phiếu học tập', '📝'],
+const FILE_KIND: Record<string, [string, string]> = { bai_giang: ['Bài giảng', '🎞️'], giao_an: ['Giáo án / KHBD', '📘'], huong_dan: ['Hướng dẫn giáo viên', '🧭'], phieu_hoc_tap: ['Phiếu học tập', '📝'],
   hinh_anh: ['Hình ảnh', '🖼️'], video: ['Video', '🎬'], tham_khao: ['Tài liệu tham khảo', '📎'] }
 export const SET_STATUS: Record<string, [string, '' | 'good' | 'warn' | 'info']> = { draft: ['Bản nháp', ''], review: ['Đang thẩm định', 'warn'], published: ['Đã phát hành', 'good'], archived: ['Ngừng dùng', ''] }
 
@@ -28,12 +28,17 @@ export const needQty = (n: Pick<Norm, 'qty' | 'basis'>, students: number, groups
 const points = (s: string | null) => (s ?? '').split(/;\s*|\n+|(?<=\.)\s+(?=[A-ZÀ-Ỹ])/).map(x => x.trim()).filter(Boolean)
 
 type Full = { kind: 'lesson' | 'set'; id: string } | null
+// Bài học trong chương trình (Chương trình › Khối › Môn › Bài học) — mỗi bài có đúng một học liệu
+type CL = { id: string; title: string; periods: number; sessions: number; version_id: string; prog: string; grade: number | null; subject: string | null }
+type DItem = { cl: CL | null; l: MLesson | null }
 
-// 1.1.2 Học liệu: kho bài học & bộ học liệu theo chương trình / môn / khối; mỗi bài có hoạt động, sản phẩm mẫu, tiêu chí, tài liệu, định mức vật tư
+// 1.1.2 Học liệu (docs/PH1-cau-truc-1.1.md): một bài học (gán vào một môn trong một chương trình) = một học liệu gồm
+// Thông tin bài học · Nội dung bài học · Link học liệu (bài giảng, phiếu học tập) · Định mức vật tư. Bộ học liệu giữ như bản trước (chờ xem lại).
 export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
   const [sets, setSets] = useState<MSet[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
   const [lessons, setLessons] = useState<MLesson[]>([])
+  const [cls, setCls] = useState<CL[]>([])
   const [counts, setCounts] = useState<{ norms: Map<string, number>; files: Map<string, number> }>({ norms: new Map(), files: new Map() })
   const [tab, setTab] = useState<'lessons' | 'sets'>('lessons')
   const [q, setQ] = useState('')
@@ -57,7 +62,14 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
       supabase.from('material_files').select('lesson_id'),
     ])
     if (s.error) return setMsg(errMsg(s.error.message))
-    setSets((s.data as MSet[]) ?? []); setProgs((c.data as Curriculum[]) ?? []); setLessons((l.data as MLesson[]) ?? [])
+    const ps = (c.data as Curriculum[]) ?? []
+    setSets((s.data as MSet[]) ?? []); setProgs(ps); setLessons((l.data as MLesson[]) ?? [])
+    const vids = ps.map(p => p.current_version_id).filter(Boolean) as string[]
+    if (vids.length) {
+      const r = await supabase.from('curriculum_lessons').select('id, title, periods, sessions, version_id, seq, curriculum_units!inner(grade, subject_main, seq)').in('version_id', vids)
+      setCls(((r.data as any[]) ?? []).sort((a, b) => a.curriculum_units.seq - b.curriculum_units.seq || a.seq - b.seq).map(x => ({ id: x.id, title: x.title, periods: x.periods, sessions: x.sessions ?? 1,
+        version_id: x.version_id, prog: ps.find(p => p.current_version_id === x.version_id)!.id, grade: x.curriculum_units.grade, subject: x.curriculum_units.subject_main })))
+    } else setCls([])
     const cnt = (rows: { lesson_id: string }[] | null) => { const m = new Map<string, number>(); (rows ?? []).forEach(r => m.set(r.lesson_id, (m.get(r.lesson_id) ?? 0) + 1)); return m }
     setCounts({ norms: cnt(n.data as any), files: cnt(fl.data as any) })
   }
@@ -82,8 +94,39 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
       norms: ((n.data as Norm[]) ?? []).map(x => ({ name: x.name, spec: x.spec, unit: x.unit, qty: Number(x.qty), basis: x.basis, category: x.category })),
       files: ((fl.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })) })
     if (error) return setMsg(errMsg(error.message))
-    setPreview(null); setNote(`Đã tạo giáo án “${l.title}” — xem ở Soạn bài giảng & kho hoạt động.`)
+    setPreview(null); setNote(`Đã tạo bài giảng “${l.title}” — xem ở Soạn bài giảng & kho hoạt động.`)
   }
+
+  // Tạo học liệu cho một bài chờ: đặt vào bộ học liệu của đơn vị theo chương trình · môn · khối (tạo bộ nếu chưa có)
+  async function createFor(cl: CL) {
+    if (!orgId) return
+    const p = progs.find(x => x.id === cl.prog)
+    let set = sets.find(s => s.owner_org_id === orgId && s.curriculum_id === cl.prog && s.grade === cl.grade && s.subject === cl.subject)
+    if (!set) {
+      const { data, error } = await supabase.from('material_sets').insert({ owner_org_id: orgId, name: `Học liệu ${p?.code ?? ''} · ${catName(cat, 'subject', cl.subject)} · ${cl.grade != null ? gradeLabel(cl.grade) : ''}`,
+        curriculum_id: cl.prog, version_id: cl.version_id, subject: cl.subject, grade: cl.grade, status: 'draft' }).select('*').single()
+      if (error) return setMsg(errMsg(error.message)); set = data as MSet
+    }
+    const { data, error } = await supabase.from('material_lessons').insert({ set_id: set.id, curriculum_lesson_id: cl.id, seq: lessons.filter(l => l.set_id === set!.id).length + 1,
+      title: cl.title, periods: cl.periods, sessions: Math.min(20, cl.sessions), subject_main: cl.subject }).select('id').single()
+    if (error) return setMsg(errMsg(error.message))
+    await load(); setFull({ kind: 'lesson', id: (data as { id: string }).id })
+  }
+  const hlOf = (cl: CL) => lessons.find(l => l.curriculum_lesson_id === cl.id) ?? null
+  const dItems: DItem[] = [...cls.map(cl => ({ cl, l: hlOf(cl) })), ...lessons.filter(l => !l.curriculum_lesson_id || !cls.some(c => c.id === l.curriculum_lesson_id)).map(l => ({ cl: null, l }))]
+  const dKey = (x: DItem) => x.cl ? { prog: x.cl.prog, grade: x.cl.grade, subject: x.cl.subject }
+    : { prog: setOf(x.l!)?.curriculum_id ?? null, grade: setOf(x.l!)?.grade ?? null, subject: setOf(x.l!)?.subject ?? null }
+  const renderDrill = (list: DItem[]) => <table className="p1-list"><thead><tr><th>Bài học</th><th>Số buổi · tiết</th><th>Học liệu</th><th></th></tr></thead>
+    <tbody>{list.map((x, i) => { const l = x.l
+      return <tr key={x.cl?.id ?? l!.id} onClick={() => l ? setPreview(l.id) : undefined} style={l ? undefined : { cursor: 'default' }}>
+        <td><b>{i + 1}. {x.cl?.title ?? l!.title}</b>{!x.cl && <><br /><small className="sub">chưa gắn bài học trong chương trình</small></>}</td>
+        <td>{x.cl?.sessions ?? l!.sessions} buổi · {x.cl?.periods ?? l!.periods} tiết</td>
+        <td>{l ? <><Pill tone={SET_STATUS[setOf(l)?.status ?? '']?.[1]}>{SET_STATUS[setOf(l)?.status ?? '']?.[0] ?? 'Có học liệu'}</Pill> <small className="sub">{l.steps.length} hoạt động · {counts.files.get(l.id) ?? 0} link · {counts.norms.get(l.id) ?? 0} vật tư</small></>
+          : <Pill tone="warn">Bài chờ — chưa có học liệu</Pill>}</td>
+        <td>{l ? <div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPreview(l.id) }}>👁</button>
+          <button type="button" title="Mở đầy đủ" onClick={e => { e.stopPropagation(); setFull({ kind: 'lesson', id: l.id }) }}>✎</button></div>
+          : canManage && <button type="button" className="primary" onClick={() => createFor(x.cl!)}>+ Tạo học liệu</button>}</td>
+      </tr> })}</tbody></table>
 
   // ===== Trang đầy đủ =====
   if (full?.kind === 'lesson') { const l = lessons.find(x => x.id === full.id); const s = l && setOf(l)
@@ -140,23 +183,23 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   return (
     <>
       <div className="p1-stats">
-        <Stat label="Bộ học liệu" value={sets.length} sub={`${sets.filter(s => s.status === 'published').length} đã phát hành`} />
-        <Stat label="Bài học" value={lessons.length} sub={`${lessons.reduce((a, l) => a + l.periods, 0)} tiết`} />
+        <Stat label="Học liệu" value={lessons.length} sub={`${lessons.reduce((a, l) => a + l.periods, 0)} tiết`} />
+        <Stat label="Bài chờ" value={cls.filter(c => !hlOf(c)).length} sub={`trên ${cls.length} bài học của chương trình`} tone={cls.some(c => !hlOf(c)) ? 'warn' : ''} />
         <Stat label="Bài có định mức vật tư" value={lessons.filter(l => counts.norms.get(l.id)).length} />
         <Stat label="Chương trình có học liệu" value={new Set(sets.map(s => s.curriculum_id).filter(Boolean)).size} />
       </div>
       {msg && <p className="msg">{msg}</p>}
       {note && <div className="p1-alert good">{note}{go && <button type="button" onClick={() => go('Soạn bài giảng & kho hoạt động')}>Mở Soạn bài giảng</button>}</div>}
       <div className="bar">
-        <StatusTabs items={[['lessons', 'Kho bài học', lessons.length], ['sets', 'Bộ học liệu', sets.length]]} value={tab} onChange={t => { setTab(t); setF({ ...f, set: '', status: '' }) }} />
+        <StatusTabs items={[['lessons', 'Học liệu theo chương trình', lessons.length], ['sets', 'Bộ học liệu (chờ xem lại)', sets.length]]} value={tab} onChange={t => { setTab(t); setF({ ...f, set: '', status: '' }) }} />
         {canManage && <button type="button" className="primary" onClick={newSet}>+ Bộ học liệu</button>}
       </div>
       <Toolbar q={q} onQ={setQ} placeholder={tab === 'lessons' ? 'Tìm theo tên bài, mục tiêu, bộ học liệu…' : 'Tìm bộ học liệu…'} filters={filters} values={f}
         onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} />
 
       {tab === 'lessons' && (flat ? (lShown.length === 0 ? <Empty>Không có bài học phù hợp bộ lọc.</Empty> : renderLessons(lShown))
-        : <Drill items={lessons} keyOf={l => { const st = setOf(l); return { prog: st?.curriculum_id ?? null, grade: st?.grade ?? null, subject: st?.subject ?? null } }}
-            progs={progs} cat={cat} path={path} setPath={setPath} unit="bài" weight={l => l.periods} weightUnit="tiết" icon="📚" renderItems={renderLessons} />)}
+        : <Drill items={dItems} keyOf={dKey} progs={progs} cat={cat} path={path} setPath={setPath} unit="bài" weight={x => x.cl?.periods ?? x.l!.periods} weightUnit="tiết"
+            icon="📚" renderItems={renderDrill} />)}
 
       {tab === 'sets' && (sShown.length === 0 ? <Empty>Không có bộ học liệu phù hợp.</Empty> : view === 'grid' ? (
         <div className="p1-grid">{sShown.map(s => { const p = progOf(s); const ls = lessons.filter(l => l.set_id === s.id)
@@ -192,7 +235,7 @@ function LessonPreview({ lesson: l, set, prog, cat, onClose, onExpand, onDesign 
   return (
     <Drawer color={prog?.color} onClose={onClose} title={l.title}
       badges={[prog?.code, `${catName(cat, 'subject', set.subject)}${set.grade != null ? ' · ' + gradeLabel(set.grade) : ''}`, `${l.periods} tiết`, `${l.sessions} buổi`]}
-      footer={<><span className="note">{set.name}</span><button type="button" onClick={() => onDesign(l)}>Tạo giáo án từ bài này</button><button type="button" className="primary" onClick={onExpand}>Mở rộng ⤢</button></>}>
+      footer={<><span className="note">{set.name}</span><button type="button" onClick={() => onDesign(l)}>Soạn bài giảng từ học liệu này</button><button type="button" className="primary" onClick={onExpand}>Mở rộng ⤢</button></>}>
       {l.objectives && <div className="p1-box goal"><h4>🎯 Mục tiêu bài học</h4><ul className="p1-checks">{points(l.objectives).map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
       <Mini items={[['Thời lượng', `${l.periods} tiết`], ['Hoạt động', l.steps.length], ['Vật tư', norms.length], ['Tài liệu', files.length]]} />
       {l.product_requirements && <div className="p1-box"><h4>🧩 Yêu cầu sản phẩm</h4><p className="p1-text">{l.product_requirements}</p></div>}
@@ -272,7 +315,7 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
 }
 
 // ===== Trang đầy đủ của một bài: mặc định chỉ xem, bấm "Sửa" mới chỉnh =====
-type LTab = 'info' | 'steps' | 'norms' | 'files' | 'criteria'
+type LTab = 'info' | 'steps' | 'files' | 'norms' | 'criteria'
 export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabel, onAll, reload }: {
   lessonId: string; set: MSet; prog: Curriculum | null; cat: CatItem[]; canEdit: boolean; back: () => void; backLabel: string; onAll: () => void; reload: () => void
 }) {
@@ -283,13 +326,21 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
   const [editing, setEditing] = useState(false)
   const [msg, setMsg] = useState('')
   const [calc, setCalc] = useState({ students: 35, groups: 7, products: 7 })
+  const [base, setBase] = useState<{ title: string; grade: number | null; subject: string | null } | null>(null)
+  const [designs, setDesigns] = useState<{ id: string; title: string; status: string; updated_at: string }[]>([])
   async function load() {
-    const [a, b, c] = await Promise.all([
+    const [a, b, c, d] = await Promise.all([
       supabase.from('material_lessons').select('*').eq('id', lessonId).single(),
       supabase.from('material_norms').select('*').eq('lesson_id', lessonId).order('seq'),
       supabase.from('material_files').select('*').eq('lesson_id', lessonId).order('seq'),
+      supabase.from('lesson_designs').select('id, title, status, updated_at').eq('material_lesson_id', lessonId).order('created_at'),
     ])
-    setL(a.data as MLesson); setNorms((b.data as Norm[]) ?? []); setFiles((c.data as File[]) ?? [])
+    const ml = a.data as MLesson
+    setL(ml); setNorms((b.data as Norm[]) ?? []); setFiles((c.data as File[]) ?? []); setDesigns((d.data as any[]) ?? [])
+    if (ml?.curriculum_lesson_id) {
+      const r = await supabase.from('curriculum_lessons').select('title, curriculum_units(grade, subject_main)').eq('id', ml.curriculum_lesson_id).maybeSingle()
+      const x = r.data as any; setBase(x ? { title: x.title, grade: x.curriculum_units?.grade ?? null, subject: x.curriculum_units?.subject_main ?? null } : null)
+    }
   }
   useEffect(() => { load() }, [lessonId])
   const run = async (q: PromiseLike<{ error: { message: string } | null }>, all = false) => { const { error } = await q; if (error) setMsg(errMsg(error.message)); else { setMsg(''); load(); if (all) reload() } }
@@ -309,11 +360,15 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
           const { error } = await supabase.from('material_lessons').delete().eq('id', l.id); if (error) return setMsg(errMsg(error.message)); reload(); back() }}>Xoá bài</button>}
         <p className="p1-sub">{set.name}{l.subjects_integrated.length ? ' · tích hợp ' + l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') : ''}</p></div>
       {msg && <p className="msg">{msg}</p>}
-      <div className="bar"><Tabs items={[['info', 'Thông tin bài'], ['steps', 'Hoạt động', l.steps.length], ['norms', 'Định mức vật tư', norms.length], ['files', 'Tài liệu', files.length], ['criteria', 'Tiêu chí', l.criteria.length]] as [LTab, string, number?][]} value={tab} onChange={setTab} /></div>
+      <div className="bar"><Tabs items={[['info', 'Thông tin bài học'], ['steps', 'Nội dung bài học', l.steps.length], ['files', 'Link học liệu', files.length + designs.length], ['norms', 'Định mức vật tư', norms.length], ['criteria', 'Tiêu chí (chờ xem lại)', l.criteria.length]] as [LTab, string, number?][]} value={tab} onChange={setTab} /></div>
 
       {tab === 'info' && (!editable ? <>
         {l.objectives && <div className="p1-box goal" style={{ marginBottom: 16 }}><h4>🎯 Mục tiêu / yêu cầu cần đạt</h4><ul className="p1-checks">{points(l.objectives).map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
         <Section title="Thông tin bài học"><dl className="p1-kv">
+          <div><dt>Chương trình</dt><dd>{prog ? `${prog.code} · ${prog.name}` : '—'}</dd></div>
+          <div><dt>Cấp học · Khối</dt><dd>{(base?.grade ?? set.grade) != null ? `${catName(cat, 'level', levelOfGrade(cat, (base?.grade ?? set.grade)!))} · ${gradeLabel((base?.grade ?? set.grade)!)}` : '—'}</dd></div>
+          <div><dt>Môn học</dt><dd>{catName(cat, 'subject', base?.subject ?? set.subject) || '—'}</dd></div>
+          <div><dt>Bài học trong chương trình</dt><dd>{base?.title ?? <span className="sub">chưa gắn</span>}</dd></div>
           <div><dt>Mã bài</dt><dd>{l.code ?? '—'}</dd></div><div><dt>Thời lượng</dt><dd>{l.periods} tiết · {l.sessions} buổi</dd></div>
           <div><dt>Môn chủ đạo</dt><dd>{catName(cat, 'subject', l.subject_main) || '—'}</dd></div>
           <div><dt>Môn tích hợp</dt><dd>{l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') || '—'}</dd></div>
@@ -380,7 +435,14 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
         </Section>
       </>}
 
-      {tab === 'files' && <Section title="Tài liệu bài dạy" actions={editable && <button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'tham_khao', title: 'Tài liệu mới' }))}>+ Tài liệu</button>}>
+      {tab === 'files' && <Section title="Bài giảng soạn từ học liệu này">
+        {designs.length === 0 ? <Empty>Chưa có bài giảng — soạn ở “Soạn bài giảng & kho hoạt động”.</Empty> :
+          <table className="p1-table"><thead><tr><th>Phiên bản</th><th>Bài giảng</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead>
+            <tbody>{designs.map((d, i) => <tr key={d.id}><td>PB {i + 1}</td><td><b>{d.title}</b></td><td>{d.status === 'published' ? <Pill tone="good">Đã xuất bản</Pill> : <Pill>{d.status === 'review' ? 'Chờ duyệt' : 'Nháp'}</Pill>}</td><td>{timeAgo(d.updated_at)}</td></tr>)}</tbody></table>}
+      </Section>}
+      {tab === 'files' && <Section title="Link học liệu: bài giảng, phiếu học tập, tài liệu" actions={editable && <><button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'bai_giang', title: 'Bài giảng' }))}>+ Bài giảng</button>
+        <button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'phieu_hoc_tap', title: 'Phiếu học tập' }))}>+ Phiếu học tập</button>
+        <button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'tham_khao', title: 'Tài liệu mới' }))}>+ Khác</button></>}>
         {files.length === 0 ? <Empty>Chưa có tài liệu.</Empty> : !editable ? <ul className="p1-checks" style={{ gap: 10 }}>{files.map(f => <li key={f.id} style={{ alignItems: 'center' }}>
           <span>{FILE_KIND[f.kind]?.[1]} {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.title}</a> : <b>{f.title}</b>} <small className="sub">· {FILE_KIND[f.kind]?.[0]}{!f.url ? ' · chưa có đường dẫn' : ''}</small></span></li>)}</ul>
           : <table className="p1-table"><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th><th></th></tr></thead>
