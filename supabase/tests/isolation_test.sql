@@ -1807,7 +1807,7 @@ select pg_temp.chk('admin_ph', 'CTGD: ban hành → đang hiệu lực',
 select pg_temp.chk('admin_ph', 'CTGD: bản đã ban hành không sửa được nội dung', $q$update curriculum_units set title = 'ISO đổi' where title = 'ISO chủ đề 1'$q$, 'rows:0');
 select pg_temp.chk('admin_ph', 'CTGD: bản đã ban hành không sửa được ghi chú',
   $q$update curriculum_versions set change_note = 'ISO sửa' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, 'ERR');
-select pg_temp.chk('admin_ph', 'CTGD: không xoá chương trình đã ban hành', $q$delete from curricula where name = 'ISO CT trường A'$q$, 'rows:0');
+select pg_temp.chk('admin_ph', 'CTGD: đơn vị sở hữu xoá được chương trình đã ban hành (thử, không giữ)', $q$delete from curricula where name = 'ISO CT trường A'$q$, 'rows:1');
 select pg_temp.chk('admin_kb', 'CTGD: chương trình phạm vi "trong trường" không lộ sang trường khác', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '0');
 select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_new_version(c.id, null, 'ISO v2')::text from curricula c where c.name = 'ISO CT trường A'$q$, true);
 select pg_temp.chk('admin_ph', 'CTGD: phiên bản mới sao chép bài học và môn học của bản hiệu lực',
@@ -1883,8 +1883,9 @@ select pg_temp.chk('admin_ph', 'PPCT văn bản mẫu: Toán 8 HK I = 72 tiết,
 select pg_temp.chk('admin_kb', 'PPCT văn bản: trường khác không thấy văn bản của THCS-PH', format($q$select count(*) from ppct_docs where org_id = %L$q$, pg_temp.oid_('THCS-PH')), '0');
 select pg_temp.chk('admin_kb', 'PPCT văn bản: trường khác không sửa dòng bài của THCS-PH',
   format($q$update ppct_rows set title = 'ISO' where doc_id in (select id from ppct_docs where org_id = %L)$q$, pg_temp.oid_('THCS-PH')), 'rows:0');
+select pg_temp.probe('admin_kb@iso-test.local', $q$select ppct_doc_copy(id)::text from ppct_docs where title = 'PPCT STEM Liên môn KHTN 6 (CT2)'$q$, true);
 select pg_temp.chk('admin_kb', 'PPCT văn bản: trường sao chép văn bản KDI thành của mình',
-  $q$select (ppct_doc_copy(id) is not null)::text from ppct_docs where title = 'PPCT STEM Liên môn KHTN 6 (CT2)'$q$, 'true');
+  $q$select count(*) from ppct_docs where org_id = my_org_id() and based_on_id is not null$q$, '1');
 select pg_temp.chk('admin_kb', 'PPCT văn bản: bản sao giữ đủ dòng bài',
   $q$select ((select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id()) =
      (select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.title = 'PPCT STEM Liên môn KHTN 6 (CT2)')
@@ -1895,10 +1896,11 @@ select pg_temp.chk('iso_gv', 'PPCT văn bản: giáo viên không lập văn b�
   $q$insert into ppct_docs (org_id, subject, grade, school_year, title) values (my_org_id(), 'toan', 8, '2026-2027', 'ISO PPCT GV')$q$, 'ERR');
 select pg_temp.chk('admin_ph', 'PPCT văn bản: không gắn dòng vào chương của văn bản khác',
   $q$insert into ppct_rows (doc_id, chapter_id, title) select d.id, c.id, 'ISO' from ppct_docs d, ppct_chapters c join ppct_docs d2 on d2.id = c.doc_id
-     where d.org_id = my_org_id() and d.subject = 'toan' and d2.subject = 'khtn' and d2.org_id = my_org_id() limit 1$q$, 'ERR');
+     where d.org_id = my_org_id() and d.subject = 'toan' and d2.subject = 'khtn' and d2.org_id = my_org_id() limit 1$q$, 'ERR*');
 -- Xoá chương trình giáo dục (kể cả đã ban hành)
 select pg_temp.chk('admin_ph', 'Xoá chương trình: trường không xoá chương trình của KDI', $q$delete from curricula where name = 'ISO CT KDI'$q$, 'rows:0');
-select pg_temp.chk('kdi', 'Xoá chương trình: KDI xoá được chương trình đã ban hành của mình', $q$delete from curricula where name = 'ISO CT KDI'$q$, 'rows:1');
+select pg_temp.probe('kdi@iso-test.local', $q$delete from curricula where name = 'ISO CT KDI'$q$, true);
+select pg_temp.chk('kdi', 'Xoá chương trình: KDI xoá được chương trình đã ban hành của mình', $q$select count(*) from curricula where name = 'ISO CT KDI'$q$, '0');
 select pg_temp.chk('admin_kb', 'Xoá chương trình: bản kế thừa vẫn còn, gỡ liên kết nguồn',
   $q$select count(*) from curricula where name = 'ISO CT kế thừa' and source_curriculum_id is null$q$, '1');
 -- Giáo án triển khai
