@@ -130,6 +130,7 @@ begin
     delete from approval_requests where kind = 'curriculum' and title like 'ISO CT%';
     if to_regclass('public.ppct_plans') is not null then
       delete from ppct_plans where title like 'ISO%';
+      if to_regclass('public.ppct_docs') is not null then delete from ppct_docs where title like 'ISO%' or org_id = pg_temp.oid_('THCS-KB'); end if;
       delete from lesson_designs where title like 'ISO%';
       delete from program_packages where name like 'ISO%';
     end if;
@@ -1875,6 +1876,31 @@ select pg_temp.chk('iso_gv', 'PPCT: giáo viên không tạo kế hoạch',
   $q$insert into ppct_plans (org_id, title, school_year, start_date) values (my_org_id(), 'ISO kế hoạch GV', '2026-2027', '2026-09-07')$q$, 'ERR');
 select pg_temp.chk('kdi', 'PPCT: quản trị nền tảng lập kế hoạch cho trường bất kỳ',
   format($q$insert into ppct_plans (org_id, title, school_year, start_date) values (%L, 'ISO kế hoạch KDI', '2026-2027', '2026-09-07')$q$, pg_temp.oid_('THCS-KB')), 'rows:1');
+-- Văn bản PPCT (060)
+select pg_temp.chk('admin_ph', 'PPCT văn bản mẫu: Toán 8 HK I = 72 tiết, HK II = 68 tiết',
+  $q$select string_agg(semester || ':' || t, ',' order by semester) from (select c.semester, sum(r.periods) t from ppct_rows r join ppct_chapters c on c.id = r.chapter_id
+     join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id() and d.subject = 'toan' and d.grade = 8 group by c.semester) x$q$, '1:72,2:68');
+select pg_temp.chk('admin_kb', 'PPCT văn bản: trường khác không thấy văn bản của THCS-PH', format($q$select count(*) from ppct_docs where org_id = %L$q$, pg_temp.oid_('THCS-PH')), '0');
+select pg_temp.chk('admin_kb', 'PPCT văn bản: trường khác không sửa dòng bài của THCS-PH',
+  format($q$update ppct_rows set title = 'ISO' where doc_id in (select id from ppct_docs where org_id = %L)$q$, pg_temp.oid_('THCS-PH')), 'rows:0');
+select pg_temp.chk('admin_kb', 'PPCT văn bản: trường sao chép văn bản KDI thành của mình',
+  $q$select (ppct_doc_copy(id) is not null)::text from ppct_docs where title = 'PPCT STEM Liên môn KHTN 6 (CT2)'$q$, 'true');
+select pg_temp.chk('admin_kb', 'PPCT văn bản: bản sao giữ đủ dòng bài',
+  $q$select ((select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id()) =
+     (select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.title = 'PPCT STEM Liên môn KHTN 6 (CT2)')
+     and exists (select 1 from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id()))::text$q$, 'true');
+select pg_temp.chk('admin_kb', 'PPCT văn bản: dựng lại từ chương trình giáo dục',
+  $q$select (ppct_doc_from_curriculum(id) > 0)::text from ppct_docs where org_id = my_org_id() limit 1$q$, 'true');
+select pg_temp.chk('iso_gv', 'PPCT văn bản: giáo viên không lập văn bản',
+  $q$insert into ppct_docs (org_id, subject, grade, school_year, title) values (my_org_id(), 'toan', 8, '2026-2027', 'ISO PPCT GV')$q$, 'ERR');
+select pg_temp.chk('admin_ph', 'PPCT văn bản: không gắn dòng vào chương của văn bản khác',
+  $q$insert into ppct_rows (doc_id, chapter_id, title) select d.id, c.id, 'ISO' from ppct_docs d, ppct_chapters c join ppct_docs d2 on d2.id = c.doc_id
+     where d.org_id = my_org_id() and d.subject = 'toan' and d2.subject = 'khtn' and d2.org_id = my_org_id() limit 1$q$, 'ERR');
+-- Xoá chương trình giáo dục (kể cả đã ban hành)
+select pg_temp.chk('admin_ph', 'Xoá chương trình: trường không xoá chương trình của KDI', $q$delete from curricula where name = 'ISO CT KDI'$q$, 'rows:0');
+select pg_temp.chk('kdi', 'Xoá chương trình: KDI xoá được chương trình đã ban hành của mình', $q$delete from curricula where name = 'ISO CT KDI'$q$, 'rows:1');
+select pg_temp.chk('admin_kb', 'Xoá chương trình: bản kế thừa vẫn còn, gỡ liên kết nguồn',
+  $q$select count(*) from curricula where name = 'ISO CT kế thừa' and source_curriculum_id is null$q$, '1');
 -- Giáo án triển khai
 select pg_temp.chk('iso_gv', 'Giáo án: giáo viên soạn giáo án của trường mình',
   $q$insert into lesson_designs (org_id, title) values (my_org_id(), 'ISO giáo án')$q$, 'rows:1');

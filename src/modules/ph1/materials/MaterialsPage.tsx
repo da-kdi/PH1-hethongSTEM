@@ -229,11 +229,16 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
   const upd = (p: Partial<MSet>) => run(supabase.from('material_sets').update(p).eq('id', set.id))
   const missing = std.filter(s => !lessons.some(l => l.curriculum_lesson_id === s.id))
   const ed = editable && editing
+  async function removeSet() {
+    if (!confirm(`Xoá bộ học liệu “${set.name}” cùng ${lessons.length} bài, định mức và tài liệu? Giáo án / kế hoạch đã dùng bài được giữ lại nhưng bỏ liên kết.`)) return
+    const { error } = await supabase.from('material_sets').delete().eq('id', set.id); if (error) return setMsg(errMsg(error.message)); back(); reload()
+  }
   return (
     <>
       <button type="button" className="p1-back" onClick={back}>← Tất cả học liệu</button>
       <div className="p1-head">{c && <CtBadge color={c.color} code={c.code} />}<h2>{set.name}</h2><Pill tone={SET_STATUS[set.status]?.[1]}>{SET_STATUS[set.status]?.[0]}</Pill>
         {editable && <button type="button" className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Xong' : '✎ Sửa'}</button>}
+        {editable && <button type="button" className="danger" onClick={removeSet}>Xoá bộ học liệu</button>}
         <p className="p1-sub">{[c && `${c.code} · ${c.name}`, catName(cat, 'subject', set.subject), set.grade != null ? gradeLabel(set.grade) : '', `phiên bản ${set.version_no}`, `cập nhật ${timeAgo(set.updated_at)}`].filter(Boolean).join(' · ')}</p></div>
       {msg && <p className="msg">{msg}</p>}
       <Section title="Thông tin bộ học liệu">
@@ -300,6 +305,8 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
       <div className="p1-actions"><button type="button" className="p1-back" onClick={back}>{backLabel}</button><span className="sub">·</span><button type="button" className="p1-back" onClick={onAll}>Tất cả học liệu</button></div>
       <div className="p1-head">{prog && <CtBadge color={prog.color} code={prog.code} />}<h2>{l.title}</h2><Pill>{l.periods} tiết · {l.sessions} buổi</Pill>
         {canEdit && <button type="button" className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? '✓ Xong' : '✎ Sửa'}</button>}
+        {canEdit && <button type="button" className="danger" onClick={async () => { if (!confirm(`Xoá bài “${l.title}” cùng định mức, tài liệu?`)) return
+          const { error } = await supabase.from('material_lessons').delete().eq('id', l.id); if (error) return setMsg(errMsg(error.message)); reload(); back() }}>Xoá bài</button>}
         <p className="p1-sub">{set.name}{l.subjects_integrated.length ? ' · tích hợp ' + l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') : ''}</p></div>
       {msg && <p className="msg">{msg}</p>}
       <div className="bar"><Tabs items={[['info', 'Thông tin bài'], ['steps', 'Hoạt động', l.steps.length], ['norms', 'Định mức vật tư', norms.length], ['files', 'Tài liệu', files.length], ['criteria', 'Tiêu chí', l.criteria.length]] as [LTab, string, number?][]} value={tab} onChange={setTab} /></div>

@@ -97,6 +97,8 @@ export function ItemDrawer({ item, plan, prog, orgName, canEdit, onClose, onOpen
     <Drawer color={prog?.color} title={`${item.title}${item.part > 1 ? ` (phần ${item.part})` : ''}`} onClose={onClose}
       badges={[prog?.code, plan.title, `Tuần ${item.week_no}`, `${item.periods} tiết`]}
       footer={<><span className="note">{orgName}</span>
+        {canEdit && <button type="button" className="danger" onClick={async () => { if (!confirm('Xoá mục này khỏi lịch?')) return
+          const { error } = await supabase.from('ppct_items').delete().eq('id', item.id); if (error) return setMsg(errMsg(error.message)); onChanged(); onClose() }}>Xoá</button>}
         {canEdit && item.status !== 'done' && <button type="button" onClick={() => upd({ week_no: item.week_no + 1, planned_date: item.planned_date ? addD(item.planned_date, 7) : null })}>Dời sang tuần sau</button>}
         {canEdit && item.status !== 'done' && <button type="button" className="primary" onClick={() => upd({ status: 'done', done_on: today() })}>✓ Ghi nhận đã dạy</button>}
         <button type="button" onClick={onOpenPlan}>Mở kế hoạch ⤢</button></>}>

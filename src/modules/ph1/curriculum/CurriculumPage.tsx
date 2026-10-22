@@ -301,6 +301,14 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
     }
     setTargets(v.targets); setNote('Đã lưu thông tin chung.'); reload(); return null
   }
+  async function removeProgram() {
+    const n = pkgs.length
+    if (!confirm(`Xoá chương trình “${cur.name}” cùng mọi phiên bản, chủ đề, bài học?${n ? ` Chương trình đang nằm trong ${n} gói — các dòng gói này cũng bị gỡ.` : ''} Bộ học liệu, kế hoạch PPCT gắn chương trình được giữ lại nhưng bỏ liên kết. Không hoàn tác được.`)) return
+    const { data, error } = await supabase.from('curricula').delete().eq('id', cur.id).select('id')
+    if (error) return setMsg(errText(error.message))
+    if (!data?.length) return setMsg('Không xoá được — chỉ đơn vị xây dựng chương trình mới xoá được.')
+    back(); reload()
+  }
   async function newVersion() {
     const { data, error } = await supabase.rpc('curriculum_new_version', { p_curriculum: cur.id, p_from: sel, p_label: null, p_note: null })
     if (error) return setMsg(errText(error.message))
@@ -340,6 +348,7 @@ function ProgramDetail({ cur, orgId, cat, canManage, userId, orgs, below, isPlat
         </span>}
         {isOwner && canManage && !wip && <button type="button" className="primary" onClick={newVersion}>Tạo phiên bản mới để sửa</button>}
         {isOwner && canManage && wip && wip.id !== sel && <button type="button" onClick={() => setSel(wip.id)}>Mở bản đang soạn</button>}
+        {isOwner && canManage && <button type="button" className="danger" onClick={removeProgram}>Xoá chương trình</button>}
         <p className="p1-sub">{[cur.issuer ?? cur.owner_name, cur.grades.length ? 'Khối ' + cur.grades.join(', ') : '', SCOPE[cur.scope]].filter(Boolean).join(' · ')}
           {sourceName && <> · Kế thừa từ <b>{sourceName}</b></>}
           {version && !editable && <> · <i>{isOwner && canManage ? (version.status === 'pending' ? 'đang chờ duyệt — chỉ xem' : version.status === 'approved' ? 'đã duyệt — chờ ban hành' : 'phiên bản đã ban hành không sửa trực tiếp: bấm “Tạo phiên bản mới để sửa”') : 'chỉ xem'}</i></>}</p>

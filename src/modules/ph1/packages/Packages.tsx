@@ -117,6 +117,9 @@ function PackageDetail({ p, items, apps, cat, programs, vers, subs, orgs, below,
         <h2>{p.name}</h2>
         <Pill tone={STATUS[p.status]?.[1]}>{STATUS[p.status]?.[0] ?? p.status}</Pill>
         {canApply && <button type="button" onClick={copy}>Tạo gói mới từ gói này</button>}
+        {editable && <button type="button" className="danger" onClick={async () => {
+          if (!confirm(`Xoá gói “${p.name}”? ${apps.length ? `Gói đang áp dụng cho ${apps.length} trường — các bản áp dụng cũng bị gỡ (kế hoạch PPCT giữ lại). ` : ''}Không hoàn tác được.`)) return
+          const { error } = await supabase.from('program_packages').delete().eq('id', p.id); if (error) return setMsg(errMsg(error.message)); back(); reload() }}>Xoá gói</button>}
         {p.based_on_id && <p className="p1-sub">Tạo từ một gói có sẵn · cập nhật {fmtDY(p.updated_at.slice(0, 10))}</p>}
       </div>
       {msg && <p className="msg">{msg}</p>}

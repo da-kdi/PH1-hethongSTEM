@@ -49,6 +49,10 @@ function ByProgram({ orgId, onManage }: { orgId: string | null; onManage: () => 
     if (rows.length) { const r = await supabase.from('course_lessons').insert(rows); if (r.error) return setMsg(errMsg(r.error.message)) }
     setNote(`Đã tạo khoá học từ “${s.name}” với ${rows.length} bài (bản nháp).`); setPick(''); load()
   }
+  async function remove(x: Course) {
+    if (!confirm(`Xoá khoá học “${x.title}” cùng ${x.course_lessons.length} bài?`)) return
+    const { error } = await supabase.from('courses').delete().eq('id', x.id); if (error) return setMsg(errMsg(error.message)); setNote('Đã xoá khoá học.'); load()
+  }
   const groups = [...progs.filter(c => courses.some(x => x.curriculum_id === c.id)).map(c => ({ key: c.id, c })), { key: '_', c: null as Curriculum | null }]
   return (
     <>
@@ -61,10 +65,11 @@ function ByProgram({ orgId, onManage }: { orgId: string | null; onManage: () => 
       </Section>
       {groups.map(({ key, c }) => { const cs = courses.filter(x => (x.curriculum_id ?? '_') === key); if (!cs.length) return null
         return <Section key={key} title={c ? <><Code color={c.color}>{c.code}</Code> {c.name}</> : 'Khoá học chưa gắn chương trình'}>
-          <div className="p1-grid">{cs.map(x => <VCard key={x.id} color={c?.color} code={c?.code} icon="🎓" status={<Pill tone={x.status === 'published' ? 'good' : ''}>{x.status === 'published' ? 'Đã phát hành' : x.status === 'archived' ? 'Lưu trữ' : 'Bản nháp'}</Pill>}
+          <div className="p1-grid">{cs.map(x => <div key={x.id} className="p1-cardwrap"><VCard color={c?.color} code={c?.code} icon="🎓" status={<Pill tone={x.status === 'published' ? 'good' : ''}>{x.status === 'published' ? 'Đã phát hành' : x.status === 'archived' ? 'Lưu trữ' : 'Bản nháp'}</Pill>}
             title={x.title} subtitle={x.grade ? `Lớp ${x.grade}` : undefined} desc={x.description}
             chips={[`${x.course_lessons.length} bài`, x.package_id ? pkgs.find(p => p.id === x.package_id)?.name ?? '' : '', x.material_set_id ? `Từ ${sets.find(s => s.id === x.material_set_id)?.name ?? 'học liệu'}` : '']}
-            onClick={() => setTab('manage')} more="Quản lý khoá học ›" />)}</div></Section> })}
+            onClick={() => setTab('manage')} more="Quản lý khoá học ›" />
+            {x.org_id === orgId && <button type="button" className="danger p1-carddel" onClick={() => remove(x)}>Xoá</button>}</div>)}</div></Section> })}
       {courses.length === 0 && <Empty>Chưa có khoá học trực tuyến.</Empty>}
     </>
   )
