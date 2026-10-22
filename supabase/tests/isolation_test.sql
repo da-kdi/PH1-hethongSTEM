@@ -1888,7 +1888,7 @@ select pg_temp.chk('admin_kb', 'PPCT văn bản: trường sao chép văn bản 
   $q$select count(*) from ppct_docs where org_id = my_org_id() and based_on_id is not null$q$, '1');
 select pg_temp.chk('admin_kb', 'PPCT văn bản: bản sao giữ đủ dòng bài',
   $q$select ((select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id()) =
-     (select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.title = 'PPCT STEM Liên môn KHTN 6 (CT2)')
+     (select count(*) from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.title = 'PPCT STEM Liên môn KHTN 6 (CT2)' and d.org_id <> my_org_id())
      and exists (select 1 from ppct_rows r join ppct_docs d on d.id = r.doc_id where d.org_id = my_org_id()))::text$q$, 'true');
 select pg_temp.chk('admin_kb', 'PPCT văn bản: dựng lại từ chương trình giáo dục',
   $q$select (ppct_doc_from_curriculum(id) > 0)::text from ppct_docs where org_id = my_org_id() limit 1$q$, 'true');
