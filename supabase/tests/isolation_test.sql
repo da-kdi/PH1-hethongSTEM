@@ -134,6 +134,10 @@ begin
       delete from lesson_designs where title like 'ISO%';
       delete from program_packages where name like 'ISO%';
     end if;
+    if to_regclass('public.material_in_use') is not null then
+      delete from notifications where title = 'Có phiên bản học liệu mới';
+      delete from material_in_use; delete from material_lessons where version_no > 1 or title like 'ISO%';
+    end if;
     delete from curricula where name like 'ISO CT%';
     delete from curriculum_catalog where code like 'iso_%';
   end if;
@@ -1763,78 +1767,65 @@ select pg_temp.chk('admin_ph', 'Vật tư: xuất không ghi phòng lấy kho tr
      || '|' || s.qty from supplies s where s.name = 'ISO Keo'$q$, 'ISO phòng STEM X:3.00|3.00');
 
 -- ===== 057–059: Chương trình giáo dục, gói, học liệu, phân phối (PH1 · 1.1) =====
--- Chương trình: trường A soạn → gửi duyệt (engine 022) → duyệt → ban hành; trường khác / giáo viên / học sinh bị chặn; kế thừa.
+-- Chương trình (062: không phiên bản, không phê duyệt): trường A soạn → phát hành → sửa trực tiếp; trường khác / giáo viên / học sinh bị chặn; kế thừa.
 select pg_temp.chk('iso_gv', 'CTGD: giáo viên không tạo chương trình', $q$select curriculum_create('{"name": "ISO CT giáo viên"}')::text$q$, 'ERR');
 select pg_temp.chk('hs_kb', 'CTGD: học sinh không thấy chương trình', $q$select count(*) from curricula$q$, '0');
-select pg_temp.chk('iso_gv', 'CTGD mẫu: giáo viên thấy CT1–CT5 KDI đã ban hành (CT6 đang soạn thì không)',
+select pg_temp.chk('iso_gv', 'CTGD mẫu: giáo viên thấy CT1–CT5 KDI đã phát hành (CT6 nháp thì không)',
   $q$select string_agg(code, ',' order by code) from curricula where code ~ '^CT[0-9]+$'$q$, 'CT1,CT2,CT3,CT4,CT5');
-select pg_temp.chk('iso_gv', 'CTGD mẫu: đọc được môn học & thời lượng của bản đã ban hành',
+select pg_temp.chk('iso_gv', 'CTGD mẫu: đọc được môn học của chương trình đã phát hành',
   $q$select (count(*) > 0)::text from curriculum_subjects s join curricula c on c.current_version_id = s.version_id where c.code = 'CT2'$q$, 'true');
-select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_create('{"name": "ISO CT trường A", "code": "ISO-A", "grades": [6, 7]}')::text$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: tạo chương trình kèm phiên bản 1 nháp',
-  $q$select string_agg(v.version_no || ':' || v.status || ':' || c.scope, ',') from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, '1:draft:own');
-select pg_temp.chk('admin_kb', 'CTGD: trường khác không thấy chương trình đang soạn', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '0');
+select pg_temp.chk('iso_gv', 'CTGD mẫu: chương trình nhiều khối đã tách — mỗi chương trình một khối',
+  $q$select bool_and(array_length(grades, 1) = 1)::text from curricula where status = 'published'$q$, 'true');
+select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_create('{"name": "ISO CT trường A", "code": "ISO-A", "levels": ["thcs"], "grades": [6]}')::text$q$, true);
+select pg_temp.chk('admin_ph', 'CTGD: tạo chương trình ở trạng thái nháp, có sẵn chỗ chứa nội dung',
+  $q$select status || ':' || scope || ':' || (current_version_id is not null) from curricula where name = 'ISO CT trường A'$q$, 'draft:own:true');
+select pg_temp.chk('admin_kb', 'CTGD: trường khác không thấy chương trình nháp', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '0');
 select pg_temp.chk('so_hy', 'CTGD: Sở cấp trên thấy chương trình của trường', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '1');
-select pg_temp.chk('admin_ph', 'CTGD: không gửi duyệt khi chưa có chủ đề',
-  $q$update curriculum_versions set status = 'pending' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, 'ERR*');
-select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_units (version_id, seq, title, grade, periods, subject_main) select v.id, 1, 'ISO chủ đề 1', 6, 4, 'khtn' from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, true);
-select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_lessons (version_id, unit_id, seq, title, periods) select u.version_id, u.id, 1, 'ISO bài 1', 2 from curriculum_units u where u.title = 'ISO chủ đề 1'$q$, true);
-select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_subjects (version_id, subject, grade, periods_total, periods_per_week) select version_id, 'khtn', 6, 4, 2 from curriculum_units where title = 'ISO chủ đề 1'$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: thêm bài học và môn học vào chương trình',
-  $q$select (select count(*) from curriculum_lessons where title = 'ISO bài 1') || '|' || (select count(*) from curriculum_subjects s join curriculum_units u on u.version_id = s.version_id where u.title = 'ISO chủ đề 1')$q$, '1|1');
-select pg_temp.chk('admin_kb', 'CTGD: trường khác không thêm chủ đề vào chương trình của trường A',
-  format($q$insert into curriculum_units (version_id, seq, title) values (%L, 2, 'ISO chủ đề lạ')$q$, (select version_id from curriculum_units where title = 'ISO chủ đề 1')), 'ERR');
-select pg_temp.chk('admin_ph', 'CTGD: bài học phải cùng phiên bản với chủ đề',
+select pg_temp.chk('admin_ph', 'CTGD: không phát hành khi chưa có bài học',
+  $q$update curricula set status = 'published' where name = 'ISO CT trường A'$q$, 'ERR*');
+select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_lessons (version_id, subject, seq, title, periods, sessions) select current_version_id, 'khtn', 1, 'ISO bài 1', 2, 1 from curricula where name = 'ISO CT trường A'$q$, true);
+select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_units (version_id, seq, title, subject_main) select current_version_id, 1, 'ISO chủ đề 1', 'khtn' from curricula where name = 'ISO CT trường A'$q$, true);
+select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_lessons (version_id, unit_id, seq, title, periods) select u.version_id, u.id, 2, 'ISO bài 2', 2 from curriculum_units u where u.title = 'ISO chủ đề 1'$q$, true);
+select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_subjects (version_id, subject, grade, periods_total, periods_per_week) select current_version_id, 'khtn', 6, 0, 1 from curricula where name = 'ISO CT trường A'$q$, true);
+select pg_temp.chk('admin_ph', 'CTGD: bài học thuộc môn — có hoặc không có chủ đề; bài trong chủ đề lấy môn của chủ đề',
+  $q$select string_agg(title || ':' || subject || ':' || (unit_id is not null), ',' order by seq) from curriculum_lessons where title in ('ISO bài 1', 'ISO bài 2')$q$, 'ISO bài 1:khtn:false,ISO bài 2:khtn:true');
+select pg_temp.chk('admin_kb', 'CTGD: trường khác không thêm bài vào chương trình của trường A',
+  format($q$insert into curriculum_lessons (version_id, subject, title) values (%L, 'khtn', 'ISO bài lạ')$q$, (select version_id from curriculum_units where title = 'ISO chủ đề 1')), 'ERR');
+select pg_temp.chk('admin_ph', 'CTGD: bài học không gắn được chủ đề của chương trình khác',
   format($q$insert into curriculum_lessons (version_id, unit_id, seq, title) values (%L, %L, 9, 'ISO bài lạc')$q$,
     (select current_version_id from curricula where code = 'CT3' and owner_org_id = pg_temp.oid_('@platform')), (select id from curriculum_units where title = 'ISO chủ đề 1')), 'ERR*');
-select pg_temp.chk('admin_ph', 'CTGD: không tự đặt trạng thái "đã duyệt" khi chưa gửi duyệt',
-  $q$update curriculum_versions set status = 'approved' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, 'ERR');
-select pg_temp.chk('admin_ph', 'CTGD: không ban hành bản chưa duyệt (chương trình cần duyệt)',
-  $q$select curriculum_publish(v.id)::text from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, 'ERR*');
-select pg_temp.probe('admin_ph@iso-test.local', $q$update curriculum_versions set status = 'pending', change_note = 'ISO gửi duyệt' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: gửi duyệt mở hồ sơ trong engine phê duyệt',
-  $q$select count(*) from approval_requests where kind = 'curriculum' and status = 'pending' and title like 'ISO CT trường A%'$q$, '1');
-select pg_temp.chk('admin_ph', 'CTGD: không sửa nội dung khi đang chờ duyệt', $q$update curriculum_units set title = 'ISO đổi' where title = 'ISO chủ đề 1'$q$, 'rows:0');
-select pg_temp.chk('admin_kb', 'CTGD: trường khác không duyệt được',
-  format($q$select approval_decide_ref('curriculum_versions', %L, 'approve')::text$q$,
-    (select v.id from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A')), 'ERR');
-select pg_temp.probe('admin_ph@iso-test.local', $q$select approval_decide_ref('curriculum_versions', v.id, 'approve')::text from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: duyệt qua engine → phiên bản "đã duyệt"',
-  $q$select v.status from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, 'approved');
-select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_publish(v.id, current_date)::text from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: ban hành → đang hiệu lực',
-  $q$select v.status || ':' || (c.current_version_id = v.id) from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A'$q$, 'published:true');
-select pg_temp.chk('admin_ph', 'CTGD: bản đã ban hành không sửa được nội dung', $q$update curriculum_units set title = 'ISO đổi' where title = 'ISO chủ đề 1'$q$, 'rows:0');
-select pg_temp.chk('admin_ph', 'CTGD: bản đã ban hành không sửa được ghi chú',
-  $q$update curriculum_versions set change_note = 'ISO sửa' where curriculum_id = (select id from curricula where name = 'ISO CT trường A')$q$, 'ERR');
-select pg_temp.chk('admin_ph', 'CTGD: đơn vị sở hữu xoá được chương trình đã ban hành (thử, không giữ)', $q$delete from curricula where name = 'ISO CT trường A'$q$, 'rows:1');
-select pg_temp.chk('admin_kb', 'CTGD: chương trình phạm vi "trong trường" không lộ sang trường khác', $q$select count(*) from curricula where name = 'ISO CT trường A'$q$, '0');
-select pg_temp.probe('admin_ph@iso-test.local', $q$select curriculum_new_version(c.id, null, 'ISO v2')::text from curricula c where c.name = 'ISO CT trường A'$q$, true);
-select pg_temp.chk('admin_ph', 'CTGD: phiên bản mới sao chép bài học và môn học của bản hiệu lực',
-  $q$select (select count(*) from curriculum_lessons l where l.version_id = v.id) || '|' || (select count(*) from curriculum_subjects s where s.version_id = v.id)
-     from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT trường A' and v.status = 'draft' and v.label = 'ISO v2'$q$, '1|1');
-select pg_temp.chk('admin_ph', 'CTGD: chỉ một phiên bản đang soạn mỗi chương trình',
-  $q$select curriculum_new_version(c.id)::text from curricula c where c.name = 'ISO CT trường A'$q$, 'ERR*');
-select pg_temp.chk('admin_ph', 'CTGD: hàm cho Phân phối chương trình trả chương trình đang hiệu lực của trường',
+select pg_temp.probe('admin_ph@iso-test.local', $q$update curricula set status = 'published', outcomes_text = 'ISO yêu cầu cần đạt' where name = 'ISO CT trường A'$q$, true);
+select pg_temp.chk('admin_ph', 'CTGD: phát hành khi đã có bài, lưu yêu cầu cần đạt',
+  $q$select status || ':' || outcomes_text from curricula where name = 'ISO CT trường A'$q$, 'published:ISO yêu cầu cần đạt');
+select pg_temp.chk('admin_ph', 'CTGD: chương trình đã phát hành vẫn sửa trực tiếp được', $q$update curriculum_lessons set title = 'ISO bài 1b' where title = 'ISO bài 1'$q$, 'rows:1');
+select pg_temp.probe('admin_ph@iso-test.local', $q$delete from curriculum_units where title = 'ISO chủ đề 1'$q$, true);
+select pg_temp.chk('admin_ph', 'CTGD: bài của chủ đề đã xoá còn nguyên', $q$select count(*) from curriculum_lessons where title = 'ISO bài 2' and unit_id is null$q$, '1');
+select pg_temp.chk('admin_kb', 'CTGD: trường khác không sửa yêu cầu cần đạt của trường A', $q$update curricula set outcomes_text = 'ISO' where name = 'ISO CT trường A'$q$, 'rows:0');
+select pg_temp.chk('admin_ph', 'CTGD: hàm cho Phân phối trả chương trình đã phát hành của trường',
   $q$select count(*) from curriculum_available() where name = 'ISO CT trường A' and is_own$q$, '1');
+select pg_temp.probe('admin_ph@iso-test.local', $q$update curricula set status = 'archived' where name = 'ISO CT trường A'$q$, true);
+select pg_temp.chk('admin_ph', 'CTGD: ngừng dùng ghi thời điểm', $q$select (archived_at is not null)::text from curricula where name = 'ISO CT trường A'$q$, 'true');
+select pg_temp.chk('admin_ph', 'CTGD: chương trình ngừng dùng không được gợi ý phân phối',
+  $q$select count(*) from curriculum_available() where name = 'ISO CT trường A'$q$, '0');
 -- Kế thừa: KDI phát hành công khai một chương trình thử, trường B kế thừa
-select pg_temp.probe('kdi@iso-test.local', $q$select curriculum_create('{"name": "ISO CT KDI", "scope": "public", "require_approval": false}')::text$q$, true);
-select pg_temp.probe('kdi@iso-test.local', $q$insert into curriculum_units (version_id, seq, title, grade, subject_main) select v.id, 1, 'ISO chủ đề KDI', 7, 'khtn' from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT KDI'$q$, true);
+select pg_temp.probe('kdi@iso-test.local', $q$select curriculum_create('{"name": "ISO CT KDI", "scope": "public", "grades": [7]}')::text$q$, true);
+select pg_temp.probe('kdi@iso-test.local', $q$insert into curriculum_units (version_id, seq, title, grade, subject_main) select current_version_id, 1, 'ISO chủ đề KDI', 7, 'khtn' from curricula where name = 'ISO CT KDI'$q$, true);
 select pg_temp.probe('kdi@iso-test.local', $q$insert into curriculum_lessons (version_id, unit_id, seq, title, periods) select u.version_id, u.id, 1, 'ISO bài KDI', 2 from curriculum_units u where u.title = 'ISO chủ đề KDI'$q$, true);
 select pg_temp.probe('kdi@iso-test.local', $q$insert into curriculum_outcomes (version_id, unit_id, seq, description) select u.version_id, u.id, 1, 'ISO yêu cầu' from curriculum_units u where u.title = 'ISO chủ đề KDI'$q$, true);
-select pg_temp.probe('kdi@iso-test.local', $q$select curriculum_publish(v.id)::text from curriculum_versions v join curricula c on c.id = v.curriculum_id where c.name = 'ISO CT KDI'$q$, true);
+select pg_temp.chk('admin_kb', 'CTGD: trường không thấy chương trình KDI đang nháp', $q$select count(*) from curricula where name = 'ISO CT KDI'$q$, '0');
+select pg_temp.probe('kdi@iso-test.local', $q$update curricula set status = 'published' where name = 'ISO CT KDI'$q$, true);
 select pg_temp.chk('admin_kb', 'CTGD: không sửa chương trình của KDI',
   $q$update curriculum_units set title = 'ISO đổi' where title = 'ISO chủ đề KDI'$q$, 'rows:0');
 select pg_temp.probe('admin_kb@iso-test.local', $q$select curriculum_clone(current_version_id, 'ISO CT kế thừa')::text from curricula where name = 'ISO CT KDI'$q$, true);
-select pg_temp.chk('admin_kb', 'CTGD: kế thừa sao đủ chủ đề, bài học, chuẩn đầu ra',
-  $q$select (select count(*) from curriculum_units u where u.version_id = v.id) || '|' || (select count(*) from curriculum_lessons l where l.version_id = v.id)
-     || '|' || (select count(*) from curriculum_outcomes o where o.version_id = v.id)
-     from curricula c join curriculum_versions v on v.curriculum_id = c.id where c.name = 'ISO CT kế thừa'$q$, '1|1|1');
+select pg_temp.chk('admin_kb', 'CTGD: kế thừa sao đủ chủ đề, bài học, chuẩn đầu ra; bản mới là nháp',
+  $q$select (select count(*) from curriculum_units u where u.version_id = c.current_version_id) || '|' || (select count(*) from curriculum_lessons l where l.version_id = c.current_version_id)
+     || '|' || (select count(*) from curriculum_outcomes o where o.version_id = c.current_version_id) || '|' || c.status
+     from curricula c where c.name = 'ISO CT kế thừa'$q$, '1|1|1|draft');
 select pg_temp.chk('admin_kb', 'CTGD: bản kế thừa sửa được, giữ liên kết nguồn',
-  $q$update curriculum_units set title = title || ' (ISO)' where version_id in (select v.id from curriculum_versions v join curricula c on c.id = v.curriculum_id
+  $q$update curriculum_units set title = title || ' (ISO)' where version_id in (select c.current_version_id from curricula c
      where c.name = 'ISO CT kế thừa' and c.source_curriculum_id = (select id from curricula where name = 'ISO CT KDI'))$q$, 'rows:1');
 select pg_temp.chk('admin_ph', 'CTGD: trường khác không thấy bản kế thừa của trường B', $q$select count(*) from curricula where name = 'ISO CT kế thừa'$q$, '0');
-select pg_temp.chk('kdi', 'CTGD mẫu: hồ sơ chờ duyệt phiên bản bổ sung CT4', $q$select count(*) from approval_requests where kind = 'curriculum' and status = 'pending' and title like 'Robotics / AI%'$q$, '1');
+select pg_temp.chk('admin_ph', 'CTGD: đơn vị sở hữu xoá được chương trình (thử, không giữ)', $q$delete from curricula where name = 'ISO CT trường A'$q$, 'rows:1');
 -- Danh mục điều chỉnh được
 select pg_temp.probe('admin_ph@iso-test.local', $q$insert into curriculum_catalog (owner_org_id, kind, code, name) values (my_org_id(), 'subject', 'iso_mon', 'ISO môn riêng')$q$, true);
 select pg_temp.chk('admin_ph', 'CTGD danh mục: trường thêm môn riêng', $q$select count(*) from curriculum_catalog where code = 'iso_mon'$q$, '1');
@@ -1862,6 +1853,23 @@ select pg_temp.chk('admin_ph', 'Học liệu mẫu: định mức bài Cột đ�
 select pg_temp.chk('admin_ph', 'Học liệu: trường không sửa bộ học liệu của KDI', $q$update material_sets set name = 'ISO đổi' where code = 'HL-KHTN6'$q$, 'rows:0');
 select pg_temp.chk('admin_ph', 'Học liệu: trường không thêm định mức vào học liệu KDI',
   format($q$insert into material_norms (lesson_id, name) values (%L, 'ISO vật tư')$q$, (select l.id from material_lessons l where l.title = 'Cột đèn giao thông xoay')), 'ERR');
+-- Học liệu có phiên bản (062)
+select pg_temp.chk('admin_ph', 'Học liệu: trường không tạo phiên bản cho học liệu KDI',
+  $q$select material_new_version(id)::text from material_lessons where title = 'Cột đèn giao thông xoay' and version_no = 1$q$, 'ERR*');
+select pg_temp.probe('admin_ph@iso-test.local', $q$insert into material_in_use (org_id, family_id, lesson_id) select my_org_id(), family_id, id from material_lessons where title = 'Cột đèn giao thông xoay' and version_no = 1$q$, true);
+select pg_temp.chk('admin_ph', 'Học liệu: đơn vị không chọn phiên bản của học liệu khác',
+  $q$insert into material_in_use (org_id, family_id, lesson_id) select my_org_id(), a.family_id, b.id from material_lessons a, material_lessons b
+     where a.title = 'Cột đèn giao thông xoay' and a.version_no = 1 and b.family_id <> a.family_id limit 1$q$, 'ERR');
+select pg_temp.probe('kdi@iso-test.local', $q$select material_new_version(id, 'ISO thêm vật tư')::text from material_lessons where title = 'Cột đèn giao thông xoay' and version_no = 1$q$, true);
+select pg_temp.chk('kdi', 'Học liệu: phiên bản mới là nháp, sao đủ định mức vật tư',
+  $q$select l.version_no || ':' || l.status || ':' || (select count(*) from material_norms n where n.lesson_id = l.id) from material_lessons l
+     where l.title = 'Cột đèn giao thông xoay' and l.version_no = 2$q$, '2:draft:6');
+select pg_temp.probe('kdi@iso-test.local', $q$select material_publish(id)::text from material_lessons where title = 'Cột đèn giao thông xoay' and version_no = 2$q$, true);
+select pg_temp.chk('admin_ph', 'Học liệu: phát hành phiên bản mới báo đơn vị đang dùng bản cũ',
+  $q$select (count(*) > 0)::text from notifications where title = 'Có phiên bản học liệu mới' and body like 'Cột đèn giao thông xoay%'$q$, 'true');
+select pg_temp.chk('kdi', 'Học liệu: một bài học chỉ có một học liệu (nhiều phiên bản)',
+  $q$insert into material_lessons (set_id, curriculum_lesson_id, title) select set_id, curriculum_lesson_id, 'ISO trùng' from material_lessons
+     where curriculum_lesson_id is not null and version_no = 1 limit 1$q$, 'ERR*');
 -- Phân phối chương trình
 select pg_temp.chk('admin_ph', 'PPCT mẫu: trường A KHTN 6 xếp 2 tiết/tuần, có mục đã dạy',
   $q$select (max(i.periods) = 2 and bool_or(i.status = 'done'))::text from ppct_items i join ppct_plans p on p.id = i.plan_id where p.org_id = my_org_id() and p.subject = 'khtn'$q$, 'true');
@@ -1908,8 +1916,8 @@ select pg_temp.chk('admin_ph', 'Danh mục: khối 8 thuộc cấp THCS', $q$sel
 select pg_temp.chk('admin_ph', 'Danh mục: lớp mẫu của trường thuộc khối', $q$select parent_code from curriculum_catalog where kind = 'class' and code = '8A1' and owner_org_id = my_org_id()$q$, '8');
 select pg_temp.chk('admin_ph', 'Danh mục: mã khối phải là số 0–12', $q$insert into curriculum_catalog (owner_org_id, kind, code, name) values (my_org_id(), 'grade', 'k13', 'ISO khối')$q$, 'ERR*');
 select pg_temp.chk('admin_ph', 'Phân phối khối 6 (KDI, tất cả trường): mỗi môn một khối lịch, dòng đúng khối 6',
-  $q$select (count(distinct c.id) > 0 and bool_and(c.subject is not null) and bool_and(u.grade = 6))::text from ppct_docs d join ppct_chapters c on c.doc_id = d.id
-     join ppct_rows r on r.chapter_id = c.id join curriculum_lessons l on l.id = r.curriculum_lesson_id join curriculum_units u on u.id = l.unit_id
+  $q$select (count(distinct c.id) > 0 and bool_and(c.subject is not null) and bool_and(6 = any(cc.grades)))::text from ppct_docs d join ppct_chapters c on c.doc_id = d.id
+     join ppct_rows r on r.chapter_id = c.id join curriculum_lessons l on l.id = r.curriculum_lesson_id join curricula cc on cc.current_version_id = l.version_id
      where d.grade = 6 and d.subject is null and d.title like 'Phân phối STEM khối 6%'$q$, 'true');
 select pg_temp.probe('admin_kb@iso-test.local', $q$insert into ppct_docs (org_id, target_org_id, level, grade, school_year, title, weeks_hk1, weeks_hk2, ppw_hk1, ppw_hk2)
   values (my_org_id(), my_org_id(), 'thcs', 6, '2026-2027', 'ISO phân phối khối 6', 18, 17, 2, 2)$q$, true);

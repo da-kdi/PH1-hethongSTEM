@@ -1,7 +1,9 @@
 # Phân hệ 1 · Cấu trúc, luồng và tính năng của mục 1.1
 
-Cập nhật: 22/10/2026 · Phạm vi: **Chương trình giáo dục → Phân phối chương trình → Học liệu → Soạn bài giảng & kho hoạt động → E-learning & luyện thi**
+Cập nhật: 23/10/2026 · Phạm vi: **Chương trình giáo dục → Phân phối chương trình → Học liệu → Soạn bài giảng & kho hoạt động → E-learning & luyện thi**
 
+> **Quyết định 23/10/2026** (đã làm trong migration `062_ph1_simplify.sql`): chương trình bỏ phiên bản và phê duyệt; mỗi chương trình áp dụng **một khối** (chương trình cũ nhiều khối được tách); bài học thuộc **Môn học**, Chủ đề/Chương không bắt buộc; Yêu cầu cần đạt là một ô text; **Học liệu có phiên bản**, đơn vị chọn phiên bản dùng.
+>
 > Bản này sắp lại tài liệu theo **cấu trúc menu mới**. Nội dung chi tiết của bản trước được giữ tạm ở đúng mục mới; phần nào không còn nằm trong cấu trúc mới được đánh dấu **⏳ Chờ xem lại** để quyết định sau.
 
 ---
@@ -12,14 +14,13 @@ Cập nhật: 22/10/2026 · Phạm vi: **Chương trình giáo dục → Phân p
 ```
 Danh mục (dùng chung)       Cấp học · Khối (thuộc một cấp học) · Lớp · Nhóm chương trình · Môn học
 
-Chương trình giáo dục        Tên, mô tả, thuộc một Nhóm chương trình
- └─ Cấp học                  chọn từ Danh mục
-     └─ Khối                 chỉ các khối thuộc cấp học đó
-         └─ Môn học          chọn từ Danh mục
-             └─ Bài học      Tên bài · Số buổi · Số tiết
-                 ├─ Học liệu          1 bài học = 1 học liệu (Thông tin · Nội dung · Link học liệu · Định mức vật tư)
-                 │   └─ Bài giảng     1 học liệu có nhiều phiên bản bài giảng → nằm trong Kho hoạt động
-                 └─ E-learning        khoá học / bài luyện tập dựng từ bài học, học liệu
+Chương trình giáo dục        Tên, mô tả, Nhóm chương trình, Cấp học + Khối áp dụng (một khối), Yêu cầu cần đạt (text)
+ └─ Môn học                  chọn từ Danh mục
+     └─ (Chủ đề/Chương)      không bắt buộc
+         └─ Bài học          Tên bài · Số buổi · Số tiết · Học liệu chính
+             ├─ Học liệu          1 bài học = 1 học liệu, nhiều phiên bản (Thông tin · Nội dung · Link học liệu · Định mức vật tư)
+             │   └─ Bài giảng     soạn từ một phiên bản học liệu; nhiều bài giảng / học liệu → nằm trong Kho hoạt động
+             └─ E-learning        khoá học / bài luyện tập dựng từ bài học, học liệu
 
 Phân phối chương trình       (Trường — tuỳ chọn) › Cấp học › Khối › Chương trình phù hợp › Môn học › Xếp lịch
  └─ Học kỳ › Tuần › Buổi     các môn, bài lấy từ chương trình; đổi được thứ tự
@@ -29,10 +30,12 @@ Phân phối chương trình       (Trường — tuỳ chọn) › Cấp học 
 | Cấp dưới | Gắn vào | Quy tắc |
 |---|---|---|
 | Khối | Cấp học | Mỗi khối thuộc đúng một cấp học (Danh mục) |
-| Môn học (trong chương trình) | Chương trình · Khối | Một môn chỉ nằm ở một khối của chương trình; cùng môn ở khối khác là dòng riêng |
-| Bài học | Môn học của chương trình | Bài thuộc đúng một môn · khối · chương trình; cấp học suy ra từ khối |
-| Học liệu | Bài học | Quan hệ 1 – 1; thông tin cấp học, khối, môn lấy theo bài |
-| Bài giảng | Học liệu | Một học liệu có nhiều bài giảng (phiên bản); bài giảng kế thừa chương trình, môn, khối của học liệu |
+| Chương trình | Cấp học · Khối | Mỗi chương trình áp dụng một khối; cùng môn ở khối khác → tạo chương trình riêng |
+| Môn học (trong chương trình) | Chương trình | Chọn từ Danh mục |
+| Chủ đề/Chương | Môn học | Không bắt buộc; xoá chủ đề thì bài vẫn còn, nằm thẳng dưới môn |
+| Bài học | Môn học (± Chủ đề) | Cấp học, khối lấy theo chương trình |
+| Học liệu | Bài học | Một bài có đúng một học liệu (ràng buộc ở CSDL), học liệu có nhiều phiên bản |
+| Bài giảng | Phiên bản học liệu | Bài giảng soạn từ một phiên bản; có phiên bản mới thì hiện nhãn và nút "Cập nhật theo bản mới" (tạo bản nháp mới, không ghi đè) |
 | Phân phối | Cấp học · Khối (bắt buộc), Trường (tuỳ chọn) | Chỉ gợi ý chương trình có khối khớp; chỉ lấy môn, bài của đúng khối đó |
 | Dòng lịch (buổi) | Bài học | Mỗi buổi trên lịch trỏ về một bài học → mở được học liệu, bài giảng của bài |
 
@@ -47,7 +50,7 @@ Phân phối chương trình       (Trường — tuỳ chọn) › Cấp học 
 
 ### 0.4 Quy ước chung (giữ từ bản trước)
 - Tên gọi thống nhất **Chương trình → Cấp học → Khối → Môn học → Bài học**.
-- Trạng thái: **Nháp / Đã phát hành / Ngừng dùng** (màu trung tính, xanh lục, xám).
+- Trạng thái: **Nháp / Đã phát hành / Ngừng dùng** (màu trung tính, xanh lục, xám) — dùng cho chương trình và từng phiên bản học liệu. Không có bước phê duyệt.
 - Bảng: chữ canh trái và canh giữa dọc; nút tác vụ nằm **bên phải**, nút "← Quay lại" nằm **bên trái**; bảng một tác vụ thì bấm tên để làm, bảng nhiều tác vụ có ô tick ở cột đầu.
 - Kiểu xem **Thẻ | Danh sách** (riêng Phân phối dùng **Bảng | Lịch**).
 - Mọi thay đổi ghi vào Nhật ký hoạt động; đồng bộ hai chiều giữa Chương trình giáo dục và Học liệu.
@@ -57,42 +60,33 @@ Phân phối chương trình       (Trường — tuỳ chọn) › Cấp học 
 
 ## 1. Chương trình giáo dục
 
-**Mục đích:** khung chương trình theo cấp học, khối, môn, bài; nơi chốt chương trình nào được đưa vào phân phối.
+**Mục đích:** khung chương trình của một khối: môn, (chủ đề), bài; nơi chốt chương trình nào được đưa vào phân phối.
 
 ### 1.1 View tổng quan
-- Thẻ các chương trình (theo Nhóm chương trình), mỗi thẻ cho biết cấp học, khối, số môn, số bài, số tiết; bấm thẻ mở chi tiết.
-- Kiểu xem **Thẻ | Danh sách**.
+- Thẻ các chương trình, mỗi thẻ cho biết cấp học · khối, số môn, số bài, số tiết, trạng thái; bấm thẻ mở chi tiết.
+- Kiểu xem **Thẻ | Danh sách**; lọc cấp học, khối, môn, trạng thái.
 
-### 1.2 Thiết lập chương trình
+### 1.2 Chi tiết chương trình: 2 tab
+- **Tổng quan**: số liệu (khối, môn, bài, buổi, tiết), mô tả, bảng môn học, yêu cầu cần đạt, gói đang dùng.
+- **Thiết lập** (một trang, 3 phần):
+  1. **Thông tin**: tên, nhóm chương trình, **Cấp học**, **Khối áp dụng** (một khối), mô tả; nâng cao: mã, màu, đơn vị ban hành, phạm vi áp dụng.
+  2. **Bài học**: theo **Môn học › (Chủ đề/Chương) › Bài học**. Cột: #, Tên bài, Số buổi, Số tiết, Chủ đề/Chương, **Học liệu chính**, thao tác (↑↓, Xoá). Thêm môn, thêm chủ đề/chương, thêm bài ngay trong bảng.
+     - Học liệu chính = phiên bản học liệu đơn vị đang dùng: *Chưa có · + Tạo* / *Đang soạn · PB n* / *Đủ · PB n*; có bản mới hơn thì thêm nhãn *có PB m*. Bấm để mở (hoặc tạo) học liệu của bài.
+  3. **Yêu cầu cần đạt**: một ô text cho cả chương trình.
+- Thao tác trên đầu trang: Phát hành · Chuyển về nháp · Ngừng dùng / Dùng lại · Kế thừa để điều chỉnh (chương trình của đơn vị khác) · Xoá.
 
-#### a. Thông tin
-- **Tên chương trình**, **mô tả**.
-- *(giữ từ bản trước)* Nhóm CT (CT1–CT5, KDI-SC, Đề xuất; mỗi chương trình thuộc đúng một nhóm), số tiết/tuần, thời gian triển khai (Học kỳ 1 / Học kỳ 2 / Cả năm); phiên bản và trạng thái (Nháp → Đã phát hành → Ngừng dùng; không cho phát hành khi chưa có bài).
+### 1.3 Quy tắc
+- Không phiên bản, không phê duyệt: sửa trực tiếp ở mọi trạng thái. Phát hành cần ít nhất một bài học.
+- Chương trình **Nháp** chỉ đơn vị mình và cấp trên thấy; **Ngừng dùng** không được gợi ý khi phân phối.
+- Dữ liệu cũ: chương trình nhiều khối đã tách thành mỗi khối một chương trình (mã `CTx-Kn`, tên thêm "· Khối n"); bộ học liệu, phân phối, gói đi theo khối.
+- Bỏ: Nội dung chi tiết, Tên các cấp nội dung, Phiên bản chương trình, luồng duyệt chương trình.
 
-#### b. Đối tượng: Cấp học › Khối › Bài học
-- Cây **Cấp học › Khối › Môn học › Bài học**.
-- Mỗi bài học: **Tên bài**, **Số buổi**, **Số tiết**.
-- *(giữ từ bản trước)* Môn học theo thứ tự dạy; yêu cầu cần đạt từng bài; yêu cầu vật tư/thiết bị của chương trình (loại, tên, đơn vị, số lượng).
+#### Danh mục
+Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả**: **Cấp học**, **Khối** (gắn vào một cấp học), **Lớp**, **Nhóm chương trình**, **Môn học**.
 
-#### c. Danh mục
-Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả**:
-- **Cấp học**
-- **Khối** (gắn vào một cấp học)
-- **Lớp**
-- **Nhóm chương trình**
-- **Môn học** — *(giữ từ bản trước)* môn dùng chung; môn đang dùng chỉ ngừng dùng, không đổi tên hay xoá.
-
-### 1.3 Cách thiết kế (giữ từ bản trước)
-- **Chương trình là khung**; chi tiết dạy học nằm ở Học liệu, sửa ở đâu cũng đồng bộ.
-- **Thời gian triển khai + số tiết/tuần** điều khiển bước Xếp lịch ở Phân phối: Học kỳ 1 = tuần 1–18, Học kỳ 2 = tuần 19–35, Cả năm = tuần 1–35.
-- Nhóm CT quyết định màu chip và màu ảnh bìa bài giảng mặc định.
-- Dùng chung: Admin KDI, Sở và Trường cùng thấy; chương trình **Ngừng dùng** không được chọn để phân phối.
-
-### 1.4 Đã chốt
-- Khối gắn ở cấp **Môn học** (môn theo khối, bài riêng từng khối) — thay cho đề xuất "khối là thuộc tính của cả chương trình" ở bản trước. Phân phối chỉ lấy môn, bài đúng khối.
-
-### 1.5 ⏳ Chờ xem lại
-- **Gói chương trình** (Cơ bản / Nâng cao cho nhóm trường) — hiện đặt trong Chương trình giáo dục, chưa có chỗ trong cấu trúc mới.
+### 1.4 ⏳ Chờ xem lại
+- **Gói chương trình** (Cơ bản / Nâng cao cho nhóm trường).
+- Danh mục Môn học: môn đang dùng chỉ ngừng dùng, không đổi tên hay xoá (chưa làm).
 
 ---
 
@@ -111,7 +105,7 @@ Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả
 | 0 | **Trường**: tất cả các trường hoặc chọn trường cụ thể | Không |
 | 1 | **Cấp học** | Có |
 | 2 | **Khối** (chỉ khối thuộc cấp học đã chọn) | Có |
-| 3 | **Chọn chương trình phù hợp**: hệ thống gợi ý các chương trình có môn ở đúng khối | Có |
+| 3 | **Chọn chương trình phù hợp**: hệ thống gợi ý các chương trình **đã phát hành** áp dụng cho đúng khối | Có |
 | 4 | **Chọn môn** từ các chương trình đã chọn (chỉ môn của khối đó) | Có |
 | 5 | **Xếp lịch**: thứ tự môn theo **Học kỳ › Tuần › Buổi**; đổi được thứ tự môn và bài bên trong | Có |
 
@@ -131,7 +125,13 @@ Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả
 
 ## 3. Học liệu
 
-**Mục đích:** nội dung dạy học của từng bài học. **Một bài học (gán vào một môn trong một chương trình) có đúng một học liệu.**
+**Mục đích:** nội dung dạy học của từng bài học. **Một bài học có đúng một học liệu; học liệu có nhiều phiên bản.**
+
+### 3.0 Phiên bản học liệu (062)
+- Mỗi phiên bản: số PB, trạng thái **Nháp / Đã phát hành / Ngừng dùng**, ghi chú thay đổi. Phiên bản đã phát hành giữ nguyên — muốn sửa thì **Tạo phiên bản mới** (sao nội dung, link, định mức vật tư).
+- Đơn vị sở hữu tạo, phát hành, ngừng dùng, xoá phiên bản — không qua phê duyệt.
+- Mỗi đơn vị **chọn phiên bản dùng** ("Dùng phiên bản này"); chưa chọn thì dùng bản đã phát hành mới nhất. Danh sách học liệu, cột Học liệu chính, chọn học liệu khi soạn bài giảng đều theo phiên bản đang dùng.
+- Phát hành phiên bản mới → **thông báo** cho đơn vị đang chọn bản khác và người đã soạn bài giảng từ bản cũ.
 
 ### 3.1 View tổng quan
 - Đi theo cây **Chương trình › Cấp học › Khối › Môn › Bài học**; bài chưa có học liệu hiện là **bài chờ** kèm nút tạo (tự gắn đúng chương trình/môn/bài).
@@ -160,7 +160,7 @@ Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả
 
 ## 4. Soạn bài giảng & Kho hoạt động
 
-**Quy tắc:** bài giảng gán vào học liệu; **một học liệu có thể có nhiều phiên bản bài giảng**.
+**Quy tắc:** bài giảng soạn từ một **phiên bản học liệu**; một học liệu có thể có nhiều bài giảng. Khi học liệu có phiên bản mới: bài giảng cũ giữ nguyên, hiện nhãn "Có phiên bản học liệu mới" và nút **Cập nhật theo bản mới** (tạo bản nháp mới, không ghi đè). Trạng thái bài giảng: Nháp / Đã xuất bản (bỏ "Chờ duyệt").
 
 ### 4.1 Soạn bài giảng
 *(giữ từ bản trước)*
@@ -197,7 +197,7 @@ Thiết lập các đối tượng dùng chung, mỗi mục có **Tên, Mô tả
 ---
 
 ## 7. Việc còn mở
-1. Các mục **⏳ Chờ xem lại** ở 1.5, 2.3, 3.3, 4.3.
+1. Các mục **⏳ Chờ xem lại** ở 1.4, 2.3, 3.3, 4.3.
 2. **Danh mục Lớp**: hiện hiểu là danh mục riêng bên cạnh Khối — cần chốt Lớp dùng ở bước nào (phân phối theo lớp?).
 3. Giao diện **Xếp lịch** khi có nhiều môn: lịch xem trước bị đẩy xuống dưới, cần hướng khác.
 4. Tài liệu bản A (cách build) và slide bản B (demo cho sếp, chỉ làm khi chị xác nhận).

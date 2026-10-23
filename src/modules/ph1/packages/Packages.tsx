@@ -108,7 +108,7 @@ function PackageDetail({ p, items, apps, cat, programs, vers, subs, orgs, below,
   const schools = orgs.filter(o => o.type === 'school' && (below.has(o.id) || o.id === orgId || !below.size))
   const total = items.reduce((a, i) => a + itemPeriods(i), 0)
   const tiers = catOf(cat, 'package_tier')
-  const published = programs.filter(c => c.current_version_id)
+  const published = programs.filter(c => c.status === 'published')
 
   return (
     <>

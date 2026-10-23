@@ -5,13 +5,14 @@ import {
   CtBadge, Drawer, Empty, Mini, Pill, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, errMsg, norm, timeAgo, useRpcBool, useViewMode,
 } from '../ui'
 import { Drill, useDrill } from '../drill'
-import { catName, catOf, effectiveCatalog, gradeLabel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
+import { MSTATUS, OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, levelOfGrade, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
 
 type MSet = { id: string; owner_org_id: string; code: string | null; name: string; curriculum_id: string | null; version_id: string | null; subject: string | null
   grade: number | null; description: string | null; status: string; version_no: number; updated_at: string }
 export type MLesson = { id: string; set_id: string; curriculum_lesson_id: string | null; seq: number; code: string | null; title: string; periods: number; sessions: number
   objectives: string | null; subject_main: string | null; subjects_integrated: string[]; product_requirements: string | null
-  steps: Step[]; criteria: { name: string; levels: string[] }[]; notes: string | null }
+  steps: Step[]; criteria: { name: string; levels: string[] }[]; notes: string | null
+  family_id: string; version_no: number; status: MStatus; change_note: string | null; published_at: string | null }
 export type Step = { session?: number; title: string; minutes?: number; teacher?: string; student?: string; product?: string }
 export type Norm = { id: string; lesson_id: string; seq: number; category: string; name: string; spec: string | null; unit: string; qty: number; basis: string; consumable: boolean; substitute: string | null }
 type File = { id: string; lesson_id: string; seq: number; kind: string; title: string; url: string | null }
@@ -37,7 +38,8 @@ type DItem = { cl: CL | null; l: MLesson | null }
 export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
   const [sets, setSets] = useState<MSet[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
-  const [lessons, setLessons] = useState<MLesson[]>([])
+  const [allL, setAllL] = useState<MLesson[]>([])            // mọi phiên bản học liệu
+  const [chosen, setChosen] = useState<Map<string, string>>(new Map())   // phiên bản đơn vị đang dùng (family → bản)
   const [cls, setCls] = useState<CL[]>([])
   const [counts, setCounts] = useState<{ norms: Map<string, number>; files: Map<string, number> }>({ norms: new Map(), files: new Map() })
   const [tab, setTab] = useState<'lessons' | 'sets'>('lessons')
@@ -54,26 +56,42 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const cat = effectiveCatalog(all, hidden, below)
 
   async function load() {
-    const [s, c, l, n, fl] = await Promise.all([
+    const [s, c, l, n, fl, u] = await Promise.all([
       supabase.from('material_sets').select('*').order('name'),
       supabase.from('curricula').select('*').order('code'),
       supabase.from('material_lessons').select('*').order('seq'),
       supabase.from('material_norms').select('lesson_id'),
       supabase.from('material_files').select('lesson_id'),
+      orgId ? supabase.from('material_in_use').select('family_id, lesson_id').eq('org_id', orgId) : Promise.resolve({ data: [] }),
     ])
     if (s.error) return setMsg(errMsg(s.error.message))
     const ps = (c.data as Curriculum[]) ?? []
-    setSets((s.data as MSet[]) ?? []); setProgs(ps); setLessons((l.data as MLesson[]) ?? [])
-    const vids = ps.map(p => p.current_version_id).filter(Boolean) as string[]
+    setSets((s.data as MSet[]) ?? []); setProgs(ps); setAllL((l.data as MLesson[]) ?? [])
+    setChosen(new Map(((u.data as { family_id: string; lesson_id: string }[]) ?? []).map(x => [x.family_id, x.lesson_id])))
+    const vids = ps.filter(p => p.status !== 'archived').map(p => p.current_version_id).filter(Boolean) as string[]
     if (vids.length) {
-      const r = await supabase.from('curriculum_lessons').select('id, title, periods, sessions, version_id, seq, curriculum_units!inner(grade, subject_main, seq)').in('version_id', vids)
-      setCls(((r.data as any[]) ?? []).sort((a, b) => a.curriculum_units.seq - b.curriculum_units.seq || a.seq - b.seq).map(x => ({ id: x.id, title: x.title, periods: x.periods, sessions: x.sessions ?? 1,
-        version_id: x.version_id, prog: ps.find(p => p.current_version_id === x.version_id)!.id, grade: x.curriculum_units.grade, subject: x.curriculum_units.subject_main })))
+      // Bài học thuộc môn của chương trình (062); khối theo chương trình; thứ tự: chủ đề rồi bài
+      const r = await supabase.from('curriculum_lessons').select('id, title, periods, sessions, version_id, seq, subject, curriculum_units(seq)').in('version_id', vids)
+      setCls(((r.data as any[]) ?? []).sort((a, b) => (a.curriculum_units?.seq ?? 1e6) - (b.curriculum_units?.seq ?? 1e6) || a.seq - b.seq).map(x => { const p = ps.find(y => y.current_version_id === x.version_id)!
+        return { id: x.id, title: x.title, periods: x.periods, sessions: x.sessions ?? 1, version_id: x.version_id, prog: p.id, grade: p.grades[0] ?? null, subject: x.subject } }))
     } else setCls([])
     const cnt = (rows: { lesson_id: string }[] | null) => { const m = new Map<string, number>(); (rows ?? []).forEach(r => m.set(r.lesson_id, (m.get(r.lesson_id) ?? 0) + 1)); return m }
     setCounts({ norms: cnt(n.data as any), files: cnt(fl.data as any) })
   }
   useEffect(() => { load() }, [orgId])
+  // Mỗi học liệu hiện một dòng: phiên bản đơn vị đang dùng
+  const lessons = useMemo(() => Array.from(new Set(allL.map(l => l.family_id))).map(f => inUseOf(allL, f, chosen)!).sort((a, b) => a.seq - b.seq), [allL, chosen])
+  const newer = (l: MLesson) => newerOf(allL, l)
+  const vPill = (l: MLesson) => <><Pill tone={MSTATUS[l.status]?.[1]}>{MSTATUS[l.status]?.[0]} · PB {l.version_no}</Pill>{newer(l) && <> <Pill tone="info">có PB {newer(l)!.version_no}</Pill></>}</>
+  // Mở từ Chương trình giáo dục: học liệu của một bài (tạo mới nếu bài chưa có)
+  useEffect(() => {
+    let id: string | null = null; try { id = sessionStorage.getItem(OPEN_LESSON_KEY) } catch { /* bỏ qua */ }
+    if (!id || !cls.length) return
+    const cl = cls.find(x => x.id === id); if (!cl) return
+    try { sessionStorage.removeItem(OPEN_LESSON_KEY) } catch { /* bỏ qua */ }
+    const l = hlOf(cl)
+    if (l) setFull({ kind: 'lesson', id: l.id }); else if (canManage) createFor(cl); else setNote(`Bài “${cl.title}” chưa có học liệu.`)
+  }, [cls.length, lessons.length, canManage])
 
   const setOf = (l: MLesson) => sets.find(s => s.id === l.set_id)
   const progOf = (s?: MSet) => progs.find(p => p.id === s?.curriculum_id)
@@ -121,7 +139,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
       return <tr key={x.cl?.id ?? l!.id} onClick={() => l ? setPreview(l.id) : undefined} style={l ? undefined : { cursor: 'default' }}>
         <td><b>{i + 1}. {x.cl?.title ?? l!.title}</b>{!x.cl && <><br /><small className="sub">chưa gắn bài học trong chương trình</small></>}</td>
         <td>{x.cl?.sessions ?? l!.sessions} buổi · {x.cl?.periods ?? l!.periods} tiết</td>
-        <td>{l ? <><Pill tone={SET_STATUS[setOf(l)?.status ?? '']?.[1]}>{SET_STATUS[setOf(l)?.status ?? '']?.[0] ?? 'Có học liệu'}</Pill> <small className="sub">{l.steps.length} hoạt động · {counts.files.get(l.id) ?? 0} link · {counts.norms.get(l.id) ?? 0} vật tư</small></>
+        <td>{l ? <>{vPill(l)} <small className="sub">{l.steps.length} hoạt động · {counts.files.get(l.id) ?? 0} link · {counts.norms.get(l.id) ?? 0} vật tư</small></>
           : <Pill tone="warn">Bài chờ — chưa có học liệu</Pill>}</td>
         <td>{l ? <div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPreview(l.id) }}>👁</button>
           <button type="button" title="Mở đầy đủ" onClick={e => { e.stopPropagation(); setFull({ kind: 'lesson', id: l.id }) }}>✎</button></div>
@@ -130,10 +148,12 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
 
   // ===== Trang đầy đủ =====
   if (full?.kind === 'lesson') { const l = lessons.find(x => x.id === full.id); const s = l && setOf(l)
-    if (l && s) return <LessonDetail key={l.id} lessonId={l.id} set={s} prog={progOf(s) ?? null} cat={cat} canEdit={canManage && s.owner_org_id === orgId}
-      back={() => { setFull(s ? { kind: 'set', id: s.id } : null); load() }} backLabel={`← ${s.name}`} onAll={() => { setFull(null); load() }} reload={load} /> }
+    const ll = l ?? allL.find(x => x.id === full.id); const ss = ll && setOf(ll)
+    if (ll && ss) return <LessonDetail key={ll.id} lessonId={ll.id} set={ss} prog={progOf(ss) ?? null} cat={cat} canEdit={canManage && ss.owner_org_id === orgId}
+      orgId={orgId} versions={allL.filter(x => x.family_id === ll.family_id)} inUseId={inUseOf(allL, ll.family_id, chosen)?.id ?? null}
+      onSwitch={id => setFull({ kind: 'lesson', id })} back={() => { setFull(null); load() }} backLabel="← Tất cả học liệu" onAll={() => { setFull(null); load() }} reload={load} /> }
   if (full?.kind === 'set') { const s = sets.find(x => x.id === full.id)
-    if (s) return <SetDetail key={s.id} set={s} progs={progs} cat={cat} editable={canManage && s.owner_org_id === orgId} lessons={lessons.filter(l => l.set_id === s.id)}
+    if (s) return <SetDetail key={s.id} set={s} progs={progs} cat={cat} editable={canManage && s.owner_org_id === orgId} lessons={lessons.filter(l => l.set_id === s.id)} vPill={vPill}
       counts={counts} onPreview={setPreview} onOpen={id => setFull({ kind: 'lesson', id })} back={() => { setFull(null); load() }} reload={load}
       drawer={preview && <LessonPreview key={preview} lesson={lessons.find(l => l.id === preview)!} set={s} prog={progOf(s) ?? null} cat={cat}
         onClose={() => setPreview(null)} onExpand={() => { setFull({ kind: 'lesson', id: preview }); setPreview(null) }} onDesign={toDesign} />} /> }
@@ -156,18 +176,18 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const renderLessons = (list: MLesson[]) => {
     const one = (lShown: MLesson[]) => view === 'grid' ? (
         <div className="p1-grid">{lShown.map(l => { const s = setOf(l); const p = progOf(s)
-            return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" status={<Pill tone={SET_STATUS[s?.status ?? '']?.[1]}>{SET_STATUS[s?.status ?? '']?.[0]}</Pill>}
+            return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" status={vPill(l)}
               title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`} desc={l.objectives}
               chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '', counts.files.get(l.id) ? `${counts.files.get(l.id)} tài liệu` : '']}
               foot={<small>{s?.name}</small>} onClick={() => setPreview(l.id)} /> })}</div>
       ) : (
-        <table className="p1-list"><thead><tr><th>Bài học</th><th>CT</th><th>Khối</th><th>Môn</th><th>Thời lượng</th><th>Vật tư</th><th>Tài liệu</th><th>Trạng thái</th><th></th></tr></thead>
+        <table className="p1-list"><thead><tr><th>Bài học</th><th>CT</th><th>Khối</th><th>Môn</th><th>Thời lượng</th><th>Vật tư</th><th>Tài liệu</th><th>Phiên bản</th><th></th></tr></thead>
             <tbody>{lShown.map(l => { const s = setOf(l); const p = progOf(s)
               return <tr key={l.id} onClick={() => setPreview(l.id)}>
                 <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{l.title}</b><small>{s?.name}</small></div></div></td>
                 <td><CtBadge color={p?.color} code={p?.code} /></td><td>{s?.grade != null ? gradeLabel(s.grade) : '—'}</td><td>{catName(cat, 'subject', s?.subject) || '—'}</td>
                 <td>{l.periods} tiết · {l.sessions} buổi</td><td>{counts.norms.get(l.id) ?? 0}</td><td>{counts.files.get(l.id) ?? 0}</td>
-                <td><Pill tone={SET_STATUS[s?.status ?? '']?.[1]}>{SET_STATUS[s?.status ?? '']?.[0]}</Pill></td>
+                <td>{vPill(l)}</td>
                 <td><div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPreview(l.id) }}>👁</button>
                   <button type="button" title="Mở đầy đủ" onClick={e => { e.stopPropagation(); setFull({ kind: 'lesson', id: l.id }) }}>✎</button></div></td>
               </tr> })}</tbody></table>)
@@ -254,8 +274,8 @@ function LessonPreview({ lesson: l, set, prog, cat, onClose, onExpand, onDesign 
 }
 
 // ===== Trang bộ học liệu =====
-function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOpen, back, reload, drawer }: {
-  set: MSet; progs: Curriculum[]; cat: CatItem[]; editable: boolean; lessons: MLesson[]; counts: { norms: Map<string, number>; files: Map<string, number> }
+function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOpen, back, reload, drawer, vPill }: {
+  set: MSet; progs: Curriculum[]; cat: CatItem[]; editable: boolean; lessons: MLesson[]; counts: { norms: Map<string, number>; files: Map<string, number> }; vPill: (l: MLesson) => React.ReactNode
   onPreview: (id: string) => void; onOpen: (id: string) => void; back: () => void; reload: () => void; drawer: React.ReactNode
 }) {
   const [msg, setMsg] = useState('')
@@ -264,9 +284,9 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
   const c = progs.find(p => p.id === set.curriculum_id)
   useEffect(() => {
     if (!c?.current_version_id) return
-    supabase.from('curriculum_lessons').select('id, title, periods, seq, curriculum_units!inner(subject_main, grade, seq)').eq('version_id', c.current_version_id)
-      .then(({ data }) => setStd(((data as any[]) ?? []).filter(x => (!set.subject || x.curriculum_units.subject_main === set.subject) && (set.grade == null || x.curriculum_units.grade === set.grade))
-        .sort((a, b) => a.curriculum_units.seq - b.curriculum_units.seq || a.seq - b.seq)))
+    supabase.from('curriculum_lessons').select('id, title, periods, seq, subject, curriculum_units(seq)').eq('version_id', c.current_version_id)
+      .then(({ data }) => setStd(((data as any[]) ?? []).filter(x => !set.subject || x.subject === set.subject)
+        .sort((a, b) => (a.curriculum_units?.seq ?? 1e6) - (b.curriculum_units?.seq ?? 1e6) || a.seq - b.seq)))
   }, [c?.current_version_id, set.subject, set.grade])
   const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (error) setMsg(errMsg(error.message)); else { setMsg(''); reload() } }
   const upd = (p: Partial<MSet>) => run(supabase.from('material_sets').update(p).eq('id', set.id))
@@ -307,7 +327,7 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
         {editable && <button type="button" onClick={() => run(supabase.from('material_lessons').insert({ set_id: set.id, seq: lessons.length + 1, title: 'Bài mới', periods: 1 }))}>+ Bài học</button>}</div>
       {lessons.length === 0 ? <Empty>Bộ học liệu chưa có bài.</Empty> : <div className="p1-grid">{lessons.map(l =>
         <VCard key={l.id} color={c?.color} code={c?.code} icon={`${l.seq}`} title={l.title} subtitle={l.curriculum_lesson_id ? 'Liên kết bài chuẩn trong chương trình' : 'Chưa liên kết chương trình'}
-          desc={l.objectives} chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '']} onClick={() => onPreview(l.id)}
+          status={vPill(l)} desc={l.objectives} chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '']} onClick={() => onPreview(l.id)}
           foot={<button type="button" className="linkbtn" onClick={e => { e.stopPropagation(); onOpen(l.id) }}>Mở đầy đủ</button>} />)}</div>}
       {drawer}
     </>
@@ -316,8 +336,9 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
 
 // ===== Trang đầy đủ của một bài: mặc định chỉ xem, bấm "Sửa" mới chỉnh =====
 type LTab = 'info' | 'steps' | 'files' | 'norms' | 'criteria'
-export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabel, onAll, reload }: {
+export function LessonDetail({ lessonId, set, prog, cat, canEdit: canOwn, orgId, versions = [], inUseId = null, onSwitch, back, backLabel, onAll, reload }: {
   lessonId: string; set: MSet; prog: Curriculum | null; cat: CatItem[]; canEdit: boolean; back: () => void; backLabel: string; onAll: () => void; reload: () => void
+  orgId?: string | null; versions?: MLesson[]; inUseId?: string | null; onSwitch?: (id: string) => void
 }) {
   const [l, setL] = useState<MLesson | null>(null)
   const [norms, setNorms] = useState<Norm[]>([])
@@ -338,14 +359,25 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
     const ml = a.data as MLesson
     setL(ml); setNorms((b.data as Norm[]) ?? []); setFiles((c.data as File[]) ?? []); setDesigns((d.data as any[]) ?? [])
     if (ml?.curriculum_lesson_id) {
-      const r = await supabase.from('curriculum_lessons').select('title, curriculum_units(grade, subject_main)').eq('id', ml.curriculum_lesson_id).maybeSingle()
-      const x = r.data as any; setBase(x ? { title: x.title, grade: x.curriculum_units?.grade ?? null, subject: x.curriculum_units?.subject_main ?? null } : null)
+      const r = await supabase.from('curriculum_lessons').select('title, subject, version_id').eq('id', ml.curriculum_lesson_id).maybeSingle()
+      const x = r.data as any
+      const g = x ? ((await supabase.from('curricula').select('grades').eq('current_version_id', x.version_id).maybeSingle()).data as any)?.grades?.[0] ?? null : null
+      setBase(x ? { title: x.title, grade: g, subject: x.subject ?? null } : null)
     }
   }
   useEffect(() => { load() }, [lessonId])
   const run = async (q: PromiseLike<{ error: { message: string } | null }>, all = false) => { const { error } = await q; if (error) setMsg(errMsg(error.message)); else { setMsg(''); load(); if (all) reload() } }
   const upd = (p: Partial<MLesson>) => run(supabase.from('material_lessons').update(p).eq('id', lessonId), 'title' in p || 'periods' in p)
+  // Phiên bản đã phát hành giữ nguyên — sửa bằng cách tạo phiên bản mới
+  const canEdit = canOwn && l?.status !== 'published'
   const editable = canEdit && editing
+  const vs = [...versions].sort((a, b) => b.version_no - a.version_no)
+  async function verAct(fn: () => PromiseLike<{ data?: unknown; error: { message: string } | null }>, ok?: (d: unknown) => void) {
+    const r = await fn(); if (r.error) return setMsg(errMsg(r.error.message)); setMsg(''); reload(); if (ok) ok(r.data); else load()
+  }
+  const newVersion = () => { const note = prompt('Ghi chú thay đổi của phiên bản mới (không bắt buộc):', ''); if (note === null) return
+    verAct(() => supabase.rpc('material_new_version', { p_lesson: lessonId, p_note: note }), id => { setEditing(true); onSwitch?.(id as string) }) }
+  const useThis = () => orgId && verAct(() => supabase.from('material_in_use').upsert({ org_id: orgId, family_id: l!.family_id, lesson_id: lessonId }))
   const grouped = useMemo(() => Object.keys(NORM_CAT).filter(k => norms.some(n => n.category === k)), [norms])
   if (!l) return <p className="sub">Đang tải…</p>
   const sessions = Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b)
@@ -356,10 +388,28 @@ export function LessonDetail({ lessonId, set, prog, cat, canEdit, back, backLabe
       <div className="p1-actions"><button type="button" className="p1-back" onClick={back}>{backLabel}</button><span className="sub">·</span><button type="button" className="p1-back" onClick={onAll}>Tất cả học liệu</button></div>
       <div className="p1-head">{prog && <CtBadge color={prog.color} code={prog.code} />}<h2>{l.title}</h2><Pill>{l.periods} tiết · {l.sessions} buổi</Pill>
         {canEdit && <button type="button" className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? '✓ Xong' : '✎ Sửa'}</button>}
-        {canEdit && <button type="button" className="danger" onClick={async () => { if (!confirm(`Xoá bài “${l.title}” cùng định mức, tài liệu?`)) return
-          const { error } = await supabase.from('material_lessons').delete().eq('id', l.id); if (error) return setMsg(errMsg(error.message)); reload(); back() }}>Xoá bài</button>}
+        {canOwn && <button type="button" className="danger" onClick={async () => { if (!confirm(`Xoá học liệu “${l.title}” cùng mọi phiên bản, định mức, tài liệu?`)) return
+          const { error } = await supabase.from('material_lessons').delete().eq('family_id', l.family_id); if (error) return setMsg(errMsg(error.message)); reload(); back() }}>Xoá học liệu</button>}
         <p className="p1-sub">{set.name}{l.subjects_integrated.length ? ' · tích hợp ' + l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') : ''}</p></div>
       {msg && <p className="msg">{msg}</p>}
+      <div className="p1-verbar">
+        <span className="p1-objtag">Phiên bản</span>
+        {vs.length > 1 && onSwitch ? <select value={lessonId} onChange={e => onSwitch(e.target.value)} aria-label="Phiên bản học liệu">
+          {vs.map(v => <option key={v.id} value={v.id}>PB {v.version_no} · {MSTATUS[v.status]?.[0]}{v.id === inUseId ? ' · đang dùng' : ''}</option>)}</select>
+          : <b>PB {l.version_no}</b>}
+        <Pill tone={MSTATUS[l.status]?.[1]}>{MSTATUS[l.status]?.[0]}</Pill>
+        {l.id === inUseId ? <Pill tone="good">Đơn vị đang dùng</Pill> : orgId && l.status === 'published' && <button type="button" onClick={useThis}>Dùng phiên bản này</button>}
+        {l.change_note && <small className="sub">{l.change_note}</small>}
+        <span className="p1-actions" style={{ marginLeft: 'auto' }}>
+          {canOwn && l.status === 'draft' && <button type="button" className="primary" onClick={() => verAct(() => supabase.rpc('material_publish', { p_lesson: lessonId }))}>Phát hành phiên bản</button>}
+          {canOwn && <button type="button" onClick={newVersion}>+ Tạo phiên bản mới</button>}
+          {canOwn && l.status === 'published' && <button type="button" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'archived' }).eq('id', lessonId))}>Ngừng dùng</button>}
+          {canOwn && l.status === 'archived' && <button type="button" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'published' }).eq('id', lessonId))}>Dùng lại</button>}
+          {canOwn && vs.length > 1 && <button type="button" className="danger" onClick={() => confirm(`Xoá phiên bản ${l.version_no}? Bài giảng soạn từ phiên bản này giữ lại nhưng bỏ liên kết.`)
+            && verAct(() => supabase.from('material_lessons').delete().eq('id', lessonId), () => onSwitch?.(vs.find(v => v.id !== lessonId)!.id))}>Xoá phiên bản</button>}
+        </span>
+      </div>
+      {canOwn && l.status === 'published' && <p className="sub" style={{ margin: '0 0 10px' }}>Phiên bản đã phát hành được giữ nguyên — bấm “+ Tạo phiên bản mới” để sửa.</p>}
       <div className="bar"><Tabs items={[['info', 'Thông tin bài học'], ['steps', 'Nội dung bài học', l.steps.length], ['files', 'Link học liệu', files.length + designs.length], ['norms', 'Định mức vật tư', norms.length], ['criteria', 'Tiêu chí (chờ xem lại)', l.criteria.length]] as [LTab, string, number?][]} value={tab} onChange={setTab} /></div>
 
       {tab === 'info' && (!editable ? <>
