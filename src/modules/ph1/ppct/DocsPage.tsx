@@ -209,18 +209,17 @@ function CreateDoc({ init, orgId, orgs, cat, progs, docs, school, onDone }: {
   const [copyId, setCopyId] = useState('')
   const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false)
 
-  // Môn × khối của các chương trình đang hiệu lực (từ Đối tượng: chủ đề / bài học)
+  // Môn của các chương trình đã phát hành áp dụng cho khối đã chọn (062: mỗi chương trình một khối; bài học thuộc môn)
   useEffect(() => {
-    const vids = progs.map(p => p.current_version_id).filter(Boolean) as string[]
-    if (!vids.length || grade == null) return setAvail([])
-    supabase.from('curriculum_units').select('version_id, subject_main, grade, curriculum_lessons(periods, sessions)').in('version_id', vids).eq('grade', grade).then(({ data }) => {
+    const ok = progs.filter(p => p.status === 'published' && p.current_version_id && grade != null && p.grades.includes(grade))
+    if (!ok.length) return setAvail([])
+    supabase.from('curriculum_lessons').select('version_id, subject, periods, sessions').in('version_id', ok.map(p => p.current_version_id!)).then(({ data }) => {
       const m = new Map<string, Avail>()
-      for (const u of (data as any[]) ?? []) { if (!u.subject_main) continue
-        const p = progs.find(x => x.current_version_id === u.version_id); if (!p) continue
-        const k = p.id + '|' + u.subject_main; const a = m.get(k) ?? { curriculum_id: p.id, subject: u.subject_main, lessons: 0, sessions: 0, periods: 0 }
-        for (const l of u.curriculum_lessons ?? []) { a.lessons++; a.sessions += l.sessions ?? 1; a.periods += l.periods }
-        m.set(k, a) }
-      setAvail([...m.values()].filter(a => a.lessons > 0))
+      for (const l of (data as { version_id: string; subject: string | null; periods: number; sessions: number }[]) ?? []) { if (!l.subject) continue
+        const p = ok.find(x => x.current_version_id === l.version_id); if (!p) continue
+        const k = p.id + '|' + l.subject; const a = m.get(k) ?? { curriculum_id: p.id, subject: l.subject, lessons: 0, sessions: 0, periods: 0 }
+        a.lessons++; a.sessions += l.sessions ?? 1; a.periods += l.periods; m.set(k, a) }
+      setAvail([...m.values()])
     })
   }, [grade, progs.length])
 
@@ -268,7 +267,7 @@ function CreateDoc({ init, orgId, orgs, cat, progs, docs, school, onDone }: {
         {step(3, 'Chọn chương trình phù hợp', matchProgs.length ? <div className="p1-pickgrid">{matchProgs.map(p => { const as = avail.filter(a => a.curriculum_id === p.id)
           return <label key={p.id} className={'p1-pick' + (picked.includes(p.id) ? ' on' : '')}><input type="checkbox" checked={picked.includes(p.id)} onChange={() => toggleProg(p.id)} />
             <CtBadge color={p.color} code={p.code} /><b>{p.name}</b><small>{as.length} môn · {as.reduce((a, x) => a + x.lessons, 0)} bài · {as.reduce((a, x) => a + x.periods, 0)} tiết ở {gradeLabel(grade!)}</small></label> })}</div>
-          : <Empty>Chưa có chương trình (đang hiệu lực) có bài học ở {grade != null ? gradeLabel(grade) : 'khối này'}.</Empty>, false, grade == null)}
+          : <Empty>Chưa có chương trình đã phát hành có bài học ở {grade != null ? gradeLabel(grade) : 'khối này'}.</Empty>, false, grade == null)}
         {step(4, 'Chọn môn từ các chương trình', <div className="p1-pickgrid">{avail.filter(a => picked.includes(a.curriculum_id)).map(a => { const p = progs.find(x => x.id === a.curriculum_id)
           return <label key={a.curriculum_id + a.subject} className={'p1-pick' + (has(a) ? ' on' : '')}><input type="checkbox" checked={has(a)} onChange={() => toggleItem(a)} />
             <b>{catName(cat, 'subject', a.subject)}</b><CtBadge color={p?.color} code={p?.code} /><small>{a.lessons} bài · {a.sessions} buổi · {a.periods} tiết</small></label> })}</div>, false, !picked.length)}

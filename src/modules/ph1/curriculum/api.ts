@@ -13,7 +13,28 @@ export type Curriculum = {
   issuer: string | null; levels: string[]; grades: number[]; subjects: string[]; fields: string[]; structure_labels: Labels; scope: Scope
   require_approval: boolean; source_curriculum_id: string | null; source_version_id: string | null; current_version_id: string | null
   archived_at: string | null; created_at: string; updated_at: string
+  status: CStatus; outcomes_text: string | null   // 062: trạng thái ở chương trình; yêu cầu cần đạt (một ô text)
 }
+// 062: chương trình không còn phiên bản / phê duyệt. current_version_id chỉ là chỗ chứa nội dung (không hiện ở giao diện).
+export type CStatus = 'draft' | 'published' | 'archived'
+export const CSTATUS: Record<CStatus, [string, '' | 'good' | 'warn']> = { draft: ['Nháp', ''], published: ['Đã phát hành', 'good'], archived: ['Ngừng dùng', 'warn'] }
+// Học liệu có phiên bản (062)
+export type MStatus = 'draft' | 'published' | 'archived'
+export const MSTATUS: Record<MStatus, [string, '' | 'good' | 'warn']> = { draft: ['Nháp', ''], published: ['Đã phát hành', 'good'], archived: ['Ngừng dùng', 'warn'] }
+export type MVer = { id: string; family_id: string; version_no: number; status: MStatus; curriculum_lesson_id: string | null; set_id: string; title: string }
+// Phiên bản đơn vị đang dùng của một học liệu: đã chọn → bản đó; chưa chọn → bản đã phát hành mới nhất; chưa phát hành → bản mới nhất
+export function inUseOf<T extends Pick<MVer, 'id' | 'family_id' | 'version_no' | 'status'>>(vers: T[], family: string, chosen?: Map<string, string>) {
+  const fam = vers.filter(v => v.family_id === family).sort((a, b) => b.version_no - a.version_no)
+  const pick = chosen?.get(family)
+  return fam.find(v => v.id === pick) ?? fam.find(v => v.status === 'published') ?? fam[0] ?? null
+}
+// Có bản đã phát hành mới hơn bản đang dùng
+export function newerOf<T extends Pick<MVer, 'family_id' | 'version_no' | 'status'>>(vers: T[], cur: T | null) {
+  if (!cur) return null
+  return vers.filter(v => v.family_id === cur.family_id && v.status === 'published' && v.version_no > cur.version_no).sort((a, b) => b.version_no - a.version_no)[0] ?? null
+}
+// Mở học liệu của một bài từ màn khác (Chương trình → Học liệu)
+export const OPEN_LESSON_KEY = 'ph1:open-lesson'
 export type VStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'published' | 'superseded'
 export type Version = {
   id: string; curriculum_id: string; org_id: string; version_no: number; label: string | null; status: VStatus; change_note: string | null
@@ -26,7 +47,7 @@ export type Unit = {
 }
 export type PeriodRow = { title: string; minutes?: number; note?: string }
 export type Lesson = {
-  id: string; version_id: string; unit_id: string; seq: number; code: string | null; title: string; summary: string | null; periods: number; sessions: number
+  id: string; version_id: string; unit_id: string | null; subject: string | null; seq: number; code: string | null; title: string; summary: string | null; periods: number; sessions: number
   minutes_per_period: number; period_plan: PeriodRow[]; library_item_id: string | null; notes: string | null
 }
 export type Outcome = {

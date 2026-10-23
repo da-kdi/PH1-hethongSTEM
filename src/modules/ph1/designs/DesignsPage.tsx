@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
 import { CtBadge, Drawer, Empty, Mini, Pill, Section, StatusTabs, Thumb, Toolbar, VCard, errMsg, fmtDY, norm, timeAgo, useOrgList, useViewMode } from '../ui'
 import { Drill, useDrill } from '../drill'
-import { catName, effectiveCatalog, gradeLabel, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
+import { catName, effectiveCatalog, gradeLabel, inUseOf, newerOf, useCatalog, useOrgs, type Curriculum, type MStatus } from '../curriculum/api'
 import { BASIS, NORM_CAT, type MLesson, type Norm } from '../materials/MaterialsPage'
 
 type Activity = { title: string; minutes?: number; teacher?: string; student?: string; product?: string }
@@ -12,9 +12,10 @@ type DNorm = { name: string; spec?: string | null; unit: string; qty: number; ba
 type Design = { id: string; org_id: string; teacher_id: string | null; material_lesson_id: string | null; curriculum_lesson_id: string | null; based_on_id: string | null
   title: string; subject: string | null; grade: number | null; status: string; version_no: number; objectives: string | null; sessions: DSession[]; norms: DNorm[]
   files: { title: string; url?: string }[]; criteria: { name: string; levels: string[] }[]; notes: string | null; updated_at: string; created_at: string }
+type ML = Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq' | 'periods' | 'objectives'> & { family_id: string; version_no: number; status: MStatus }
 type MSetLite = { id: string; name: string; subject: string | null; grade: number | null; curriculum_id: string | null }
 
-const STATUS: Record<string, [string, '' | 'good' | 'warn']> = { draft: ['Bản nháp', ''], review: ['Chờ duyệt', 'warn'], published: ['Đã phát hành', 'good'] }
+const STATUS: Record<string, [string, '' | 'good' | 'warn']> = { draft: ['Nháp', ''], review: ['Nháp', ''], published: ['Đã xuất bản', 'good'] }
 
 // 1.1.4 Soạn bài giảng & Kho hoạt động (docs/PH1-cau-truc-1.1.md): bài giảng gán vào học liệu; một học liệu có nhiều phiên bản bài giảng.
 //   Soạn bài giảng: chọn học liệu → bài giảng mới (sao nội dung, vật tư của học liệu) → chỉnh theo lớp; học liệu gốc không bị sửa.
@@ -23,8 +24,9 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
   const [list, setList] = useState<Design[]>([])
   const [sets, setSets] = useState<MSetLite[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
-  const [mlessons, setMlessons] = useState<Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq' | 'periods' | 'objectives'>[]>([])
-  const [status, setStatus] = useState<'all' | 'published' | 'review' | 'draft'>('all')
+  const [mlessons, setMlessons] = useState<ML[]>([])
+  const [chosen, setChosen] = useState<Map<string, string>>(new Map())
+  const [status, setStatus] = useState<'all' | 'published' | 'draft'>('all')
   const [tab, setTab] = useState<'compose' | 'store'>('compose')
   const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
   const [view, setView] = useViewMode('designs', 'table')
@@ -38,24 +40,30 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
   const { below } = useOrgs(orgId)
   const cat = effectiveCatalog(all, hidden, below)
   async function load(pick?: string) {
-    const [d, s, l, c] = await Promise.all([
+    const [d, s, l, c, u] = await Promise.all([
       supabase.from('lesson_designs').select('*').order('updated_at', { ascending: false }),
       supabase.from('material_sets').select('id, name, subject, grade, curriculum_id').neq('status', 'archived').order('name'),
-      supabase.from('material_lessons').select('id, set_id, title, seq, periods, objectives').order('seq'),
+      supabase.from('material_lessons').select('id, set_id, title, seq, periods, objectives, family_id, version_no, status').order('seq'),
       supabase.from('curricula').select('*').order('code'),
+      orgId ? supabase.from('material_in_use').select('family_id, lesson_id').eq('org_id', orgId) : Promise.resolve({ data: [] }),
     ])
     if (d.error) return setMsg(errMsg(d.error.message))
-    setList((d.data as Design[]) ?? []); setSets((s.data as MSetLite[]) ?? []); setMlessons((l.data as any[]) ?? []); setProgs((c.data as Curriculum[]) ?? [])
+    setList((d.data as Design[]) ?? []); setSets((s.data as MSetLite[]) ?? []); setMlessons((l.data as ML[]) ?? []); setProgs((c.data as Curriculum[]) ?? [])
+    setChosen(new Map(((u.data as { family_id: string; lesson_id: string }[]) ?? []).map(x => [x.family_id, x.lesson_id])))
     if (pick) setOpen(pick)
   }
   useEffect(() => { load() }, [orgId])
 
   const mlOf = (d: Design) => mlessons.find(x => x.id === d.material_lesson_id)
   // Phiên bản bài giảng của một học liệu: đánh số theo thứ tự tạo
-  const verOf = (d: Design) => d.material_lesson_id ? list.filter(x => x.material_lesson_id === d.material_lesson_id).sort((a, b) => a.created_at.localeCompare(b.created_at)).findIndex(x => x.id === d.id) + 1 : 1
+  const verOf = (d: Design) => d.material_lesson_id ? list.filter(x => mlOf(x)?.family_id === mlOf(d)?.family_id).sort((a, b) => a.created_at.localeCompare(b.created_at)).findIndex(x => x.id === d.id) + 1 : 1
   const progOf = (d: Design) => { const ml = mlessons.find(x => x.id === d.material_lesson_id); const s = sets.find(x => x.id === ml?.set_id); return progs.find(p => p.id === s?.curriculum_id) }
   const srcOf = (d: Design) => { const ml = mlessons.find(x => x.id === d.material_lesson_id); const s = sets.find(x => x.id === ml?.set_id); return s ? `Từ học liệu · ${s.name}` : d.based_on_id ? 'Sao chép từ bài giảng khác' : 'Soạn từ trang trắng' }
-  async function createFrom(mlId: string | null) {
+  // Học liệu có bản phát hành mới hơn bản bài giảng đang dựa vào
+  const newerFor = (d: Design) => { const m = mlessons.find(x => x.id === d.material_lesson_id); return m ? newerOf(mlessons, m) : null }
+  // Học liệu để chọn khi soạn: mỗi học liệu một dòng — phiên bản đơn vị đang dùng, bỏ bản ngừng dùng
+  const heads = Array.from(new Set(mlessons.map(m => m.family_id))).map(f => inUseOf(mlessons.filter(m => m.status !== 'archived'), f, chosen)).filter(Boolean) as ML[]
+  async function createFrom(mlId: string | null, basedOn?: Design) {
     if (!orgId) return
     let row: Partial<Design> = { title: 'Bài giảng mới', sessions: [{ title: 'Buổi 1', minutes: 45, activities: [] }], norms: [], criteria: [], files: [] }
     if (mlId) {
@@ -72,13 +80,15 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
         norms: ((n.data as Norm[]) ?? []).map(x => ({ name: x.name, spec: x.spec, unit: x.unit, qty: Number(x.qty), basis: x.basis, category: x.category })),
         files: ((fl.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })), criteria: m.criteria }
     }
+    if (basedOn) row = { ...row, title: basedOn.title, notes: basedOn.notes, based_on_id: basedOn.id }
     const { data, error } = await supabase.from('lesson_designs').insert({ ...row, org_id: orgId, teacher_id: teacherId ?? null, status: 'draft' }).select('id').single()
     if (error) return setMsg(errMsg(error.message))
     setPicking(false); load((data as { id: string }).id)
   }
 
   const d = list.find(x => x.id === open)
-  if (d) return <DesignEditor key={d.id} d={d} prog={progOf(d) ?? null} source={srcOf(d)} cat={cat} orgs={orgs} back={() => { setOpen(null); load() }} reload={() => load()} onCopy={async () => {
+  if (d) return <DesignEditor key={d.id} d={d} prog={progOf(d) ?? null} source={srcOf(d)} cat={cat} orgs={orgs}
+    newer={newerFor(d)} onUpdate={() => { const n = newerFor(d); if (n) createFrom(n.id, d) }} back={() => { setOpen(null); load() }} reload={() => load()} onCopy={async () => {
     const { id: _i, updated_at: _u, ...rest } = d
     const r = await supabase.from('lesson_designs').insert({ ...rest, title: d.title + ' (bản sao)', based_on_id: d.id, status: 'draft', version_no: 1, org_id: orgId }).select('id').single()
     if (r.error) setMsg(errMsg(r.error.message)); else load((r.data as { id: string }).id)
@@ -87,13 +97,14 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
   const qq = norm(q)
   const base = list.filter(x => (tab === 'store' || x.org_id === orgId) && (!f.prog || progOf(x)?.id === f.prog) && (!f.grade || String(x.grade) === f.grade) && (!f.org || x.org_id === f.org)
     && (!qq || norm(`${x.title} ${x.objectives ?? ''} ${catName(cat, 'subject', x.subject)}`).includes(qq)))
-  const shown = base.filter(x => status === 'all' || x.status === status)
+  const shown = base.filter(x => status === 'all' || (status === 'published' ? x.status === 'published' : x.status !== 'published'))
   const acts = (x: Design) => x.sessions.reduce((a, s) => a + s.activities.length, 0)
   const renderDesigns = (shown: Design[]) => view === 'table' ? (
         <table className="p1-list"><thead><tr><th>Bài giảng</th><th>CT</th><th>Khối</th><th>Môn</th><th>Trạng thái</th><th>Buổi / hoạt động</th><th>Cập nhật</th><th></th></tr></thead>
           <tbody>{shown.map(x => { const p = progOf(x)
             return <tr key={x.id} onClick={() => setOpen(x.id)}>
-              <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{x.title}</b><small>{x.material_lesson_id ? `Học liệu: ${mlOf(x)?.title ?? '—'} · phiên bản ${verOf(x)}` : srcOf(x)} · {orgs.find(o => o.id === x.org_id)?.name}</small></div></div></td>
+              <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{x.title}</b><small>{x.material_lesson_id ? `Học liệu: ${mlOf(x)?.title ?? '—'} PB ${mlOf(x)?.version_no ?? '?'} · bài giảng PB ${verOf(x)}` : srcOf(x)} · {orgs.find(o => o.id === x.org_id)?.name}</small>
+                {newerFor(x) && <Pill tone="info">Có phiên bản học liệu mới (PB {newerFor(x)!.version_no})</Pill>}</div></div></td>
               <td><CtBadge color={p?.color} code={p?.code} /></td><td>{x.grade != null ? gradeLabel(x.grade) : '—'}</td><td>{catName(cat, 'subject', x.subject) || '—'}</td>
               <td><Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill></td>
               <td><b>{x.sessions.length}</b> buổi / {acts(x)} hoạt động</td><td>{timeAgo(x.updated_at)}</td>
@@ -103,15 +114,16 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
       ) : <div className="p1-grid">{shown.map(x => { const p = progOf(x)
         return <VCard key={x.id} color={p?.color} code={p?.code} icon="✏️" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill>} title={x.title}
           subtitle={`${catName(cat, 'subject', x.subject)}${x.grade != null ? ' · ' + gradeLabel(x.grade) : ''}`} desc={srcOf(x)}
-          chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${verOf(x)}`]} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>
+          chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${verOf(x)}`, newerFor(x) ? `Học liệu có PB ${newerFor(x)!.version_no}` : '']} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>
   // Kho hoạt động: gom theo học liệu, mỗi học liệu liệt kê các phiên bản bài giảng
-  const renderStore = (items: Design[]) => { const ids = Array.from(new Set(items.map(x => x.material_lesson_id ?? '_')))
-    return <>{ids.map(id => { const ds = items.filter(x => (x.material_lesson_id ?? '_') === id).sort((a, b) => a.created_at.localeCompare(b.created_at)); const ml = mlessons.find(m => m.id === id)
+  const famOf = (x: Design) => mlOf(x)?.family_id ?? '_'
+  const renderStore = (items: Design[]) => { const ids = Array.from(new Set(items.map(famOf)))
+    return <>{ids.map(id => { const ds = items.filter(x => famOf(x) === id).sort((a, b) => a.created_at.localeCompare(b.created_at)); const ml = id === '_' ? undefined : inUseOf(mlessons, id, chosen) ?? undefined
       return <div key={id} className="p1-objsub" style={{ marginBottom: 12 }}>
         <div className="head"><span className="p1-objtag">Học liệu</span><b>{ml?.title ?? 'Chưa gắn học liệu (chờ xem lại)'}</b><small>{ds.length} phiên bản bài giảng</small>
           {ml && <button type="button" style={{ marginLeft: 'auto' }} onClick={() => createFrom(ml.id)}>+ Phiên bản mới</button>}</div>
         <table className="p1-table"><thead><tr><th style={{ width: 80 }}>Phiên bản</th><th>Bài giảng</th><th>Đơn vị</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead>
-          <tbody>{ds.map(x => <tr key={x.id} onClick={() => setPeek(x.id)} style={{ cursor: 'pointer' }}><td>PB {verOf(x)}</td><td><b>{x.title}</b></td>
+          <tbody>{ds.map(x => <tr key={x.id} onClick={() => setPeek(x.id)} style={{ cursor: 'pointer' }}><td>PB {verOf(x)}</td><td><b>{x.title}</b><br /><small className="sub">từ học liệu PB {mlOf(x)?.version_no ?? '?'}</small></td>
             <td>{orgs.find(o => o.id === x.org_id)?.name}</td><td><Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill></td><td>{timeAgo(x.updated_at)}</td></tr>)}</tbody></table>
       </div> })}</> }
   const pd = list.find(x => x.id === peek)
@@ -122,8 +134,8 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
         value={tab} onChange={t => { setTab(t); setStatus('all') }} />
         <button type="button" className="primary" onClick={() => setPicking(true)}>+ Soạn bài giảng</button></div>
       <p className="sub" style={{ margin: '0 0 10px' }}>{tab === 'compose' ? 'Bài giảng của đơn vị: chọn học liệu rồi chỉnh theo lớp — học liệu gốc không bị thay đổi.' : 'Tất cả bài giảng, theo học liệu; một học liệu có thể có nhiều phiên bản bài giảng.'}</p>
-      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã phát hành', base.filter(x => x.status === 'published').length],
-        ['review', 'Chờ duyệt', base.filter(x => x.status === 'review').length], ['draft', 'Bản nháp', base.filter(x => x.status === 'draft').length]]} value={status} onChange={setStatus} />
+      <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã xuất bản', base.filter(x => x.status === 'published').length],
+        ['draft', 'Nháp', base.filter(x => x.status !== 'published').length]]} value={status} onChange={setStatus} />
       <Toolbar q={q} onQ={setQ} placeholder="Tìm theo tên bài, môn học, mục tiêu…" values={f} onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} filters={[
         { key: 'prog', label: 'Tất cả chương trình', options: progs.map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
         { key: 'grade', label: 'Tất cả khối', options: Array.from(new Set(list.map(x => x.grade).filter(g => g != null))).sort((a, b) => a! - b!).map(g => ({ value: String(g), label: gradeLabel(g!) })) },
@@ -144,15 +156,15 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
         {pd.notes && <div className="p1-box"><h4>📝 Điều chỉnh theo lớp</h4><p className="p1-text">{pd.notes}</p></div>}
       </Drawer>}
 
-      {picking && <Drawer title="Chọn học liệu để soạn bài giảng" badges={['Học liệu', `${mlessons.length} bài`]} onClose={() => setPicking(false)} wide
+      {picking && <Drawer title="Chọn học liệu để soạn bài giảng" badges={['Học liệu', `${heads.length} bài`]} onClose={() => setPicking(false)} wide
         footer={<span className="note">Bài giảng gán vào học liệu đã chọn và là một phiên bản mới — chỉnh thoải mái, học liệu gốc giữ nguyên.</span>}>
-        <LessonPicker sets={sets} progs={progs} lessons={mlessons} cat={cat} onPick={createFrom} />
+        <LessonPicker sets={sets} progs={progs} lessons={heads} cat={cat} onPick={id => createFrom(id)} />
       </Drawer>}
     </>
   )
 }
 
-function LessonPicker({ sets, progs, lessons, cat, onPick }: { sets: MSetLite[]; progs: Curriculum[]; lessons: Pick<MLesson, 'id' | 'set_id' | 'title' | 'seq' | 'periods' | 'objectives'>[]
+function LessonPicker({ sets, progs, lessons, cat, onPick }: { sets: MSetLite[]; progs: Curriculum[]; lessons: ML[]
   cat: ReturnType<typeof effectiveCatalog>; onPick: (id: string) => void }) {
   const [q, setQ] = useState(''); const [f, setF] = useState<Record<string, string>>({})
   const qq = norm(q)
@@ -163,13 +175,14 @@ function LessonPicker({ sets, progs, lessons, cat, onPick }: { sets: MSetLite[];
       { key: 'set', label: 'Mọi bộ học liệu', options: sets.map(s => ({ value: s.id, label: s.name })) }]} />
     <div className="p1-grid">{shown.map(l => { const s = sets.find(x => x.id === l.set_id); const p = progs.find(x => x.id === s?.curriculum_id)
       return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`}
-        desc={l.objectives} chips={[`${l.periods} tiết`]} foot={<small>{s?.name}</small>} onClick={() => onPick(l.id)} more="Soạn từ học liệu này ›" /> })}</div>
+        desc={l.objectives} chips={[`${l.periods} tiết`, `PB ${l.version_no}`, l.status === 'published' ? '' : 'nháp']} foot={<small>{s?.name}</small>} onClick={() => onPick(l.id)} more="Soạn từ học liệu này ›" /> })}</div>
     {!shown.length && <Empty>Không có bài phù hợp.</Empty>}
   </>)
 }
 
 type T = 'flow' | 'norms' | 'files' | 'criteria'
-function DesignEditor({ d, prog, source, cat, orgs, back, reload, onCopy, onDelete }: { d: Design; prog: Curriculum | null; source: string; cat: ReturnType<typeof effectiveCatalog>; orgs: { id: string; name: string }[]; back: () => void; reload: () => void; onCopy: () => void; onDelete: () => void }) {
+function DesignEditor({ d, prog, source, cat, orgs, newer, onUpdate, back, reload, onCopy, onDelete }: { d: Design; prog: Curriculum | null; source: string; cat: ReturnType<typeof effectiveCatalog>; orgs: { id: string; name: string }[]
+  newer: ML | null; onUpdate: () => void; back: () => void; reload: () => void; onCopy: () => void; onDelete: () => void }) {
   const [tab, setTab] = useState<T>('flow')
   const [msg, setMsg] = useState('')
   const [src, setSrc] = useState<Norm[] | null>(null)
@@ -187,9 +200,10 @@ function DesignEditor({ d, prog, source, cat, orgs, back, reload, onCopy, onDele
         <p className="p1-sub">{orgs.find(o => o.id === d.org_id)?.name} · {catName(cat, 'subject', d.subject)}{d.grade != null ? ' ' + gradeLabel(d.grade) : ''} · {total} phút · cập nhật {fmtDY(d.updated_at.slice(0, 10))}
           {' · ' + source}</p></div>
       {msg && <p className="msg">{msg}</p>}
+      {newer && <div className="p1-alert info"><span>Có phiên bản học liệu mới (PB {newer.version_no}). Bài giảng này giữ nguyên theo bản cũ.</span>
+        <button type="button" onClick={onUpdate}>Cập nhật theo bản mới</button></div>}
       <Section title="Thông tin" actions={<>
-        {d.status === 'draft' && <button type="button" onClick={() => upd({ status: 'review' })}>Trình duyệt</button>}
-        {d.status !== 'published' && <button type="button" className="primary" onClick={() => upd({ status: 'published', version_no: d.version_no + (d.status === 'draft' ? 0 : 0) })}>Phát hành</button>}
+        {d.status !== 'published' && <button type="button" className="primary" onClick={() => upd({ status: 'published' })}>Xuất bản</button>}
         {d.status === 'published' && <button type="button" onClick={() => upd({ status: 'draft', version_no: d.version_no + 1 })}>Sửa (tạo phiên bản {d.version_no + 1})</button>}</>}>
         <div className="p1-form">
           <label style={{ gridColumn: 'span 2' }}><span>Tên bài giảng</span><input defaultValue={d.title} onBlur={e => e.target.value && e.target.value !== d.title && upd({ title: e.target.value })} /></label>
