@@ -18,3 +18,20 @@
 .mau .hero small{color:var(--muted)}
 .mau td input.bandin{width:auto;min-width:240px;display:inline-block}
 .mau tr.addrow{display:table-row}.mau tr.addrow input{flex:none}
+/* Trung hoà lớp toàn cục của app trùng tên với lớp bản mẫu */
+.mau .toolbar{background:none;border:0;border-radius:0;padding:0}
+.mau .search{margin:0;width:auto}
+.mau .panel{margin-bottom:0}
+.mau .bar{margin-bottom:0}
+.mau .chip{margin:0}
+.mau .sub{margin:0}
+.mau .tag{margin-right:0}
+.mau .crumbs{font-size:13px}
+.mau .steps{margin:0;padding-left:0}
+.mau .timeline{border-left:0;padding-left:0;margin-left:0}
+.mau .checks,.mau .opts{margin:0}
+.mau th{font-size:12px}
+.mau .legend{display:flex;width:auto;height:auto;border-radius:0;vertical-align:baseline;background:none}
+.mau .ctip{z-index:1000}
+.mau .race .track{height:auto;border-radius:0;overflow:visible}
+.mau .opts{margin:0}

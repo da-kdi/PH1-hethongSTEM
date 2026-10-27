@@ -9,10 +9,10 @@ type PageMap = Record<string, ComponentType<any>>
 // Màn của mục 1.1 (src/modules/ph1)
 const CurriculumPage = lazy(() => import('./curriculum/CurriculumPage').then(m => ({ default: m.CurriculumPage })))
 const MaterialsPage = lazy(() => import('./materials/MaterialsPage').then(m => ({ default: m.MaterialsPage })))
-const PpctPage = lazy(() => import('./ppct/DocsPage').then(m => ({ default: m.PpctHome })))
-const DesignsPage = lazy(() => import('./designs/DesignsPage').then(m => ({ default: m.DesignsPage })))
+const PpctPage = lazy(() => import('./ppct/PpctMau').then(m => ({ default: m.PpctMau })))
+const DesignsPage = lazy(() => import('./designs/DesignsMau').then(m => ({ default: m.DesignsMau })))
 const TrackingPage = lazy(() => import('./tracking/TrackingPage').then(m => ({ default: m.TrackingPage })))
-const ElearningByProgram = lazy(() => import('./elearning/ElearningByProgram').then(m => ({ default: m.ElearningByProgram })))
+const ElearningByProgram = lazy(() => import('./elearning/ElearningMau').then(m => ({ default: m.ElearningMau })))
 
 // Màn đã có ở repo chính (giữ nguyên đường dẫn để ghép lại không lệch)
 const Packages = lazy(() => import('../../pages/Packages'))
