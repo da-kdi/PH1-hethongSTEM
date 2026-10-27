@@ -30,3 +30,6 @@
 .mau .steps{margin:0;padding-left:0}
 .mau .timeline{border-left:0;padding-left:0;margin-left:0}
 .mau .checks,.mau .opts{margin:0}
+.mau th{font-size:12px}
+.mau .legend{display:flex;width:auto;height:auto;border-radius:0;vertical-align:baseline;background:none}
+.mau .ctip{z-index:1000}
