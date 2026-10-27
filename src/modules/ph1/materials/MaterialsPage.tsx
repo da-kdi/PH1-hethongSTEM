@@ -1,517 +1,351 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../../../lib/supabase'
-import { Tabs } from '../../../pages/teacher/common'
-import {
-  CtBadge, Drawer, Empty, FlowSteps, Mini, Pill, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, errMsg, norm, timeAgo, useRpcBool, useViewMode,
-} from '../ui'
-import { Drill, useDrill } from '../drill'
-import { MSTATUS, OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, levelOfGrade, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
+import { errMsg, norm, timeAgo, useRpcBool } from '../ui'
+import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
+import { gradesText, groupOfCur } from '../curriculum/CurriculumPage'
+import { Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
-type MSet = { id: string; owner_org_id: string; code: string | null; name: string; curriculum_id: string | null; version_id: string | null; subject: string | null
-  grade: number | null; description: string | null; status: string; version_no: number; updated_at: string }
+// 1.1.2 Học liệu — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
+//   Danh sách: mỗi bài học của chương trình có một học liệu; gom theo Nhóm chương trình › Chương trình; Bảng | Thẻ; chuỗi bước
+//   Tạo học liệu → Soạn & chốt 4 nhóm → Phát hành phiên bản (bấm để lọc theo trạng thái).
+//   Chi tiết: thanh phiên bản (chọn PB, dùng PB này, phát hành khi đủ 4 nhóm đã chốt, tạo PB mới, ngừng dùng, xoá PB) và 4 nhóm theo mẫu giáo án KDI:
+//   Thông tin bài học · Nội dung bài học (Buổi › Hoạt động › Mục › ý) · Link học liệu · Định mức vật tư · Bài giảng soạn từ học liệu. Cột mới: migration 064.
+
+export type Step = { session?: number; title: string; minutes?: number; teacher?: string; student?: string; product?: string }
+type Part = { title: string; items: string[] }
+type Act = { title: string; minutes: number; parts: Part[] }
+type Sess = { title: string; note: string; acts: Act[] }
+type Integ = { main: string[]; others: { subject: string; items: string[] }[] }
+type Doc = { written: [string, string][]; reviewed: [string, string][]; edited: [string, string][] }
+type G4 = 'info' | 'content' | 'links' | 'norms'
 export type MLesson = { id: string; set_id: string; curriculum_lesson_id: string | null; seq: number; code: string | null; title: string; periods: number; sessions: number
   objectives: string | null; subject_main: string | null; subjects_integrated: string[]; product_requirements: string | null
   steps: Step[]; criteria: { name: string; levels: string[] }[]; notes: string | null
-  family_id: string; version_no: number; status: MStatus; change_note: string | null; published_at: string | null }
-export type Step = { session?: number; title: string; minutes?: number; teacher?: string; student?: string; product?: string }
+  family_id: string; version_no: number; status: MStatus; change_note: string | null; published_at: string | null
+  description?: string | null; integration?: Integ; doc_info?: Doc; plan?: Sess[]; groups?: Partial<Record<G4, string>> }
 export type Norm = { id: string; lesson_id: string; seq: number; category: string; name: string; spec: string | null; unit: string; qty: number; basis: string; consumable: boolean; substitute: string | null }
 type File = { id: string; lesson_id: string; seq: number; kind: string; title: string; url: string | null }
+type MSet = { id: string; owner_org_id: string; curriculum_id: string | null; subject: string | null; grade: number | null }
+type CL = { id: string; title: string; periods: number; sessions: number; version_id: string; subject: string | null; useq: number; seq: number }
 
 export const BASIS: Record<string, string> = { per_product: 'mỗi sản phẩm', per_group: 'mỗi nhóm', per_student: 'mỗi học sinh', per_class: 'mỗi lớp' }
 export const NORM_CAT: Record<string, string> = { vat_tu: 'Nguyên vật liệu', dung_cu: 'Dụng cụ', thiet_bi: 'Thiết bị dùng chung' }
-const FILE_KIND: Record<string, [string, string]> = { bai_giang: ['Bài giảng', '🎞️'], giao_an: ['Giáo án / KHBD', '📘'], huong_dan: ['Hướng dẫn giáo viên', '🧭'], phieu_hoc_tap: ['Phiếu học tập', '📝'],
-  hinh_anh: ['Hình ảnh', '🖼️'], video: ['Video', '🎬'], tham_khao: ['Tài liệu tham khảo', '📎'] }
-export const SET_STATUS: Record<string, [string, '' | 'good' | 'warn' | 'info']> = { draft: ['Bản nháp', ''], review: ['Đang thẩm định', 'warn'], published: ['Đã phát hành', 'good'], archived: ['Ngừng dùng', ''] }
-
+const FILE_KIND: Record<string, string> = { bai_giang: 'Bài giảng', phieu_hoc_tap: 'Phiếu học tập', video: 'Video', tham_khao: 'Tài liệu tham khảo', giao_an: 'Giáo án / KHBD', huong_dan: 'Hướng dẫn giáo viên', hinh_anh: 'Hình ảnh' }
 export const needQty = (n: Pick<Norm, 'qty' | 'basis'>, students: number, groups: number, products: number) =>
   n.qty * (n.basis === 'per_product' ? products : n.basis === 'per_group' ? groups : n.basis === 'per_student' ? students : 1)
-// Tách mục tiêu thành từng ý để hiển thị dạng danh sách
-const points = (s: string | null) => (s ?? '').split(/;\s*|\n+|(?<=\.)\s+(?=[A-ZÀ-Ỹ])/).map(x => x.trim()).filter(Boolean)
+const G4: [G4, string][] = [['info', 'Thông tin bài học'], ['content', 'Nội dung bài học'], ['links', 'Link học liệu'], ['norms', 'Định mức vật tư']]
+const lines = (s: string | null | undefined) => (s ?? '').split('\n').map(x => x.trim()).filter(Boolean)
+const MS: Record<string, [string, string]> = { draft: ['Nháp', 'draft'], published: ['Đã phát hành', 'good'], archived: ['Ngừng dùng', 'warn'] }
+type Mat = 'none' | 'draft' | 'ok'
+const matOf = (v: MLesson | null): Mat => !v ? 'none' : v.status === 'published' ? 'ok' : 'draft'
+function MatPill({ v }: { v: MLesson | null }) { const m = matOf(v)
+  return m === 'ok' ? <span className="pill good plain" title={`Phiên bản đang dùng: PB ${v!.version_no}`}>Đủ</span> : m === 'draft' ? <span className="pill warn plain" title={`Phiên bản đang dùng: PB ${v!.version_no}`}>Đang soạn</span> : <span className="pill draft plain">Chưa có</span> }
+function GDots({ v }: { v: MLesson }) { return <span className="gdots">{G4.map(([k, n]) => <i key={k} className={v.groups?.[k] === 'ok' ? 'ok' : ''} title={`${n}: ${v.groups?.[k] === 'ok' ? 'Đã chốt' : 'Cần kiểm tra'}`} />)}</span> }
+// Nội dung bài học: dùng plan; học liệu cũ chỉ có steps thì dựng tạm Buổi › Hoạt động từ steps
+const planOf = (l: MLesson): Sess[] => l.plan?.length ? l.plan : Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b).map(k => ({ title: `Buổi ${k}`, note: '',
+  acts: l.steps.filter(s => (s.session ?? 1) === k).map(s => ({ title: s.title, minutes: s.minutes ?? 0, parts: [{ title: '', items: [...(s.teacher ? ['GV: ' + s.teacher] : []), ...(s.student ? ['HS: ' + s.student] : [])] }] })) }))
+const stepsOf = (plan: Sess[]): Step[] => plan.flatMap((se, si) => se.acts.map(a => { const its = a.parts.flatMap(p => p.items).filter(t => !t.startsWith('[Hình]'))
+  return { session: si + 1, title: a.title, minutes: a.minutes, teacher: its.filter(t => /^(GV|Giáo viên)/.test(t)).join('\n'), student: its.filter(t => /^(HS|Học sinh)/.test(t)).join('\n') } }))
 
-type Full = { kind: 'lesson' | 'set'; id: string } | null
-// Bài học trong chương trình (Chương trình › Khối › Môn › Bài học) — mỗi bài có đúng một học liệu
-type CL = { id: string; title: string; periods: number; sessions: number; version_id: string; prog: string; grade: number | null; subject: string | null }
-type DItem = { cl: CL | null; l: MLesson | null }
-
-// 1.1.2 Học liệu (docs/PH1-cau-truc-1.1.md): một bài học (gán vào một môn trong một chương trình) = một học liệu gồm
-// Thông tin bài học · Nội dung bài học · Link học liệu (bài giảng, phiếu học tập) · Định mức vật tư. Bộ học liệu giữ như bản trước (chờ xem lại).
 export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
-  const [sets, setSets] = useState<MSet[]>([])
   const [progs, setProgs] = useState<Curriculum[]>([])
-  const [allL, setAllL] = useState<MLesson[]>([])            // mọi phiên bản học liệu
-  const [chosen, setChosen] = useState<Map<string, string>>(new Map())   // phiên bản đơn vị đang dùng (family → bản)
+  const [sets, setSets] = useState<MSet[]>([])
+  const [allL, setAllL] = useState<MLesson[]>([])
+  const [chosen, setChosen] = useState<Map<string, string>>(new Map())
   const [cls, setCls] = useState<CL[]>([])
-  const [counts, setCounts] = useState<{ norms: Map<string, number>; files: Map<string, number> }>({ norms: new Map(), files: new Map() })
-  const [tab, setTab] = useState<'lessons' | 'sets'>('lessons')
+  const [open, setOpen] = useState<string | null>(null)       // id phiên bản học liệu đang mở
   const [q, setQ] = useState('')
-  const [f, setF] = useState<Record<string, string>>({})
-  const [view, setView] = useViewMode('materials')
-  const [path, setPath] = useDrill()
-  const [preview, setPreview] = useState<string | null>(null)
-  const [full, setFull] = useState<Full>(null)
-  const [msg, setMsg] = useState(''); const [note, setNote] = useState('')
+  const [f, setF] = useState({ grp: '', prog: '', subj: '', grade: '', fs: '' })
+  const [mode, setMode] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.hl.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
+  const [shut, setShut] = useState<Set<string>>(new Set())
+  const [msg, setMsg] = useState('')
   const canManage = useRpcBool('curriculum_can_manage')
   const { all, hidden } = useCatalog()
   const { below } = useOrgs(orgId)
   const cat = effectiveCatalog(all, hidden, below)
 
   async function load() {
-    const [s, c, l, n, fl, u] = await Promise.all([
-      supabase.from('material_sets').select('*').order('name'),
+    const [c, s, l, u] = await Promise.all([
       supabase.from('curricula').select('*').order('code'),
+      supabase.from('material_sets').select('id, owner_org_id, curriculum_id, subject, grade'),
       supabase.from('material_lessons').select('*').order('seq'),
-      supabase.from('material_norms').select('lesson_id'),
-      supabase.from('material_files').select('lesson_id'),
       orgId ? supabase.from('material_in_use').select('family_id, lesson_id').eq('org_id', orgId) : Promise.resolve({ data: [] }),
     ])
-    if (s.error) return setMsg(errMsg(s.error.message))
-    const ps = (c.data as Curriculum[]) ?? []
-    setSets((s.data as MSet[]) ?? []); setProgs(ps); setAllL((l.data as MLesson[]) ?? [])
+    if (c.error) return setMsg(errMsg(c.error.message))
+    const ps = ((c.data as Curriculum[]) ?? []).filter(p => p.status !== 'archived')
+    setProgs(ps); setSets((s.data as MSet[]) ?? []); setAllL((l.data as MLesson[]) ?? [])
     setChosen(new Map(((u.data as { family_id: string; lesson_id: string }[]) ?? []).map(x => [x.family_id, x.lesson_id])))
-    const vids = ps.filter(p => p.status !== 'archived').map(p => p.current_version_id).filter(Boolean) as string[]
-    if (vids.length) {
-      // Bài học thuộc môn của chương trình (062); khối theo chương trình; thứ tự: chủ đề rồi bài
-      const r = await supabase.from('curriculum_lessons').select('id, title, periods, sessions, version_id, seq, subject, curriculum_units(seq)').in('version_id', vids)
-      setCls(((r.data as any[]) ?? []).sort((a, b) => (a.curriculum_units?.seq ?? 1e6) - (b.curriculum_units?.seq ?? 1e6) || a.seq - b.seq).map(x => { const p = ps.find(y => y.current_version_id === x.version_id)!
-        return { id: x.id, title: x.title, periods: x.periods, sessions: x.sessions ?? 1, version_id: x.version_id, prog: p.id, grade: p.grades[0] ?? null, subject: x.subject } }))
-    } else setCls([])
-    const cnt = (rows: { lesson_id: string }[] | null) => { const m = new Map<string, number>(); (rows ?? []).forEach(r => m.set(r.lesson_id, (m.get(r.lesson_id) ?? 0) + 1)); return m }
-    setCounts({ norms: cnt(n.data as any), files: cnt(fl.data as any) })
+    const vids = ps.map(p => p.current_version_id).filter(Boolean) as string[]
+    if (!vids.length) return setCls([])
+    const r = await supabase.from('curriculum_lessons').select('id, title, periods, sessions, version_id, seq, subject, curriculum_units(seq)').in('version_id', vids)
+    setCls(((r.data as any[]) ?? []).map(x => ({ id: x.id, title: x.title, periods: x.periods, sessions: x.sessions ?? 1, version_id: x.version_id, subject: x.subject, useq: x.curriculum_units?.seq ?? 1e6, seq: x.seq }))
+      .sort((a, b) => a.useq - b.useq || a.seq - b.seq))
   }
   useEffect(() => { load() }, [orgId])
-  // Mỗi học liệu hiện một dòng: phiên bản đơn vị đang dùng
-  const lessons = useMemo(() => Array.from(new Set(allL.map(l => l.family_id))).map(f => inUseOf(allL, f, chosen)!).sort((a, b) => a.seq - b.seq), [allL, chosen])
-  const newer = (l: MLesson) => newerOf(allL, l)
-  const vPill = (l: MLesson) => <><Pill tone={MSTATUS[l.status]?.[1]}>{MSTATUS[l.status]?.[0]} · PB {l.version_no}</Pill>{newer(l) && <> <Pill tone="info">có PB {newer(l)!.version_no}</Pill></>}</>
-  // Mở từ Chương trình giáo dục: học liệu của một bài (tạo mới nếu bài chưa có)
+  // Học liệu (phiên bản đơn vị đang dùng) của một bài học
+  const famOfCl = useMemo(() => { const m = new Map<string, string>(); allL.forEach(l => l.curriculum_lesson_id && m.set(l.curriculum_lesson_id, l.family_id)); return m }, [allL])
+  const useOf = (clId: string) => { const fam = famOfCl.get(clId); return fam ? inUseOf(allL, fam, chosen) as MLesson | null : null }
+  // Mở từ Chương trình giáo dục
   useEffect(() => {
     let id: string | null = null; try { id = sessionStorage.getItem(OPEN_LESSON_KEY) } catch { /* bỏ qua */ }
     if (!id || !cls.length) return
     const cl = cls.find(x => x.id === id); if (!cl) return
     try { sessionStorage.removeItem(OPEN_LESSON_KEY) } catch { /* bỏ qua */ }
-    const l = hlOf(cl)
-    if (l) setFull({ kind: 'lesson', id: l.id }); else if (canManage) createFor(cl); else setNote(`Bài “${cl.title}” chưa có học liệu.`)
-  }, [cls.length, lessons.length, canManage])
+    const v = useOf(cl.id); if (v) setOpen(v.id); else if (canManage) createFor(cl); else setMsg(`Bài “${cl.title}” chưa có học liệu.`)
+  }, [cls.length, allL.length, canManage])
 
-  const setOf = (l: MLesson) => sets.find(s => s.id === l.set_id)
-  const progOf = (s?: MSet) => progs.find(p => p.id === s?.curriculum_id)
-  async function newSet() {
-    const name = prompt('Tên bộ học liệu mới:'); if (!name || !orgId) return
-    const { data, error } = await supabase.from('material_sets').insert({ owner_org_id: orgId, name, status: 'draft' }).select('id').single()
-    if (error) return setMsg(errMsg(error.message))
-    await load(); setFull({ kind: 'set', id: (data as { id: string }).id })
-  }
-  async function toDesign(l: MLesson) {
-    if (!orgId) return
-    const [n, fl] = await Promise.all([supabase.from('material_norms').select('*').eq('lesson_id', l.id).order('seq'), supabase.from('material_files').select('title, url').eq('lesson_id', l.id).order('seq')])
-    const st = setOf(l); const ss = Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b)
-    const { error } = await supabase.from('lesson_designs').insert({ org_id: orgId, title: l.title, subject: st?.subject ?? l.subject_main, grade: st?.grade ?? null, objectives: l.objectives,
-      material_lesson_id: l.id, curriculum_lesson_id: l.curriculum_lesson_id, status: 'draft', criteria: l.criteria,
-      sessions: (ss.length ? ss : [1]).map(k => ({ title: `Buổi ${k}`, minutes: l.steps.filter(s => (s.session ?? 1) === k).reduce((x, s) => x + (s.minutes ?? 0), 0),
-        activities: l.steps.filter(s => (s.session ?? 1) === k).map(s => ({ title: s.title, minutes: s.minutes, teacher: s.teacher, student: s.student, product: '' })) })),
-      norms: ((n.data as Norm[]) ?? []).map(x => ({ name: x.name, spec: x.spec, unit: x.unit, qty: Number(x.qty), basis: x.basis, category: x.category })),
-      files: ((fl.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })) })
-    if (error) return setMsg(errMsg(error.message))
-    setPreview(null); setNote(`Đã tạo bài giảng “${l.title}” — xem ở Soạn bài giảng & kho hoạt động.`)
-  }
-
-  // Tạo học liệu cho một bài chờ: đặt vào bộ học liệu của đơn vị theo chương trình · môn · khối (tạo bộ nếu chưa có)
+  const progOfCl = (cl: CL) => progs.find(p => p.current_version_id === cl.version_id)!
   async function createFor(cl: CL) {
     if (!orgId) return
-    const p = progs.find(x => x.id === cl.prog)
-    let set = sets.find(s => s.owner_org_id === orgId && s.curriculum_id === cl.prog && s.grade === cl.grade && s.subject === cl.subject)
+    const p = progOfCl(cl); const grade = p.grades[0] ?? null
+    let set = sets.find(s => s.owner_org_id === orgId && s.curriculum_id === p.id && s.subject === cl.subject)
     if (!set) {
-      const { data, error } = await supabase.from('material_sets').insert({ owner_org_id: orgId, name: `Học liệu ${p?.code ?? ''} · ${catName(cat, 'subject', cl.subject)} · ${cl.grade != null ? gradeLabel(cl.grade) : ''}`,
-        curriculum_id: cl.prog, version_id: cl.version_id, subject: cl.subject, grade: cl.grade, status: 'draft' }).select('*').single()
+      const { data, error } = await supabase.from('material_sets').insert({ owner_org_id: orgId, name: `Học liệu ${p.code ?? ''} · ${catName(cat, 'subject', cl.subject)}`,
+        curriculum_id: p.id, version_id: cl.version_id, subject: cl.subject, grade, status: 'draft' }).select('id, owner_org_id, curriculum_id, subject, grade').single()
       if (error) return setMsg(errMsg(error.message)); set = data as MSet
     }
-    const { data, error } = await supabase.from('material_lessons').insert({ set_id: set.id, curriculum_lesson_id: cl.id, seq: lessons.filter(l => l.set_id === set!.id).length + 1,
-      title: cl.title, periods: cl.periods, sessions: Math.min(20, cl.sessions), subject_main: cl.subject }).select('id').single()
+    const { data, error } = await supabase.from('material_lessons').insert({ set_id: set.id, curriculum_lesson_id: cl.id, seq: cl.seq, title: cl.title, periods: cl.periods,
+      sessions: Math.min(20, cl.sessions), subject_main: cl.subject, groups: { info: 'check', content: 'check', links: 'check', norms: 'check' } }).select('id').single()
     if (error) return setMsg(errMsg(error.message))
-    await load(); setFull({ kind: 'lesson', id: (data as { id: string }).id })
+    await load(); setOpen((data as { id: string }).id)
   }
-  const hlOf = (cl: CL) => lessons.find(l => l.curriculum_lesson_id === cl.id) ?? null
-  const dItems: DItem[] = [...cls.map(cl => ({ cl, l: hlOf(cl) })), ...lessons.filter(l => !l.curriculum_lesson_id || !cls.some(c => c.id === l.curriculum_lesson_id)).map(l => ({ cl: null, l }))]
-  const dKey = (x: DItem) => x.cl ? { prog: x.cl.prog, grade: x.cl.grade, subject: x.cl.subject }
-    : { prog: setOf(x.l!)?.curriculum_id ?? null, grade: setOf(x.l!)?.grade ?? null, subject: setOf(x.l!)?.subject ?? null }
-  const renderDrill = (list: DItem[]) => <table className="p1-list"><thead><tr><th>Bài học</th><th>Số buổi · tiết</th><th>Học liệu</th><th></th></tr></thead>
-    <tbody>{list.map((x, i) => { const l = x.l
-      return <tr key={x.cl?.id ?? l!.id} onClick={() => l ? setPreview(l.id) : undefined} style={l ? undefined : { cursor: 'default' }}>
-        <td><b>{i + 1}. {x.cl?.title ?? l!.title}</b>{!x.cl && <><br /><small className="sub">chưa gắn bài học trong chương trình</small></>}</td>
-        <td>{x.cl?.sessions ?? l!.sessions} buổi · {x.cl?.periods ?? l!.periods} tiết</td>
-        <td>{l ? <>{vPill(l)} <small className="sub">{l.steps.length} hoạt động · {counts.files.get(l.id) ?? 0} link · {counts.norms.get(l.id) ?? 0} vật tư</small></>
-          : <Pill tone="warn">Bài chờ — chưa có học liệu</Pill>}</td>
-        <td>{l ? <div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPreview(l.id) }}>👁</button>
-          <button type="button" title="Mở đầy đủ" onClick={e => { e.stopPropagation(); setFull({ kind: 'lesson', id: l.id }) }}>✎</button></div>
-          : canManage && <button type="button" className="primary" onClick={() => createFor(x.cl!)}>+ Tạo học liệu</button>}</td>
-      </tr> })}</tbody></table>
 
-  // ===== Trang đầy đủ =====
-  if (full?.kind === 'lesson') { const l = lessons.find(x => x.id === full.id); const s = l && setOf(l)
-    const ll = l ?? allL.find(x => x.id === full.id); const ss = ll && setOf(ll)
-    if (ll && ss) return <LessonDetail key={ll.id} lessonId={ll.id} set={ss} prog={progOf(ss) ?? null} cat={cat} canEdit={canManage && ss.owner_org_id === orgId}
-      orgId={orgId} versions={allL.filter(x => x.family_id === ll.family_id)} inUseId={inUseOf(allL, ll.family_id, chosen)?.id ?? null}
-      onSwitch={id => setFull({ kind: 'lesson', id })} back={() => { setFull(null); load() }} backLabel="← Tất cả học liệu" onAll={() => { setFull(null); load() }} reload={load} /> }
-  if (full?.kind === 'set') { const s = sets.find(x => x.id === full.id)
-    if (s) return <SetDetail key={s.id} set={s} progs={progs} cat={cat} editable={canManage && s.owner_org_id === orgId} lessons={lessons.filter(l => l.set_id === s.id)} vPill={vPill}
-      counts={counts} onPreview={setPreview} onOpen={id => setFull({ kind: 'lesson', id })} back={() => { setFull(null); load() }} reload={load}
-      drawer={preview && <LessonPreview key={preview} lesson={lessons.find(l => l.id === preview)!} set={s} prog={progOf(s) ?? null} cat={cat}
-        onClose={() => setPreview(null)} onExpand={() => { setFull({ kind: 'lesson', id: preview }); setPreview(null) }} onDesign={toDesign} />} /> }
+  const ov = open ? allL.find(x => x.id === open) : null
+  if (ov) { const cl = cls.find(c => c.id === ov.curriculum_lesson_id) ?? null; const p = cl ? progOfCl(cl) : progs.find(x => sets.find(s => s.id === ov.set_id)?.curriculum_id === x.id) ?? null
+    const set = sets.find(s => s.id === ov.set_id)
+    return <Mau><MaterialDetail key={ov.family_id} lesson={ov} versions={allL.filter(x => x.family_id === ov.family_id)} inUseId={inUseOf(allL, ov.family_id, chosen)?.id ?? null}
+      cl={cl} prog={p} cat={cat} orgId={orgId} canOwn={canManage && set?.owner_org_id === orgId} go={go}
+      onSwitch={setOpen} back={() => { setOpen(null); load() }} reload={load} /></Mau> }
 
-  // ===== Lọc =====
-  const sOk = (s?: MSet) => !!s && (!f.prog || s.curriculum_id === f.prog) && (!f.grade || String(s.grade) === f.grade) && (!f.subject || s.subject === f.subject)
+  // ===== Danh sách =====
+  type Row = { p: Curriculum; cl: CL; v: MLesson | null }
+  const rows: Row[] = progs.flatMap(p => cls.filter(c => c.version_id === p.current_version_id).map(cl => ({ p, cl, v: useOf(cl.id) })))
   const qq = norm(q)
-  const lShown = lessons.filter(l => { const s = setOf(l); return sOk(s) && (!f.set || l.set_id === f.set) && (!qq || norm(`${l.title} ${l.objectives ?? ''} ${s?.name ?? ''}`).includes(qq)) })
-  const sShown = sets.filter(s => sOk(s) && (!f.status || s.status === f.status) && (!qq || norm(`${s.name} ${s.description ?? ''}`).includes(qq)))
-  const grades = Array.from(new Set(sets.map(s => s.grade).filter(g => g != null))) as number[]
-  const subjects = Array.from(new Set(sets.map(s => s.subject).filter(Boolean))) as string[]
-  const filters = [
-    { key: 'prog', label: 'Tất cả chương trình', options: progs.filter(p => sets.some(s => s.curriculum_id === p.id)).map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
-    { key: 'grade', label: 'Tất cả khối', options: grades.sort((a, b) => a - b).map(g => ({ value: String(g), label: gradeLabel(g) })) },
-    { key: 'subject', label: 'Tất cả môn', options: subjects.map(s => ({ value: s, label: catName(cat, 'subject', s) })) },
-    tab === 'lessons' ? { key: 'set', label: 'Mọi bộ học liệu', options: sets.filter(sOk).map(s => ({ value: s.id, label: s.name })) }
-      : { key: 'status', label: 'Mọi trạng thái', options: Object.entries(SET_STATUS).map(([k, [l]]) => ({ value: k, label: l })) },
-  ]
-  // Vẽ danh sách bài (Thẻ / Bảng); nhiều bộ học liệu thì tách theo bộ
-  const renderLessons = (list: MLesson[]) => {
-    const one = (lShown: MLesson[]) => view === 'grid' ? (
-        <div className="p1-grid">{lShown.map(l => { const s = setOf(l); const p = progOf(s)
-            return <VCard key={l.id} color={p?.color} code={p?.code} subject={s?.subject} icon="📚" status={vPill(l)}
-              title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`} desc={l.objectives}
-              chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '', counts.files.get(l.id) ? `${counts.files.get(l.id)} tài liệu` : '']}
-              foot={<small>{s?.name}</small>} onClick={() => setPreview(l.id)} /> })}</div>
-      ) : (
-        <table className="p1-list"><thead><tr><th>Bài học</th><th>CT</th><th>Khối</th><th>Môn</th><th>Thời lượng</th><th>Vật tư</th><th>Tài liệu</th><th>Phiên bản</th><th></th></tr></thead>
-            <tbody>{lShown.map(l => { const s = setOf(l); const p = progOf(s)
-              return <tr key={l.id} onClick={() => setPreview(l.id)}>
-                <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{l.title}</b><small>{s?.name}</small></div></div></td>
-                <td><CtBadge color={p?.color} code={p?.code} /></td><td>{s?.grade != null ? gradeLabel(s.grade) : '—'}</td><td>{catName(cat, 'subject', s?.subject) || '—'}</td>
-                <td>{l.periods} tiết · {l.sessions} buổi</td><td>{counts.norms.get(l.id) ?? 0}</td><td>{counts.files.get(l.id) ?? 0}</td>
-                <td>{vPill(l)}</td>
-                <td><div className="p1-iconbtns"><button type="button" title="Xem nhanh" onClick={e => { e.stopPropagation(); setPreview(l.id) }}>👁</button>
-                  <button type="button" title="Mở đầy đủ" onClick={e => { e.stopPropagation(); setFull({ kind: 'lesson', id: l.id }) }}>✎</button></div></td>
-              </tr> })}</tbody></table>)
-    const ids = Array.from(new Set(list.map(l => l.set_id)))
-    if (ids.length < 2) return one(list)
-    return <>{ids.map(id => { const st = sets.find(x => x.id === id); const ls = list.filter(l => l.set_id === id)
-      return <div key={id}><div className="p1-groupband"><h3>{st?.name}</h3><Pill tone={SET_STATUS[st?.status ?? '']?.[1]}>{SET_STATUS[st?.status ?? '']?.[0]}</Pill><small>{ls.length} bài · {ls.reduce((x, l) => x + l.periods, 0)} tiết</small>
-        <button type="button" className="linkbtn" onClick={() => setFull({ kind: 'set', id })}>Mở bộ học liệu ›</button></div>{one(ls)}</div> })}</>
-  }
-  const flat = !!q || Object.values(f).some(Boolean)
-  const pl = preview ? lessons.find(l => l.id === preview) : null
+  const grpCode = (p: Curriculum) => groupOfCur(cat, p)?.code ?? ''
+  const shown = rows.filter(r => (!qq || norm(r.cl.title).includes(qq)) && (!f.grp || grpCode(r.p) === f.grp) && (!f.prog || r.p.id === f.prog) && (!f.subj || r.cl.subject === f.subj)
+    && (!f.grade || r.p.grades.includes(Number(f.grade))) && (!f.fs || matOf(r.v) === f.fs))
+  const fam = rows.filter(r => r.v); const wait = rows.length - fam.length
+  const nNew = fam.filter(r => newerOf(allL, r.v)).length
+  const groups = [...catOf(cat, 'category').filter(g => progs.some(p => grpCode(p) === g.code)), ...(progs.some(p => !grpCode(p)) ? [{ code: '', name: 'Chưa xếp nhóm', color: '#94a3b8' } as CatItem] : [])]
+  const byGrp = groups.map(g => ({ g, ps: progs.filter(p => grpCode(p) === g.code).map(p => ({ p, rs: shown.filter(r => r.p === p) })).filter(x => x.rs.length) })).filter(x => x.ps.length)
+  const allKeys = byGrp.flatMap(x => ['g:' + x.g.code, ...x.ps.map(y => 'p:' + y.p.id)])
+  const tog = (k: string, o: boolean) => setShut(s => { const n = new Set(s); o ? n.delete(k) : n.add(k); return n })
+  const action = (r: Row) => r.v ? <button type="button" className="btn sm" onClick={() => setOpen(r.v!.id)}>Mở ›</button>
+    : canManage ? <button type="button" className="btn sm primary" onClick={() => createFor(r.cl)}><Ic n="plus" /> Tạo học liệu</button> : <span className="sub">Bài chờ</span>
+  const tableOf = (rs: Row[]) => <div className="tblwrap"><table><thead><tr><th>STT</th><th>Bài học</th><th>Môn</th><th>Tiết</th><th>Học liệu (PB đang dùng)</th><th>4 nhóm</th><th></th></tr></thead><tbody>
+    {rs.map((r, i) => { const nw = newerOf(allL, r.v)
+      return <tr key={r.cl.id}><td className="n">{i + 1}</td><td><b>{r.cl.title}</b></td><td>{catName(cat, 'subject', r.cl.subject)}</td><td>{r.cl.periods}</td>
+        <td><MatPill v={r.v} />{nw && <> <span className="pill info plain">có PB {nw.version_no}</span></>}</td><td>{r.v ? <GDots v={r.v} /> : '—'}</td><td style={{ textAlign: 'right' }}>{action(r)}</td></tr> })}</tbody></table></div>
+  const cardsOf = (rs: Row[], color: string) => <div className="grid hlgrid">{rs.map((r, i) => { const nw = newerOf(allL, r.v)
+    return <article key={r.cl.id} className="pcard dcard hlcard" style={cssVar(color)}><Cover subject={r.cl.subject} label={`${catName(cat, 'subject', r.cl.subject)} · ${r.cl.periods} tiết`} code={`Bài ${i + 1}`} /><h3>{r.cl.title}</h3>
+      <div className="chips"><MatPill v={r.v} />{nw && <span className="pill info plain">có PB {nw.version_no}</span>}</div>
+      <div className="foot"><span>{r.v ? <GDots v={r.v} /> : <span style={{ color: 'var(--faint)' }}>Bài chờ</span>}</span>{action(r)}</div></article> })}</div>
+  const n = (k: Mat) => rows.filter(r => matOf(r.v) === k).length
 
-  return (
-    <>
-      <div className="p1-stats">
-        <Stat label="Học liệu" value={lessons.length} sub={`${lessons.reduce((a, l) => a + l.periods, 0)} tiết`} />
-        <Stat label="Bài chờ" value={cls.filter(c => !hlOf(c)).length} sub={`trên ${cls.length} bài học của chương trình`} tone={cls.some(c => !hlOf(c)) ? 'warn' : ''} />
-        <Stat label="Bài có định mức vật tư" value={lessons.filter(l => counts.norms.get(l.id)).length} />
-        <Stat label="Chương trình có học liệu" value={new Set(sets.map(s => s.curriculum_id).filter(Boolean)).size} />
-      </div>
-      {msg && <p className="msg">{msg}</p>}
-      {note && <div className="p1-alert good">{note}{go && <button type="button" onClick={() => go('Soạn bài giảng & kho hoạt động')}>Mở Soạn bài giảng</button>}</div>}
-      <div className="bar">
-        <FlowSteps steps={[['lessons', 'Học liệu theo bài học', `${lessons.length} học liệu · ${cls.filter(c => !hlOf(c)).length} bài chờ`], ['sets', 'Bộ học liệu', `${sets.length} bộ · gom theo chương trình, môn, khối (chờ xem lại)`]] as ['lessons' | 'sets', string, string][]} value={tab} onChange={t => { setTab(t); setF({ ...f, set: '', status: '' }) }} />
-        {canManage && <button type="button" className="primary" onClick={newSet}>+ Bộ học liệu</button>}
-      </div>
-      <Toolbar q={q} onQ={setQ} placeholder={tab === 'lessons' ? 'Tìm theo tên bài, mục tiêu, bộ học liệu…' : 'Tìm bộ học liệu…'} filters={filters} values={f}
-        onFilter={(k, v) => setF({ ...f, [k]: v })} view={view} onView={setView} />
-
-      {tab === 'lessons' && (flat ? (lShown.length === 0 ? <Empty>Không có bài học phù hợp bộ lọc.</Empty> : renderLessons(lShown))
-        : <Drill items={dItems} keyOf={dKey} progs={progs} cat={cat} path={path} setPath={setPath} unit="bài" weight={x => x.cl?.periods ?? x.l!.periods} weightUnit="tiết"
-            icon="📚" renderItems={renderDrill} />)}
-
-      {tab === 'sets' && (sShown.length === 0 ? <Empty>Không có bộ học liệu phù hợp.</Empty> : view === 'grid' ? (
-        <div className="p1-grid">{sShown.map(s => { const p = progOf(s); const ls = lessons.filter(l => l.set_id === s.id)
-          return <VCard key={s.id} color={p?.color} code={p?.code} icon="🗂️" status={<Pill tone={SET_STATUS[s.status]?.[1]}>{SET_STATUS[s.status]?.[0]}</Pill>}
-            title={s.name} subtitle={`${catName(cat, 'subject', s.subject)}${s.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`} desc={s.description}
-            chips={[`${ls.length} bài`, `${ls.reduce((a, l) => a + l.periods, 0)} tiết`, `PB ${s.version_no}`]} foot={<small>cập nhật {timeAgo(s.updated_at)}</small>}
-            onClick={() => setFull({ kind: 'set', id: s.id })} /> })}</div>
-      ) : (
-        <table className="p1-list"><thead><tr><th>Bộ học liệu</th><th>CT</th><th>Khối</th><th>Môn</th><th>Bài</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead>
-          <tbody>{sShown.map(s => { const p = progOf(s); const ls = lessons.filter(l => l.set_id === s.id)
-            return <tr key={s.id} onClick={() => setFull({ kind: 'set', id: s.id })}>
-              <td><div className="titlecell"><Thumb color={p?.color} code={p?.code} /><div><b>{s.name}</b><small>{p ? p.name : 'Chưa gắn chương trình'}</small></div></div></td>
-              <td><CtBadge color={p?.color} code={p?.code} /></td><td>{s.grade != null ? gradeLabel(s.grade) : '—'}</td><td>{catName(cat, 'subject', s.subject) || '—'}</td>
-              <td>{ls.length} bài · {ls.reduce((a, l) => a + l.periods, 0)} tiết</td><td><Pill tone={SET_STATUS[s.status]?.[1]}>{SET_STATUS[s.status]?.[0]}</Pill></td><td>{timeAgo(s.updated_at)}</td>
-            </tr> })}</tbody></table>))}
-
-      {pl && <LessonPreview key={pl.id} lesson={pl} set={setOf(pl)!} prog={progOf(setOf(pl)) ?? null} cat={cat} onClose={() => setPreview(null)}
-        onExpand={() => { setFull({ kind: 'lesson', id: pl.id }); setPreview(null) }} onDesign={toDesign} />}
-    </>
-  )
+  return <Mau>
+    <PageHead icon="file" title="Học liệu" sub="Mỗi bài học có một học liệu, nhiều phiên bản: thông tin, nội dung, link học liệu, định mức vật tư" />
+    <Flow steps={[['none', 'Tạo học liệu', `${n('none')} bài chờ học liệu`], ['draft', 'Soạn & chốt 4 nhóm', `${n('draft')} học liệu đang soạn`], ['ok', 'Phát hành phiên bản', `${n('ok')} đã phát hành · bấm lại để bỏ lọc`]] as [Mat, string, string][]}
+      value={f.fs as Mat | ''} onChange={k => setF({ ...f, fs: f.fs === k ? '' : k })} />
+    {msg && <p className="msg">{msg}</p>}
+    <div className="stats">
+      <StatCard c="c-blue" icon="file" label="Học liệu" value={fam.length} sub={`trên ${rows.length} bài học`} />
+      <StatCard c="c-red" icon="alert" label="Bài chờ" value={wait} sub="chưa có học liệu" />
+      <StatCard c="c-green" icon="check" label="Đã phát hành" value={n('ok')} sub="phiên bản đang dùng đã phát hành" />
+      <StatCard c="c-amber" icon="history" label="Có bản mới" value={nNew} sub="đơn vị chưa chuyển sang" />
+    </div>
+    <div className="toolbar">
+      <Search value={q} onChange={setQ} placeholder="Tìm bài học…" />
+      <Sel label="Tất cả nhóm chương trình" value={f.grp} onChange={v => setF({ ...f, grp: v, prog: '' })} options={groups.filter(g => g.code).map(g => [g.code, `${g.code} · ${g.name}`])} />
+      <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={progs.filter(p => !f.grp || grpCode(p) === f.grp).map(p => [p.id, `${p.code ?? ''} · ${p.name}`])} />
+      <Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(cls.map(c => c.subject).filter(Boolean) as string[])).map(s => [s, catName(cat, 'subject', s)])} />
+      <Sel label="Tất cả khối" value={f.grade} onChange={v => setF({ ...f, grade: v })} options={Array.from(new Set(progs.flatMap(p => p.grades))).sort((a, b) => a - b).map(g => [String(g), gradeLabel(g)])} />
+      <Sel label="Mọi trạng thái" value={f.fs} onChange={v => setF({ ...f, fs: v })} options={[['none', 'Bài chờ'], ['draft', 'Đang soạn'], ['ok', 'Đã phát hành']]} />
+      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={mode} onChange={v => { setMode(v); try { localStorage.setItem('ph1.hl.mode', v) } catch { /* bỏ qua */ } }} />
+      <button type="button" className="btn sm ghost" onClick={() => setShut(allKeys.every(k => shut.has(k)) ? new Set() : new Set(allKeys))}>{allKeys.length && allKeys.every(k => shut.has(k)) ? 'Mở tất cả' : 'Thu gọn tất cả'}</button>
+    </div>
+    {!byGrp.length ? <Empty>Không có bài học phù hợp.</Empty> : byGrp.map(({ g, ps }) => { const k = 'g:' + g.code
+      return <details key={k} className="grpbox" open={!shut.has(k)} onToggle={e => tog(k, (e.currentTarget as HTMLDetailsElement).open)} style={cssVar(g.color)}>
+        <summary className="grphead"><span className="chev"><Ic n="chev" /></span><span className="dotc" style={cssVar(g.color)} /><b>{g.code ? `${g.code} · ${g.name}` : g.name}</b><small>{ps.length} chương trình · {ps.reduce((a, x) => a + x.rs.length, 0)} bài</small></summary>
+        {ps.map(({ p, rs }) => { const kp = 'p:' + p.id; const col = p.color ?? g.color ?? '#64748b'
+          return <details key={kp} className="panel dsub" style={{ padding: 0, gap: 0 }} open={!shut.has(kp)} onToggle={e => tog(kp, (e.currentTarget as HTMLDetailsElement).open)}>
+            <summary className="phead" style={cssVar(col)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{p.code}</span><b>{p.name}</b><small>{gradesText(cat, p.grades)}</small><span className="act">{rs.filter(r => r.v).length}/{rs.length} bài có học liệu</span></summary>
+            {mode === 'grid' ? <div style={{ padding: 12 }}>{cardsOf(rs, col)}</div> : tableOf(rs)}</details> })}
+      </details> })}
+  </Mau>
 }
 
-// ===== Bản thu gọn (ngăn bên phải) =====
-function LessonPreview({ lesson: l, set, prog, cat, onClose, onExpand, onDesign }: {
-  lesson: MLesson; set: MSet; prog: Curriculum | null; cat: CatItem[]; onClose: () => void; onExpand: () => void; onDesign: (l: MLesson) => void
+// ===== Chi tiết học liệu =====
+type Tab = G4 | 'designs'
+type Ask = { text: string; yes: string; run: () => void }
+function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOwn, go, onSwitch, back, reload }: {
+  lesson: MLesson; versions: MLesson[]; inUseId: string | null; cl: CL | null; prog: Curriculum | null; cat: CatItem[]; orgId: string | null; canOwn: boolean
+  go?: (p: string) => void; onSwitch: (id: string) => void; back: () => void; reload: () => Promise<void> | void
 }) {
+  const [l, setL] = useState<MLesson>(lesson)
   const [norms, setNorms] = useState<Norm[]>([]); const [files, setFiles] = useState<File[]>([])
-  useEffect(() => {
-    supabase.from('material_norms').select('*').eq('lesson_id', l.id).order('seq').then(({ data }) => setNorms((data as Norm[]) ?? []))
-    supabase.from('material_files').select('*').eq('lesson_id', l.id).order('seq').then(({ data }) => setFiles((data as File[]) ?? []))
-  }, [l.id])
-  const sessions = Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b)
-  return (
-    <Drawer color={prog?.color} onClose={onClose} title={l.title}
-      badges={[prog?.code, `${catName(cat, 'subject', set.subject)}${set.grade != null ? ' · ' + gradeLabel(set.grade) : ''}`, `${l.periods} tiết`, `${l.sessions} buổi`]}
-      footer={<><span className="note">{set.name}</span><button type="button" onClick={() => onDesign(l)}>Soạn bài giảng từ học liệu này</button><button type="button" className="primary" onClick={onExpand}>Mở rộng ⤢</button></>}>
-      {l.objectives && <div className="p1-box goal"><h4>🎯 Mục tiêu bài học</h4><ul className="p1-checks">{points(l.objectives).map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
-      <Mini items={[['Thời lượng', `${l.periods} tiết`], ['Hoạt động', l.steps.length], ['Vật tư', norms.length], ['Tài liệu', files.length]]} />
-      {l.product_requirements && <div className="p1-box"><h4>🧩 Yêu cầu sản phẩm</h4><p className="p1-text">{l.product_requirements}</p></div>}
-      {l.steps.length > 0 && <div className="p1-box"><h4>🪜 Tiến trình</h4>{sessions.map(ss => <div key={ss}>
-        <div className="p1-session">Buổi {ss} · {l.steps.filter(s => (s.session ?? 1) === ss).reduce((a, s) => a + (s.minutes ?? 0), 0)} phút</div>
-        <ol className="p1-steps">{l.steps.filter(s => (s.session ?? 1) === ss).map((s, i) => <li key={i}><span className="no">{i + 1}</span><div><b>{s.title}</b>
-          <div className="meta"><span>⏱ {s.minutes ?? 0} phút</span></div></div></li>)}</ol></div>)}</div>}
-      {norms.length > 0 && <div className="p1-box"><h4>🧰 Định mức vật tư</h4>
-        <table className="p1-table"><thead><tr><th>Vật tư</th><th>Định mức</th><th>Tính theo</th></tr></thead>
-          <tbody>{norms.map(n => <tr key={n.id}><td><b>{n.name}</b>{n.spec && <><br /><small className="sub">{n.spec}</small></>}</td><td>{+n.qty} {n.unit}</td><td>{BASIS[n.basis]}</td></tr>)}</tbody></table></div>}
-      {files.length > 0 && <div className="p1-box"><h4>📂 Tài liệu</h4><ul className="p1-checks" style={{ listStyle: 'none' }}>
-        {files.map(f => <li key={f.id} style={{ alignItems: 'center' }}>{FILE_KIND[f.kind]?.[1]} {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.title}</a> : f.title} <small className="sub">· {FILE_KIND[f.kind]?.[0]}</small></li>)}</ul></div>}
-      {l.criteria.length > 0 && <div className="p1-box"><h4>📏 Tiêu chí đánh giá</h4><ul className="p1-checks">{l.criteria.map((c, i) => <li key={i}><span><b>{c.name}</b> — mức cao nhất: {c.levels?.[3] || '—'}</span></li>)}</ul></div>}
-    </Drawer>
-  )
-}
-
-// ===== Trang bộ học liệu =====
-function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOpen, back, reload, drawer, vPill }: {
-  set: MSet; progs: Curriculum[]; cat: CatItem[]; editable: boolean; lessons: MLesson[]; counts: { norms: Map<string, number>; files: Map<string, number> }; vPill: (l: MLesson) => React.ReactNode
-  onPreview: (id: string) => void; onOpen: (id: string) => void; back: () => void; reload: () => void; drawer: React.ReactNode
-}) {
-  const [msg, setMsg] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [std, setStd] = useState<{ id: string; title: string; periods: number }[]>([])
-  const c = progs.find(p => p.id === set.curriculum_id)
-  useEffect(() => {
-    if (!c?.current_version_id) return
-    supabase.from('curriculum_lessons').select('id, title, periods, seq, subject, curriculum_units(seq)').eq('version_id', c.current_version_id)
-      .then(({ data }) => setStd(((data as any[]) ?? []).filter(x => !set.subject || x.subject === set.subject)
-        .sort((a, b) => (a.curriculum_units?.seq ?? 1e6) - (b.curriculum_units?.seq ?? 1e6) || a.seq - b.seq)))
-  }, [c?.current_version_id, set.subject, set.grade])
-  const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (error) setMsg(errMsg(error.message)); else { setMsg(''); reload() } }
-  const upd = (p: Partial<MSet>) => run(supabase.from('material_sets').update(p).eq('id', set.id))
-  const missing = std.filter(s => !lessons.some(l => l.curriculum_lesson_id === s.id))
-  const ed = editable && editing
-  async function removeSet() {
-    if (!confirm(`Xoá bộ học liệu “${set.name}” cùng ${lessons.length} bài, định mức và tài liệu? Giáo án / kế hoạch đã dùng bài được giữ lại nhưng bỏ liên kết.`)) return
-    const { error } = await supabase.from('material_sets').delete().eq('id', set.id); if (error) return setMsg(errMsg(error.message)); back(); reload()
-  }
-  return (
-    <>
-      <button type="button" className="p1-back" onClick={back}>← Tất cả học liệu</button>
-      <div className="p1-head">{c && <CtBadge color={c.color} code={c.code} />}<h2>{set.name}</h2><Pill tone={SET_STATUS[set.status]?.[1]}>{SET_STATUS[set.status]?.[0]}</Pill>
-        {editable && <button type="button" className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? 'Xong' : '✎ Sửa'}</button>}
-        {editable && <button type="button" className="danger" onClick={removeSet}>Xoá bộ học liệu</button>}
-        <p className="p1-sub">{[c && `${c.code} · ${c.name}`, catName(cat, 'subject', set.subject), set.grade != null ? gradeLabel(set.grade) : '', `phiên bản ${set.version_no}`, `cập nhật ${timeAgo(set.updated_at)}`].filter(Boolean).join(' · ')}</p></div>
-      {msg && <p className="msg">{msg}</p>}
-      <Section title="Thông tin bộ học liệu">
-        {!ed ? <dl className="p1-kv">
-          <div><dt>Chương trình đáp ứng</dt><dd>{c ? `${c.code} · ${c.name}` : '—'}</dd></div><div><dt>Môn · khối</dt><dd>{catName(cat, 'subject', set.subject) || '—'} · {set.grade != null ? gradeLabel(set.grade) : '—'}</dd></div>
-          <div><dt>Trạng thái phát hành</dt><dd>{SET_STATUS[set.status]?.[0]}</dd></div><div><dt>Quy mô</dt><dd>{lessons.length} bài · {lessons.reduce((a, l) => a + l.periods, 0)} tiết</dd></div>
-          {set.description && <div className="wide"><dt>Mô tả</dt><dd>{set.description}</dd></div>}
-        </dl> : <div className="p1-form">
-          <label><span>Tên</span><input defaultValue={set.name} onBlur={e => e.target.value !== set.name && upd({ name: e.target.value })} /></label>
-          <label><span>Chương trình đáp ứng</span><select value={set.curriculum_id ?? ''} onChange={e => upd({ curriculum_id: e.target.value || null, version_id: progs.find(p => p.id === e.target.value)?.current_version_id ?? null })}>
-            <option value="">—</option>{progs.map(p => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}</select></label>
-          <label><span>Môn</span><select value={set.subject ?? ''} onChange={e => upd({ subject: e.target.value || null })}>
-            <option value="">—</option>{catOf(cat, 'subject').map(s => <option key={s.id} value={s.code}>{s.name}</option>)}</select></label>
-          <label><span>Khối</span><input type="number" min={0} max={12} defaultValue={set.grade ?? ''} onBlur={e => upd({ grade: e.target.value === '' ? null : Number(e.target.value) })} /></label>
-          <label><span>Trạng thái phát hành</span><select value={set.status} onChange={e => upd({ status: e.target.value })}>
-            {Object.entries(SET_STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}</select></label>
-          <label className="wide"><span>Mô tả</span><textarea rows={2} defaultValue={set.description ?? ''} onBlur={e => upd({ description: e.target.value || null })} /></label>
-        </div>}
-      </Section>
-      {missing.length > 0 && <div className="p1-alert warn"><span>Bài trong chương trình chưa có học liệu: {missing.map(m => m.title).join(', ')}.</span>
-        {editable && <button type="button" onClick={() => run(supabase.from('material_lessons').insert(missing.map((m, i) => ({ set_id: set.id, curriculum_lesson_id: m.id, seq: lessons.length + i + 1, title: m.title, periods: m.periods }))))}>Tạo bài học liệu</button>}</div>}
-      <div className="bar"><h3 style={{ margin: 0 }}>Bài học · {lessons.length}</h3>
-        {editable && <button type="button" onClick={() => run(supabase.from('material_lessons').insert({ set_id: set.id, seq: lessons.length + 1, title: 'Bài mới', periods: 1 }))}>+ Bài học</button>}</div>
-      {lessons.length === 0 ? <Empty>Bộ học liệu chưa có bài.</Empty> : <div className="p1-grid">{lessons.map(l =>
-        <VCard key={l.id} color={c?.color} code={c?.code} subject={set.subject} icon={`${l.seq}`} title={l.title} subtitle={l.curriculum_lesson_id ? 'Liên kết bài chuẩn trong chương trình' : 'Chưa liên kết chương trình'}
-          status={vPill(l)} desc={l.objectives} chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '']} onClick={() => onPreview(l.id)}
-          foot={<button type="button" className="linkbtn" onClick={e => { e.stopPropagation(); onOpen(l.id) }}>Mở đầy đủ</button>} />)}</div>}
-      {drawer}
-    </>
-  )
-}
-
-// ===== Trang đầy đủ của một bài: mặc định chỉ xem, bấm "Sửa" mới chỉnh =====
-type LTab = 'info' | 'steps' | 'files' | 'norms' | 'criteria'
-export function LessonDetail({ lessonId, set, prog, cat, canEdit: canOwn, orgId, versions = [], inUseId = null, onSwitch, back, backLabel, onAll, reload }: {
-  lessonId: string; set: MSet; prog: Curriculum | null; cat: CatItem[]; canEdit: boolean; back: () => void; backLabel: string; onAll: () => void; reload: () => void
-  orgId?: string | null; versions?: MLesson[]; inUseId?: string | null; onSwitch?: (id: string) => void
-}) {
-  const [l, setL] = useState<MLesson | null>(null)
-  const [norms, setNorms] = useState<Norm[]>([])
-  const [files, setFiles] = useState<File[]>([])
-  const [tab, setTab] = useState<LTab>('info')
-  const [editing, setEditing] = useState(false)
-  const [msg, setMsg] = useState('')
-  const [calc, setCalc] = useState({ students: 35, groups: 7, products: 7 })
-  const [base, setBase] = useState<{ title: string; grade: number | null; subject: string | null } | null>(null)
-  const [designs, setDesigns] = useState<{ id: string; title: string; status: string; updated_at: string }[]>([])
-  async function load() {
-    const [a, b, c, d] = await Promise.all([
-      supabase.from('material_lessons').select('*').eq('id', lessonId).single(),
-      supabase.from('material_norms').select('*').eq('lesson_id', lessonId).order('seq'),
-      supabase.from('material_files').select('*').eq('lesson_id', lessonId).order('seq'),
-      supabase.from('lesson_designs').select('id, title, status, updated_at').eq('material_lesson_id', lessonId).order('created_at'),
+  const [designs, setDesigns] = useState<{ id: string; title: string; status: string; updated_at: string; material_lesson_id: string; org_name?: string }[]>([])
+  const [tab, setTab] = useState<Tab>('info')
+  const [calc, setCalc] = useState({ students: 35, groups: 7 })
+  const [ask, setAsk] = useState<Ask | null>(null)
+  const [msg, setMsg] = useState(''); const [note, setNote] = useState('')
+  useEffect(() => { setL(lesson) }, [lesson])
+  async function loadParts() {
+    const [n, fl, d] = await Promise.all([
+      supabase.from('material_norms').select('*').eq('lesson_id', l.id).order('seq'),
+      supabase.from('material_files').select('*').eq('lesson_id', l.id).order('seq'),
+      supabase.from('lesson_designs').select('id, title, status, updated_at, material_lesson_id').in('material_lesson_id', versions.map(v => v.id)).order('created_at'),
     ])
-    const ml = a.data as MLesson
-    setL(ml); setNorms((b.data as Norm[]) ?? []); setFiles((c.data as File[]) ?? []); setDesigns((d.data as any[]) ?? [])
-    if (ml?.curriculum_lesson_id) {
-      const r = await supabase.from('curriculum_lessons').select('title, subject, version_id').eq('id', ml.curriculum_lesson_id).maybeSingle()
-      const x = r.data as any
-      const g = x ? ((await supabase.from('curricula').select('grades').eq('current_version_id', x.version_id).maybeSingle()).data as any)?.grades?.[0] ?? null : null
-      setBase(x ? { title: x.title, grade: g, subject: x.subject ?? null } : null)
-    }
+    setNorms((n.data as Norm[]) ?? []); setFiles((fl.data as File[]) ?? []); setDesigns((d.data as any[]) ?? [])
   }
-  useEffect(() => { load() }, [lessonId])
-  const run = async (q: PromiseLike<{ error: { message: string } | null }>, all = false) => { const { error } = await q; if (error) setMsg(errMsg(error.message)); else { setMsg(''); load(); if (all) reload() } }
-  const upd = (p: Partial<MLesson>) => run(supabase.from('material_lessons').update(p).eq('id', lessonId), 'title' in p || 'periods' in p)
-  // Phiên bản đã phát hành giữ nguyên — sửa bằng cách tạo phiên bản mới
-  const canEdit = canOwn && l?.status !== 'published'
-  const editable = canEdit && editing
+  useEffect(() => { loadParts() }, [l.id])
+  const ro = !(canOwn && l.status === 'draft')
+  const g = l.groups ?? {}
+  const allOk = G4.every(([k]) => g[k] === 'ok')
   const vs = [...versions].sort((a, b) => b.version_no - a.version_no)
+  const use = versions.find(v => v.id === inUseId) ?? null
+  const nw = newerOf(versions, use)
+  const color = prog?.color ?? groupOfCur(cat, prog ?? { category: null, code: null })?.color ?? '#64748b'
+  const subj = cl?.subject ?? l.subject_main
+  const fail = (e: { message: string } | null) => { if (e) { setMsg(errMsg(e.message)); return true } setMsg(''); return false }
+  // Ghi một phần của phiên bản đang soạn (cập nhật tại chỗ, không tải lại cả trang)
+  async function upd(p: Partial<MLesson>) { setL(x => ({ ...x, ...p })); const { error } = await supabase.from('material_lessons').update(p).eq('id', l.id); fail(error) }
+  const plan = planOf(l)
+  const savePlan = (pl: Sess[]) => upd({ plan: pl, steps: stepsOf(pl), sessions: Math.max(1, Math.min(20, pl.length)) })
+  const integ: Integ = { main: l.integration?.main ?? [], others: l.integration?.others ?? [] }
+  const doc: Doc = { written: l.doc_info?.written ?? [], reviewed: l.doc_info?.reviewed ?? [], edited: l.doc_info?.edited ?? [] }
+
+  const ListView = ({ items }: { items: string[] }) => items.length ? <ul className="galist">{items.map((t, i) => t.startsWith('[Hình]') ? <li key={i} className="img"><Ic n="grid" /><span>{t.slice(6).trim() || 'Hình ảnh'}</span></li>
+    : <li key={i} className={t.startsWith('– ') ? 'sub' : ''}>{t.replace(/^– /, '')}</li>)}</ul> : <p className="sub" style={{ margin: 0 }}>—</p>
+  const L = (items: string[], save: (v: string[]) => void, ph = 'Mỗi ý một dòng') => ro ? <ListView items={items} />
+    : <textarea key={items.join('\n')} className="galines" rows={Math.max(2, items.length + 1)} placeholder={ph} defaultValue={items.join('\n')} onBlur={e => { const v = lines(e.target.value); if (v.join('\n') !== items.join('\n')) save(v) }} />
+  const gToggle = (k: G4) => ro ? <span className={'pill ' + (g[k] === 'ok' ? 'good' : 'warn')}>{g[k] === 'ok' ? 'Đã chốt' : 'Cần kiểm tra'}</span>
+    : <button type="button" className={'btn sm' + (g[k] === 'ok' ? '' : ' primary')} onClick={() => upd({ groups: { ...g, [k]: g[k] === 'ok' ? 'check' : 'ok' } })}>{g[k] === 'ok' ? 'Đã chốt · bỏ chốt' : <><Ic n="check" /> Chốt nhóm này</>}</button>
+  const Head = ({ icon, title, act }: { icon: string; title: string; act?: ReactNode }) => <header><h2><span className="hi"><Ic n={icon} /></span>{title}</h2><span className="act">{act}</span></header>
+
   async function verAct(fn: () => PromiseLike<{ data?: unknown; error: { message: string } | null }>, ok?: (d: unknown) => void) {
-    const r = await fn(); if (r.error) return setMsg(errMsg(r.error.message)); setMsg(''); reload(); if (ok) ok(r.data); else load()
+    const r = await fn(); if (fail(r.error)) return; await reload(); ok?.(r.data)
   }
-  const newVersion = () => { const note = prompt('Ghi chú thay đổi của phiên bản mới (không bắt buộc):', ''); if (note === null) return
-    verAct(() => supabase.rpc('material_new_version', { p_lesson: lessonId, p_note: note }), id => { setEditing(true); onSwitch?.(id as string) }) }
-  const useThis = () => orgId && verAct(() => supabase.from('material_in_use').upsert({ org_id: orgId, family_id: l!.family_id, lesson_id: lessonId }))
-  const grouped = useMemo(() => Object.keys(NORM_CAT).filter(k => norms.some(n => n.category === k)), [norms])
-  if (!l) return <p className="sub">Đang tải…</p>
-  const sessions = Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b)
-  const setStep = (i: number, p: Partial<Step>) => upd({ steps: l.steps.map((s, j) => j === i ? { ...s, ...p } : s) })
+  async function toDesign() {
+    if (!orgId) return
+    const base = use ?? l
+    const [n, fl] = await Promise.all([supabase.from('material_norms').select('*').eq('lesson_id', base.id).order('seq'), supabase.from('material_files').select('title, url').eq('lesson_id', base.id).order('seq')])
+    const pl = planOf(base)
+    const { error } = await supabase.from('lesson_designs').insert({ org_id: orgId, title: base.title, subject: subj, grade: prog?.grades[0] ?? null, objectives: base.objectives,
+      material_lesson_id: base.id, curriculum_lesson_id: base.curriculum_lesson_id, status: 'draft', criteria: base.criteria,
+      sessions: pl.map(se => ({ title: se.title, minutes: se.acts.reduce((a, x) => a + x.minutes, 0), activities: stepsOf([se]).map(s => ({ title: s.title, minutes: s.minutes, teacher: s.teacher, student: s.student, product: '' })) })),
+      norms: ((n.data as Norm[]) ?? []).map(x => ({ name: x.name, spec: x.spec, unit: x.unit, qty: Number(x.qty), basis: x.basis, category: x.category })),
+      files: ((fl.data as any[]) ?? []).map(x => ({ title: x.title, url: x.url ?? undefined })) })
+    if (fail(error)) return
+    setNote(`Đã tạo bài giảng “${base.title}” từ PB ${base.version_no} — xem ở Soạn bài giảng & kho hoạt động.`); loadParts()
+  }
 
-  return (
-    <>
-      <div className="p1-actions"><button type="button" className="p1-back" onClick={back}>{backLabel}</button><span className="sub">·</span><button type="button" className="p1-back" onClick={onAll}>Tất cả học liệu</button></div>
-      <div className="p1-head">{prog && <CtBadge color={prog.color} code={prog.code} />}<h2>{l.title}</h2><Pill>{l.periods} tiết · {l.sessions} buổi</Pill>
-        {canEdit && <button type="button" className={editing ? 'primary' : ''} onClick={() => setEditing(!editing)}>{editing ? '✓ Xong' : '✎ Sửa'}</button>}
-        {canOwn && <button type="button" className="danger" onClick={async () => { if (!confirm(`Xoá học liệu “${l.title}” cùng mọi phiên bản, định mức, tài liệu?`)) return
-          const { error } = await supabase.from('material_lessons').delete().eq('family_id', l.family_id); if (error) return setMsg(errMsg(error.message)); reload(); back() }}>Xoá học liệu</button>}
-        <p className="p1-sub">{set.name}{l.subjects_integrated.length ? ' · tích hợp ' + l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') : ''}</p></div>
-      {msg && <p className="msg">{msg}</p>}
-      <div className="p1-verbar">
-        <span className="p1-objtag">Phiên bản</span>
-        {vs.length > 1 && onSwitch ? <select value={lessonId} onChange={e => onSwitch(e.target.value)} aria-label="Phiên bản học liệu">
-          {vs.map(v => <option key={v.id} value={v.id}>PB {v.version_no} · {MSTATUS[v.status]?.[0]}{v.id === inUseId ? ' · đang dùng' : ''}</option>)}</select>
-          : <b>PB {l.version_no}</b>}
-        <Pill tone={MSTATUS[l.status]?.[1]}>{MSTATUS[l.status]?.[0]}</Pill>
-        {l.id === inUseId ? <Pill tone="good">Đơn vị đang dùng</Pill> : orgId && l.status === 'published' && <button type="button" onClick={useThis}>Dùng phiên bản này</button>}
-        {l.change_note && <small className="sub">{l.change_note}</small>}
-        <span className="p1-actions" style={{ marginLeft: 'auto' }}>
-          {canOwn && l.status === 'draft' && <button type="button" className="primary" onClick={() => verAct(() => supabase.rpc('material_publish', { p_lesson: lessonId }))}>Phát hành phiên bản</button>}
-          {canOwn && <button type="button" onClick={newVersion}>+ Tạo phiên bản mới</button>}
-          {canOwn && l.status === 'published' && <button type="button" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'archived' }).eq('id', lessonId))}>Ngừng dùng</button>}
-          {canOwn && l.status === 'archived' && <button type="button" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'published' }).eq('id', lessonId))}>Dùng lại</button>}
-          {canOwn && vs.length > 1 && <button type="button" className="danger" onClick={() => confirm(`Xoá phiên bản ${l.version_no}? Bài giảng soạn từ phiên bản này giữ lại nhưng bỏ liên kết.`)
-            && verAct(() => supabase.from('material_lessons').delete().eq('id', lessonId), () => onSwitch?.(vs.find(v => v.id !== lessonId)!.id))}>Xoá phiên bản</button>}
-        </span>
-      </div>
-      {canOwn && l.status === 'published' && <p className="sub" style={{ margin: '0 0 10px' }}>Phiên bản đã phát hành được giữ nguyên — bấm “+ Tạo phiên bản mới” để sửa.</p>}
-      <div className="bar"><Tabs items={[['info', 'Thông tin bài học'], ['steps', 'Nội dung bài học', l.steps.length], ['files', 'Link học liệu', files.length + designs.length], ['norms', 'Định mức vật tư', norms.length], ['criteria', 'Tiêu chí (chờ xem lại)', l.criteria.length]] as [LTab, string, number?][]} value={tab} onChange={setTab} /></div>
+  let body: ReactNode = null
+  if (tab === 'info') body = <section className="panel"><Head icon="info" title="Thông tin bài học" act={gToggle('info')} />
+    <div className="gahead" style={cssVar(color)}><b>{l.title.toUpperCase()}</b><span>Môn: <b>{catName(cat, 'subject', subj) || '—'}</b></span><span>Khối: <b>{prog?.grades.join(', ') || '—'}</b></span>
+      <span>Thời lượng: <b>{l.periods} tiết</b> ({(prog as any)?.minutes_per_period ?? 35} phút/tiết)</span><span>Chương trình: <b>{prog?.code ?? '—'}</b></span></div>
+    <div className="gasec"><h3>Mô tả bài học</h3>{ro ? <p className="outcomes">{l.description || '—'}</p> : <textarea rows={3} defaultValue={l.description ?? ''} onBlur={e => e.target.value !== (l.description ?? '') && upd({ description: e.target.value || null })} />}</div>
+    <div className="gasec"><h3>Nội dung tích hợp trong bài học</h3>
+      <div className="gaint"><div className="gasubj main"><div className="gasubjh"><span className="tag">Môn học chủ đạo</span><b>{catName(cat, 'subject', subj) || '—'}</b></div>{L(integ.main, v => upd({ integration: { ...integ, main: v } }))}</div>
+        {integ.others.map((m, i) => <div key={i} className="gasubj"><div className="gasubjh"><span className="tag">Môn học tích hợp</span>{ro ? <b>{m.subject}</b> : <>
+          <input defaultValue={m.subject} aria-label="Môn tích hợp" onBlur={e => e.target.value !== m.subject && upd({ integration: { ...integ, others: integ.others.map((x, j) => j === i ? { ...x, subject: e.target.value } : x) } })} />
+          <button type="button" className="btn sm ghost" aria-label="Bỏ môn" onClick={() => upd({ integration: { ...integ, others: integ.others.filter((_, j) => j !== i) } })}><Ic n="trash" /></button></>}</div>
+          {L(m.items, v => upd({ integration: { ...integ, others: integ.others.map((x, j) => j === i ? { ...x, items: v } : x) } }))}</div>)}
+        {!ro && <button type="button" className="btn sm" onClick={() => upd({ integration: { ...integ, others: [...integ.others, { subject: 'Môn tích hợp', items: [] }] } })}><Ic n="plus" /> Môn tích hợp</button>}</div></div>
+    <div className="gasec"><h3>I. Yêu cầu cần đạt</h3>{L(lines(l.objectives), v => upd({ objectives: v.join('\n') || null }))}</div>
+    <div className="gasec"><h3>Yêu cầu sản phẩm</h3>{L(lines(l.product_requirements), v => upd({ product_requirements: v.join('\n') || null }))}</div>
+    <div className="gasec"><h3>II. Đồ dùng dạy học</h3><p className="sub" style={{ margin: 0 }}>Nguyên vật liệu cho một sản phẩm, công cụ & thiết bị cho một nhóm: xem tab <button type="button" className="linkbtn2" onClick={() => setTab('norms')}>Định mức vật tư</button> ({norms.length} mục). Tài liệu, phiếu học tập: tab <button type="button" className="linkbtn2" onClick={() => setTab('links')}>Link học liệu</button> ({files.length}).</p></div>
+    <div className="gasec"><h3>Thông tin tài liệu</h3><div className="tblwrap"><table className="docinfo"><tbody>{([['written', 'Được soạn ngày'], ['reviewed', 'Được review ngày'], ['edited', 'Được hiệu chỉnh ngày']] as [keyof Doc, string][]).map(([k, n]) =>
+      <tr key={k}><th>{n}</th><td>{ro ? (doc[k].length ? doc[k].map(([d, b], i) => <div key={i}>{d} · <b>{b}</b></div>) : <span className="sub">—</span>)
+        : <textarea rows={Math.max(1, doc[k].length)} placeholder="dd/mm/yyyy · Họ tên (mỗi lần một dòng)" defaultValue={doc[k].map(([d, b]) => d + ' · ' + b).join('\n')}
+          onBlur={e => upd({ doc_info: { ...doc, [k]: lines(e.target.value).map(t => { const [d, ...b] = t.split('·'); return [d.trim(), b.join('·').trim()] }) } })} />}</td></tr>)}</tbody></table></div></div>
+  </section>
 
-      {tab === 'info' && (!editable ? <>
-        {l.objectives && <div className="p1-box goal" style={{ marginBottom: 16 }}><h4>🎯 Mục tiêu / yêu cầu cần đạt</h4><ul className="p1-checks">{points(l.objectives).map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
-        <Section title="Thông tin bài học"><dl className="p1-kv">
-          <div><dt>Chương trình</dt><dd>{prog ? `${prog.code} · ${prog.name}` : '—'}</dd></div>
-          <div><dt>Cấp học · Khối</dt><dd>{(base?.grade ?? set.grade) != null ? `${catName(cat, 'level', levelOfGrade(cat, (base?.grade ?? set.grade)!))} · ${gradeLabel((base?.grade ?? set.grade)!)}` : '—'}</dd></div>
-          <div><dt>Môn học</dt><dd>{catName(cat, 'subject', base?.subject ?? set.subject) || '—'}</dd></div>
-          <div><dt>Bài học trong chương trình</dt><dd>{base?.title ?? <span className="sub">chưa gắn</span>}</dd></div>
-          <div><dt>Mã bài</dt><dd>{l.code ?? '—'}</dd></div><div><dt>Thời lượng</dt><dd>{l.periods} tiết · {l.sessions} buổi</dd></div>
-          <div><dt>Môn chủ đạo</dt><dd>{catName(cat, 'subject', l.subject_main) || '—'}</dd></div>
-          <div><dt>Môn tích hợp</dt><dd>{l.subjects_integrated.map(s => catName(cat, 'subject', s)).join(', ') || '—'}</dd></div>
-          {l.product_requirements && <div className="wide"><dt>Yêu cầu sản phẩm</dt><dd className="p1-text">{l.product_requirements}</dd></div>}
-        </dl></Section></> : <Section title="Thông tin bài học"><div className="p1-form">
-        <label style={{ gridColumn: 'span 2' }}><span>Tên bài</span><input defaultValue={l.title} onBlur={e => e.target.value && e.target.value !== l.title && upd({ title: e.target.value })} /></label>
-        <label><span>Thời lượng (tiết)</span><input type="number" min={0} defaultValue={l.periods} onBlur={e => upd({ periods: Number(e.target.value) || 0 })} /></label>
-        <label className="wide"><span>Mục tiêu / yêu cầu cần đạt (mỗi ý một dòng)</span><textarea rows={4} defaultValue={l.objectives ?? ''} onBlur={e => upd({ objectives: e.target.value || null })} /></label>
-        <label className="wide"><span>Yêu cầu sản phẩm</span><textarea rows={3} defaultValue={l.product_requirements ?? ''} onBlur={e => upd({ product_requirements: e.target.value || null })} /></label>
-      </div>
-      <details className="p1-adv"><summary>Thiết lập nâng cao (mã bài, số buổi, môn chủ đạo / tích hợp)</summary><div className="p1-form">
-        <label><span>Mã bài</span><input defaultValue={l.code ?? ''} onBlur={e => upd({ code: e.target.value || null })} /></label>
-        <label><span>Số buổi</span><input type="number" min={1} defaultValue={l.sessions} onBlur={e => upd({ sessions: Math.max(1, Number(e.target.value) || 1) })} /></label>
-        <label><span>Môn chủ đạo</span><select value={l.subject_main ?? ''} onChange={e => upd({ subject_main: e.target.value || null })}><option value="">—</option>
-          {catOf(cat, 'subject').map(s => <option key={s.id} value={s.code}>{s.name}</option>)}</select></label>
-        <div className="wide"><span className="sub">Môn tích hợp</span><div className="p1-chiprow">{catOf(cat, 'subject').filter(s => s.code !== l.subject_main).map(s => { const on = l.subjects_integrated.includes(s.code)
-          return <button type="button" key={s.id} className={on ? 'on' : ''} onClick={() => upd({ subjects_integrated: on ? l.subjects_integrated.filter(x => x !== s.code) : [...l.subjects_integrated, s.code] })}>{s.name}</button> })}</div></div>
-      </div></details></Section>)}
+  if (tab === 'content') { const tot = plan.reduce((a, se) => a + se.acts.reduce((b, x) => b + x.minutes, 0), 0)
+    const set = (fn: (p: Sess[]) => void) => { const p = JSON.parse(JSON.stringify(plan)) as Sess[]; fn(p); savePlan(p) }
+    body = <section className="panel"><Head icon="list" title="III. Các hoạt động dạy học chủ yếu" act={<><small className="sub">{plan.length} buổi · {tot} phút</small>
+      {!ro && <button type="button" className="btn sm" onClick={() => set(p => p.push({ title: `Buổi ${p.length + 1}`, note: '', acts: [] }))}><Ic n="plus" /> Buổi</button>}{gToggle('content')}</>} />
+      {!plan.length && <Empty>Chưa có hoạt động.</Empty>}
+      {plan.map((se, si) => <details key={si + se.title} className="sessbox ga" open><summary className="sesshead"><span className="chev"><Ic n="chev" /></span>
+        {ro ? <b>{se.title}</b> : <input defaultValue={se.title} aria-label="Tên buổi" onClick={e => e.preventDefault()} onBlur={e => e.target.value !== se.title && set(p => { p[si].title = e.target.value })} />}
+        <small>{se.acts.length} hoạt động · {se.acts.reduce((a, x) => a + x.minutes, 0)} phút</small>
+        {!ro && <span className="act"><button type="button" className="btn sm" onClick={e => { e.preventDefault(); set(p => p[si].acts.push({ title: `Hoạt động ${p[si].acts.length + 1}`, minutes: 5, parts: [{ title: '', items: [] }] })) }}><Ic n="plus" /> Hoạt động</button>
+          {plan.length > 1 && <button type="button" className="btn sm ghost" aria-label="Xoá buổi" onClick={e => { e.preventDefault(); set(p => { p.splice(si, 1) }) }}><Ic n="trash" /></button>}</span>}</summary>
+        {(se.note || !ro) && <div className="sesnote">{ro ? '* ' + se.note : <input defaultValue={se.note} placeholder="Ghi chú đầu buổi (vd: HS ổn định, nhắc lại văn hoá lớp học STEM)" aria-label="Ghi chú buổi" onBlur={e => e.target.value !== se.note && set(p => { p[si].note = e.target.value })} />}</div>}
+        {se.acts.map((x, ai) => <div key={ai + x.title} className="gaact"><div className="gaacth"><span className="sno">{ai + 1}</span>{ro ? <><b>{x.title}</b><span className="mins">{x.minutes}′</span></> : <>
+          <input defaultValue={x.title} aria-label="Tên hoạt động" onBlur={e => e.target.value !== x.title && set(p => { p[si].acts[ai].title = e.target.value })} />
+          <label className="mins"><input type="number" min={0} defaultValue={x.minutes} aria-label="Số phút" onBlur={e => Number(e.target.value) !== x.minutes && set(p => { p[si].acts[ai].minutes = Number(e.target.value) || 0 })} /> phút</label>
+          <button type="button" className="btn sm ghost" aria-label="Xoá hoạt động" onClick={() => set(p => { p[si].acts.splice(ai, 1) })}><Ic n="trash" /></button></>}</div>
+          {x.parts.map((pt, pi) => <div key={pi} className="gapart">{ro ? (pt.title ? <h4>{pt.title}</h4> : null) : <div className="gaparth">
+            <input defaultValue={pt.title} placeholder="Tên mục (vd 1.1. Khởi động) — để trống nếu không có" aria-label="Tên mục" onBlur={e => e.target.value !== pt.title && set(p => { p[si].acts[ai].parts[pi].title = e.target.value })} />
+            <button type="button" className="btn sm ghost" aria-label="Xoá mục" onClick={() => set(p => { p[si].acts[ai].parts.splice(pi, 1) })}><Ic n="trash" /></button></div>}
+            {L(pt.items, v => set(p => { p[si].acts[ai].parts[pi].items = v }), 'Mỗi ý một dòng · "– " ở đầu dòng là ý con · "[Hình] mô tả" là chỗ đặt hình')}</div>)}
+          {!ro && <button type="button" className="btn sm ghost" onClick={() => set(p => { const a = p[si].acts[ai]; a.parts.push({ title: `${ai + 1}.${a.parts.length + 1}. Mục mới`, items: [] }) })}><Ic n="plus" /> Mục</button>}</div>)}
+      </details>)}</section> }
 
-      {tab === 'steps' && <Section title="Hoạt động & các bước thực hiện" actions={editable && <button type="button" onClick={() => upd({ steps: [...l.steps, { session: sessions[sessions.length - 1] ?? 1, title: 'Hoạt động mới', minutes: 10, teacher: '', student: '' }] })}>+ Hoạt động</button>}>
-        {l.steps.length === 0 ? <Empty>Chưa có hoạt động.</Empty> : sessions.map(ss => (<div key={ss}>
-          <div className="p1-session">Buổi {ss} · {l.steps.filter(s => (s.session ?? 1) === ss).reduce((a, s) => a + (s.minutes ?? 0), 0)} phút</div>
-          <ol className="p1-steps">{l.steps.map((s, i) => (s.session ?? 1) !== ss ? null : (
-            <li key={i}><span className="no">{l.steps.slice(0, i + 1).filter(x => (x.session ?? 1) === ss).length}</span>
-              <div>{editable ? <input className="p1-in" defaultValue={s.title} onBlur={e => setStep(i, { title: e.target.value })} aria-label="Tên hoạt động" style={{ width: '100%' }} /> : <b>{s.title}</b>}
-                <div className="meta">{editable ? <>
-                  <label>Buổi <input type="number" min={1} style={{ width: 60 }} defaultValue={s.session ?? 1} onBlur={e => setStep(i, { session: Math.max(1, Number(e.target.value) || 1) })} /></label>
-                  <label>Phút <input type="number" min={0} style={{ width: 70 }} defaultValue={s.minutes ?? ''} onBlur={e => setStep(i, { minutes: Number(e.target.value) || 0 })} /></label>
-                  <button type="button" className="danger" onClick={() => upd({ steps: l.steps.filter((_, j) => j !== i) })}>Xoá</button></> : <span>⏱ {s.minutes ?? 0} phút</span>}</div>
-                {editable ? <div className="p1-form" style={{ marginTop: 8 }}>
-                  <label><span>Giáo viên</span><textarea rows={2} defaultValue={s.teacher ?? ''} onBlur={e => setStep(i, { teacher: e.target.value })} /></label>
-                  <label><span>Học sinh</span><textarea rows={2} defaultValue={s.student ?? ''} onBlur={e => setStep(i, { student: e.target.value })} /></label>
-                </div> : (s.teacher || s.student) && <div className="who">{s.teacher && <div><b>Giáo viên</b>{s.teacher}</div>}{s.student && <div><b>Học sinh</b>{s.student}</div>}</div>}
-              </div></li>))}</ol></div>))}
-      </Section>}
+  if (tab === 'links') { const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (!fail(error)) loadParts() }
+    body = <section className="panel"><Head icon="link" title="Link học liệu" act={<>{!ro && <><button type="button" className="btn sm" onClick={() => run(supabase.from('material_files').insert({ lesson_id: l.id, seq: files.length + 1, kind: 'bai_giang', title: 'Bài giảng' }))}><Ic n="plus" /> Bài giảng</button>
+      <button type="button" className="btn sm" onClick={() => run(supabase.from('material_files').insert({ lesson_id: l.id, seq: files.length + 1, kind: 'phieu_hoc_tap', title: 'Phiếu học tập' }))}><Ic n="plus" /> Phiếu học tập</button></>}{gToggle('links')}</>} />
+      <div className="tblwrap"><table><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th>{!ro && <th></th>}</tr></thead><tbody>
+        {files.map(k => { const u = (p: Partial<File>) => run(supabase.from('material_files').update(p).eq('id', k.id))
+          return <tr key={k.id}><td>{ro ? FILE_KIND[k.kind] ?? k.kind : <select value={k.kind} onChange={e => u({ kind: e.target.value })} aria-label="Loại">{Object.entries(FILE_KIND).map(([a, b]) => <option key={a} value={a}>{b}</option>)}</select>}</td>
+            {ro ? <><td><b>{k.title}</b></td><td>{k.url ? <a href={k.url} target="_blank" rel="noreferrer">{k.url}</a> : <span style={{ color: 'var(--muted)' }}>chưa có đường dẫn</span>}</td></>
+              : <><td><input defaultValue={k.title} aria-label="Tên" onBlur={e => e.target.value !== k.title && u({ title: e.target.value })} /></td><td><input defaultValue={k.url ?? ''} placeholder="https://…" aria-label="Đường dẫn" onBlur={e => e.target.value !== (k.url ?? '') && u({ url: e.target.value || null })} /></td>
+                <td><button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => run(supabase.from('material_files').delete().eq('id', k.id))}><Ic n="trash" /></button></td></>}</tr> })}
+        {!files.length && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>Chưa có tài liệu.</td></tr>}</tbody></table></div></section> }
 
-      {tab === 'norms' && <>
-        <Section title="Tính nhu cầu vật tư cho một lớp">
-          <div className="p1-form" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
-            <label><span>Số học sinh</span><input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: Number(e.target.value) || 0 })} /></label>
-            <label><span>Số nhóm</span><input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: Number(e.target.value) || 0, products: Number(e.target.value) || 0 })} /></label>
-            <label><span>Số sản phẩm</span><input type="number" min={1} value={calc.products} onChange={e => setCalc({ ...calc, products: Number(e.target.value) || 0 })} /></label>
-          </div>
-          <p className="sub" style={{ margin: '8px 0 0' }}>Mặc định mỗi nhóm làm một sản phẩm; đổi số sản phẩm nếu mỗi học sinh làm một sản phẩm.</p>
-        </Section>
-        <Section title="Định mức vật tư" actions={editable && <button type="button" onClick={() => run(supabase.from('material_norms').insert({ lesson_id: lessonId, seq: norms.length + 1, name: 'Vật tư mới', unit: 'cái', qty: 1 }))}>+ Dòng vật tư</button>}>
-          {norms.length === 0 ? <Empty>Chưa có định mức.</Empty> : grouped.map(k => (
-            <div key={k} style={{ marginBottom: 14 }}><div className="p1-session">{NORM_CAT[k]}</div>
-              {!editable ? <table className="p1-table"><thead><tr><th>Vật tư</th><th>Quy cách</th><th>Định mức</th><th>Tính theo</th><th>Thay thế</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th></tr></thead>
-                <tbody>{norms.filter(n => n.category === k).map(n => <tr key={n.id}><td><b>{n.name}</b></td><td>{n.spec ?? '—'}</td><td>{+n.qty} {n.unit}</td>
-                  <td>{BASIS[n.basis]}</td><td>{n.substitute ?? '—'}</td><td style={{ textAlign: 'right' }}><b>{+needQty(n, calc.students, calc.groups, calc.products).toFixed(2)}</b> {n.unit}</td></tr>)}</tbody></table>
-              : <table className="p1-table"><thead><tr><th>Vật tư</th><th>Quy cách</th><th>Đơn vị</th><th>Định mức</th><th>Tính theo</th><th>Loại</th><th>Thay thế</th><th></th></tr></thead>
-                <tbody>{norms.filter(n => n.category === k).map(n => { const u = (p: Partial<Norm>) => run(supabase.from('material_norms').update(p).eq('id', n.id))
-                  return <tr key={n.id}>
-                    <td style={{ minWidth: 160 }}><input defaultValue={n.name} onBlur={e => u({ name: e.target.value })} aria-label="Tên" /></td>
-                    <td style={{ minWidth: 150 }}><input defaultValue={n.spec ?? ''} onBlur={e => u({ spec: e.target.value || null })} aria-label="Quy cách" /></td>
-                    <td className="num"><input defaultValue={n.unit} onBlur={e => u({ unit: e.target.value })} aria-label="Đơn vị" /></td>
-                    <td className="num"><input type="number" min={0} step="any" defaultValue={n.qty} onBlur={e => u({ qty: Number(e.target.value) || 0 })} aria-label="Số lượng" /></td>
-                    <td><select value={n.basis} onChange={e => u({ basis: e.target.value })} aria-label="Tính theo">{Object.entries(BASIS).map(([b, t]) => <option key={b} value={b}>{t}</option>)}</select></td>
-                    <td><select value={n.category} onChange={e => u({ category: e.target.value })} aria-label="Loại">{Object.entries(NORM_CAT).map(([c, t]) => <option key={c} value={c}>{t}</option>)}</select></td>
-                    <td style={{ minWidth: 140 }}><input defaultValue={n.substitute ?? ''} onBlur={e => u({ substitute: e.target.value || null })} aria-label="Thay thế" /></td>
-                    <td><button type="button" className="danger" onClick={() => run(supabase.from('material_norms').delete().eq('id', n.id))}>Xoá</button></td>
-                  </tr> })}</tbody></table>}</div>))}
-        </Section>
-      </>}
+  if (tab === 'norms') { const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (!fail(error)) loadParts() }
+    const catOfN = (n: Norm) => n.category === 'vat_tu' ? 'vl' : 'cc'
+    const need = (n: Norm) => +needQty(n, calc.students, calc.groups, calc.groups).toFixed(2)
+    const part = (c: 'vl' | 'cc', title: string, hint: string) => { const list = norms.filter(n => catOfN(n) === c)
+      return <div className="nmpart"><div className="nmhead"><span className="tag">{c === 'vl' ? 'Danh mục 1' : 'Danh mục 2'}</span><b>{title}</b><small>{hint} · {list.length} mục</small>
+        {!ro && <button type="button" className="btn sm" onClick={() => run(supabase.from('material_norms').insert({ lesson_id: l.id, seq: norms.length + 1, category: c === 'vl' ? 'vat_tu' : 'dung_cu', name: c === 'vl' ? 'Vật liệu mới' : 'Dụng cụ mới', unit: 'cái', qty: 1, basis: c === 'vl' ? 'per_product' : 'per_group' }))}><Ic n="plus" /> Thêm</button>}</div>
+        <div className="tblwrap"><table className="nmtbl"><thead><tr><th>STT</th><th>Tên</th><th>Quy cách</th><th>Đơn vị</th><th style={{ textAlign: 'right' }}>Số lượng</th><th>Tính theo</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th>{!ro && <th></th>}</tr></thead><tbody>
+          {list.map((x, k) => { const u = (p: Partial<Norm>) => run(supabase.from('material_norms').update(p).eq('id', x.id))
+            return ro ? <tr key={x.id}><td className="n">{k + 1}</td><td><b>{x.name}</b></td><td>{x.spec || '—'}</td><td>{x.unit}</td><td style={{ textAlign: 'right' }}>{+x.qty}</td><td>{BASIS[x.basis]}</td><td style={{ textAlign: 'right' }}><b>{need(x)}</b> {x.unit}</td></tr>
+              : <tr key={x.id}><td className="n">{k + 1}</td><td><input defaultValue={x.name} aria-label="Tên" onBlur={e => e.target.value !== x.name && u({ name: e.target.value })} /></td>
+                <td><input defaultValue={x.spec ?? ''} aria-label="Quy cách" onBlur={e => e.target.value !== (x.spec ?? '') && u({ spec: e.target.value || null })} /></td>
+                <td><input defaultValue={x.unit} aria-label="Đơn vị" style={{ width: 80 }} onBlur={e => e.target.value !== x.unit && u({ unit: e.target.value })} /></td>
+                <td style={{ textAlign: 'right' }}><input type="number" min={0} step="any" defaultValue={x.qty} aria-label="Số lượng" style={{ width: 80, textAlign: 'right' }} onBlur={e => Number(e.target.value) !== Number(x.qty) && u({ qty: Number(e.target.value) || 0 })} /></td>
+                <td><select value={x.basis} aria-label="Tính theo" onChange={e => u({ basis: e.target.value })}>{Object.entries(BASIS).map(([a, b]) => <option key={a} value={a}>{b}</option>)}</select></td>
+                <td style={{ textAlign: 'right' }}><b>{need(x)}</b> {x.unit}</td>
+                <td style={{ whiteSpace: 'nowrap' }}><button type="button" className="btn sm ghost" title={`Chuyển sang ${c === 'vl' ? 'Công cụ & thiết bị' : 'Nguyên vật liệu'}`} onClick={() => u({ category: c === 'vl' ? 'dung_cu' : 'vat_tu' })}>{c === 'vl' ? '→ CC' : '→ VL'}</button>
+                  <button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => run(supabase.from('material_norms').delete().eq('id', x.id))}><Ic n="trash" /></button></td></tr> })}
+          {!list.length && <tr><td colSpan={ro ? 7 : 8} style={{ color: 'var(--muted)' }}>Chưa có mục nào.</td></tr>}</tbody></table></div></div> }
+    body = <section className="panel"><Head icon="box" title="Định mức vật tư" act={gToggle('norms')} />
+      <div className="calc"><label>Số học sinh <input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: Number(e.target.value) || 1 })} /></label>
+        <label>Số nhóm (= số sản phẩm) <input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: Number(e.target.value) || 1 })} /></label><span>→ nhu cầu cho một lớp ở cột cuối</span></div>
+      {part('vl', 'Nguyên vật liệu', 'tiêu hao, thường tính theo sản phẩm / học sinh')}{part('cc', 'Công cụ & thiết bị', 'dùng lại, thường tính theo nhóm / lớp')}</section> }
 
-      {tab === 'files' && <Section title="Bài giảng soạn từ học liệu này">
-        {designs.length === 0 ? <Empty>Chưa có bài giảng — soạn ở “Soạn bài giảng & kho hoạt động”.</Empty> :
-          <table className="p1-table"><thead><tr><th>Phiên bản</th><th>Bài giảng</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead>
-            <tbody>{designs.map((d, i) => <tr key={d.id}><td>PB {i + 1}</td><td><b>{d.title}</b></td><td>{d.status === 'published' ? <Pill tone="good">Đã xuất bản</Pill> : <Pill>{d.status === 'review' ? 'Chờ duyệt' : 'Nháp'}</Pill>}</td><td>{timeAgo(d.updated_at)}</td></tr>)}</tbody></table>}
-      </Section>}
-      {tab === 'files' && <Section title="Link học liệu: bài giảng, phiếu học tập, tài liệu" actions={editable && <><button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'bai_giang', title: 'Bài giảng' }))}>+ Bài giảng</button>
-        <button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'phieu_hoc_tap', title: 'Phiếu học tập' }))}>+ Phiếu học tập</button>
-        <button type="button" onClick={() => run(supabase.from('material_files').insert({ lesson_id: lessonId, seq: files.length + 1, kind: 'tham_khao', title: 'Tài liệu mới' }))}>+ Khác</button></>}>
-        {files.length === 0 ? <Empty>Chưa có tài liệu.</Empty> : !editable ? <ul className="p1-checks" style={{ gap: 10 }}>{files.map(f => <li key={f.id} style={{ alignItems: 'center' }}>
-          <span>{FILE_KIND[f.kind]?.[1]} {f.url ? <a href={f.url} target="_blank" rel="noreferrer">{f.title}</a> : <b>{f.title}</b>} <small className="sub">· {FILE_KIND[f.kind]?.[0]}{!f.url ? ' · chưa có đường dẫn' : ''}</small></span></li>)}</ul>
-          : <table className="p1-table"><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th><th></th></tr></thead>
-            <tbody>{files.map(f => { const u = (p: Partial<File>) => run(supabase.from('material_files').update(p).eq('id', f.id))
-              return <tr key={f.id}><td><select value={f.kind} onChange={e => u({ kind: e.target.value })} aria-label="Loại">{Object.entries(FILE_KIND).map(([k, [t]]) => <option key={k} value={k}>{t}</option>)}</select></td>
-                <td><input defaultValue={f.title} onBlur={e => u({ title: e.target.value })} aria-label="Tên" /></td>
-                <td><input defaultValue={f.url ?? ''} placeholder="https://…" onBlur={e => u({ url: e.target.value || null })} aria-label="Đường dẫn" /></td>
-                <td><button type="button" className="danger" onClick={() => run(supabase.from('material_files').delete().eq('id', f.id))}>Xoá</button></td></tr> })}</tbody></table>}
-      </Section>}
+  if (tab === 'designs') body = <section className="panel"><Head icon="edit" title="Bài giảng soạn từ học liệu này" act={orgId && <button type="button" className="btn sm primary" onClick={toDesign}><Ic n="plus" /> Soạn bài giảng từ PB {(use ?? l).version_no}</button>} />
+    {designs.length ? <div className="tblwrap"><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản học liệu</th><th>Trạng thái</th><th>Cập nhật</th><th></th></tr></thead><tbody>
+      {designs.map(d => { const fv = versions.find(v => v.id === d.material_lesson_id)
+        return <tr key={d.id} className="rowlink" onClick={() => go?.('Soạn bài giảng & kho hoạt động')}><td><b>{d.title}</b></td><td>PB {fv?.version_no ?? '?'}{fv && newerOf(versions, fv) && <> <span className="pill info plain">có bản mới</span></>}</td>
+          <td>{d.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}</td><td>{timeAgo(d.updated_at)}</td><td style={{ textAlign: 'right' }}><span className="btn sm">Xem ›</span></td></tr> })}</tbody></table></div>
+      : <Empty>Chưa có bài giảng.</Empty>}</section>
 
-      {tab === 'criteria' && <Section title="Tiêu chí đánh giá sản phẩm" actions={editable && <button type="button" onClick={() => upd({ criteria: [...l.criteria, { name: 'Tiêu chí mới', levels: ['', '', '', ''] }] })}>+ Tiêu chí</button>}>
-        {l.criteria.length === 0 ? <Empty>Chưa có tiêu chí.</Empty> : <table className="p1-table"><thead><tr><th>Tiêu chí</th><th>Mức 1</th><th>Mức 2</th><th>Mức 3</th><th>Mức 4</th>{editable && <th></th>}</tr></thead>
-          <tbody>{l.criteria.map((c, i) => <tr key={i}>
-            <td>{editable ? <input defaultValue={c.name} onBlur={e => upd({ criteria: l.criteria.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} aria-label="Tiêu chí" /> : <b>{c.name}</b>}</td>
-            {[0, 1, 2, 3].map(m => <td key={m}>{editable ? <input defaultValue={c.levels?.[m] ?? ''} aria-label={`Mức ${m + 1}`}
-              onBlur={e => upd({ criteria: l.criteria.map((x, j) => j === i ? { ...x, levels: [0, 1, 2, 3].map(z => z === m ? e.target.value : x.levels?.[z] ?? '') } : x) })} /> : c.levels?.[m] || '—'}</td>)}
-            {editable && <td><button type="button" className="danger" onClick={() => upd({ criteria: l.criteria.filter((_, j) => j !== i) })}>Xoá</button></td>}
-          </tr>)}</tbody></table>}
-      </Section>}
-    </>
-  )
+  return <>
+    <button type="button" className="btn sm ghost" onClick={back} style={{ justifySelf: 'start' }}><Ic n="back" /> Tất cả học liệu</button>
+    <div className="dhead"><span className="code" style={cssVar(color)}>{prog?.code ?? '—'}</span><div><h1>{l.title}</h1><span className="crumb">{prog?.name ?? 'Chưa gắn chương trình'} › {catName(cat, 'subject', subj) || '—'} · {l.periods} tiết</span></div>
+      {canOwn && <div className="act"><button type="button" className="btn danger" onClick={() => setAsk({ text: `Xoá học liệu “${l.title}” cùng mọi phiên bản, định mức, tài liệu?`, yes: 'Xoá học liệu',
+        run: async () => { const { error } = await supabase.from('material_lessons').delete().eq('family_id', l.family_id); if (!fail(error)) { await reload(); back() } } })}><Ic n="trash" /> Xoá học liệu</button></div>}</div>
+    {ask && <Confirm danger text={ask.text} yes={ask.yes} onNo={() => setAsk(null)} onYes={() => { ask.run(); setAsk(null) }} />}
+    {msg && <p className="msg">{msg}</p>}{note && <p className="okmsg">{note}</p>}
+    <div className="verbar"><span className="tag">Phiên bản</span>
+      <select value={l.id} aria-label="Phiên bản" onChange={e => onSwitch(e.target.value)}>{vs.map(x => <option key={x.id} value={x.id}>PB {x.version_no} · {MS[x.status]?.[0]}{x.id === inUseId ? ' · đang dùng' : ''}</option>)}</select>
+      <StatusPill s={l.status} />{' '}{l.id === inUseId ? <span className="pill good plain">Đơn vị đang dùng</span> : orgId && l.status === 'published' && <button type="button" className="btn sm" onClick={() => verAct(() => supabase.from('material_in_use').upsert({ org_id: orgId, family_id: l.family_id, lesson_id: l.id }))}>Dùng phiên bản này</button>}
+      {nw && l.id === inUseId && <span className="pill info plain">Có PB {nw.version_no} mới hơn</span>}
+      <small style={{ color: 'var(--muted)' }}>{l.published_at ? 'Phát hành ' + new Date(l.published_at).toLocaleDateString('vi-VN') + ' · ' : ''}{l.change_note ?? ''}</small>
+      {canOwn && <span className="act">
+        {l.status === 'draft' && <button type="button" className="btn sm primary" onClick={() => allOk ? verAct(() => supabase.rpc('material_publish', { p_lesson: l.id }), () => setNote(`Đã phát hành PB ${l.version_no} — đã báo đơn vị và người soạn bài giảng từ bản cũ.`)) : setMsg('Còn nhóm “Cần kiểm tra” — chốt đủ 4 nhóm trước khi phát hành.')}><Ic n="send" /> Phát hành phiên bản</button>}
+        <button type="button" className="btn sm" onClick={() => verAct(() => supabase.rpc('material_new_version', { p_lesson: l.id, p_note: 'Bản sửa từ PB ' + l.version_no }), id => onSwitch(id as string))}><Ic n="copy" /> Tạo phiên bản mới</button>
+        {l.status === 'published' && <button type="button" className="btn sm" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'archived' }).eq('id', l.id))}>Ngừng dùng</button>}
+        {l.status === 'archived' && <button type="button" className="btn sm" onClick={() => verAct(() => supabase.from('material_lessons').update({ status: 'published' }).eq('id', l.id))}>Dùng lại</button>}
+        {vs.length > 1 && <button type="button" className="btn sm danger" onClick={() => setAsk({ text: `Xoá phiên bản ${l.version_no}? Bài giảng soạn từ phiên bản này giữ lại nhưng bỏ liên kết.`, yes: 'Xoá phiên bản',
+          run: () => verAct(() => supabase.from('material_lessons').delete().eq('id', l.id), () => onSwitch(vs.find(v => v.id !== l.id)!.id)) })}>Xoá PB {l.version_no}</button>}</span>}
+    </div>
+    {canOwn && (ro ? <p className="note">{l.status === 'published' ? 'Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa.' : 'Phiên bản đã ngừng dùng — chỉ xem.'}</p> : !allOk && <p className="note">Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản này.</p>)}
+    <div className="tabs">{G4.map(([k, n]) => <button type="button" key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n} <i className={'gst' + (g[k] === 'ok' ? ' ok' : '')} /></button>)}
+      <button type="button" className={tab === 'designs' ? 'on' : ''} onClick={() => setTab('designs')}>Bài giảng <small>{designs.length}</small></button></div>
+    {body}
+  </>
 }
