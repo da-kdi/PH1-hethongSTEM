@@ -14,7 +14,7 @@ import { Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatC
 export type Step = { session?: number; title: string; minutes?: number; teacher?: string; student?: string; product?: string }
 type Part = { title: string; items: string[] }
 type Act = { title: string; minutes: number; parts: Part[] }
-type Sess = { title: string; note: string; acts: Act[] }
+export type Sess = { title: string; note: string; acts: Act[] }
 type Integ = { main: string[]; others: { subject: string; items: string[] }[] }
 type Doc = { written: [string, string][]; reviewed: [string, string][]; edited: [string, string][] }
 type G4 = 'info' | 'content' | 'links' | 'norms'
@@ -42,9 +42,9 @@ function MatPill({ v }: { v: MLesson | null }) { const m = matOf(v)
   return m === 'ok' ? <span className="pill good plain" title={`Phiên bản đang dùng: PB ${v!.version_no}`}>Đủ</span> : m === 'draft' ? <span className="pill warn plain" title={`Phiên bản đang dùng: PB ${v!.version_no}`}>Đang soạn</span> : <span className="pill draft plain">Chưa có</span> }
 function GDots({ v }: { v: MLesson }) { return <span className="gdots">{G4.map(([k, n]) => <i key={k} className={v.groups?.[k] === 'ok' ? 'ok' : ''} title={`${n}: ${v.groups?.[k] === 'ok' ? 'Đã chốt' : 'Cần kiểm tra'}`} />)}</span> }
 // Nội dung bài học: dùng plan; học liệu cũ chỉ có steps thì dựng tạm Buổi › Hoạt động từ steps
-const planOf = (l: MLesson): Sess[] => l.plan?.length ? l.plan : Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b).map(k => ({ title: `Buổi ${k}`, note: '',
+export const planOf = (l: MLesson): Sess[] => l.plan?.length ? l.plan : Array.from(new Set(l.steps.map(s => s.session ?? 1))).sort((a, b) => a - b).map(k => ({ title: `Buổi ${k}`, note: '',
   acts: l.steps.filter(s => (s.session ?? 1) === k).map(s => ({ title: s.title, minutes: s.minutes ?? 0, parts: [{ title: '', items: [...(s.teacher ? ['GV: ' + s.teacher] : []), ...(s.student ? ['HS: ' + s.student] : [])] }] })) }))
-const stepsOf = (plan: Sess[]): Step[] => plan.flatMap((se, si) => se.acts.map(a => { const its = a.parts.flatMap(p => p.items).filter(t => !t.startsWith('[Hình]'))
+export const stepsOf = (plan: Sess[]): Step[] => plan.flatMap((se, si) => se.acts.map(a => { const its = a.parts.flatMap(p => p.items).filter(t => !t.startsWith('[Hình]'))
   return { session: si + 1, title: a.title, minutes: a.minutes, teacher: its.filter(t => /^(GV|Giáo viên)/.test(t)).join('\n'), student: its.filter(t => /^(HS|Học sinh)/.test(t)).join('\n') } }))
 
 export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
@@ -319,7 +319,7 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
   if (tab === 'designs') body = <section className="panel"><Head icon="edit" title="Bài giảng soạn từ học liệu này" act={orgId && <button type="button" className="btn sm primary" onClick={toDesign}><Ic n="plus" /> Soạn bài giảng từ PB {(use ?? l).version_no}</button>} />
     {designs.length ? <div className="tblwrap"><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản học liệu</th><th>Trạng thái</th><th>Cập nhật</th><th></th></tr></thead><tbody>
       {designs.map(d => { const fv = versions.find(v => v.id === d.material_lesson_id)
-        return <tr key={d.id} className="rowlink" onClick={() => go?.('Soạn bài giảng & kho hoạt động')}><td><b>{d.title}</b></td><td>PB {fv?.version_no ?? '?'}{fv && newerOf(versions, fv) && <> <span className="pill info plain">có bản mới</span></>}</td>
+        return <tr key={d.id} className="rowlink" onClick={() => { try { sessionStorage.setItem('ph1:open-design', d.id) } catch { /* bỏ qua */ } go?.('Soạn bài giảng & kho hoạt động') }}><td><b>{d.title}</b></td><td>PB {fv?.version_no ?? '?'}{fv && newerOf(versions, fv) && <> <span className="pill info plain">có bản mới</span></>}</td>
           <td>{d.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}</td><td>{timeAgo(d.updated_at)}</td><td style={{ textAlign: 'right' }}><span className="btn sm">Xem ›</span></td></tr> })}</tbody></table></div>
       : <Empty>Chưa có bài giảng.</Empty>}</section>
 

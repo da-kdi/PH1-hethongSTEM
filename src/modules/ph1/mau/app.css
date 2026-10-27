@@ -33,3 +33,5 @@
 .mau th{font-size:12px}
 .mau .legend{display:flex;width:auto;height:auto;border-radius:0;vertical-align:baseline;background:none}
 .mau .ctip{z-index:1000}
+.mau .race .track{height:auto;border-radius:0;overflow:visible}
+.mau .opts{margin:0}
