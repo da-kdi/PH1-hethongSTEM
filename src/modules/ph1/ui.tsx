@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import './ph1.css'
 
@@ -122,17 +122,42 @@ export function Drawer({ color, badges, title, onClose, children, footer, wide }
     </aside>
   </>)
 }
-// Thẻ có dải màu theo chương trình (thay ảnh bìa)
-export function VCard({ color, code, status, title, subtitle, desc, chips, foot, onClick, more = 'Xem chi tiết ›' }: {
+// Biểu tượng môn trên bìa thẻ (nét mảnh, theo màu chương trình) — mặc định là nguyên tử cho môn chưa có hình riêng
+const GLYPH: Record<string, string> = {
+  toan: '<path d="M4 7h16M7 7v11M15 7v9a2 2 0 0 0 2 2h1"/>',
+  khoa_hoc: '<path d="M9 3h6M10 3v6L4.5 18a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9V3"/><path d="M7 15h10"/>',
+  khtn: '<circle cx="12" cy="12" r="1.6"/><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/>',
+  cong_nghe: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+  tin_hoc: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>',
+  sang_che: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+  robotics: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6"/><circle cx="12" cy="3.5" r="1"/>',
+  hdtn: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+}
+GLYPH.clb_robot = GLYPH.robotics; GLYPH.ai = GLYPH.tin_hoc; GLYPH.khkt = GLYPH.sang_che; GLYPH.vat_li = GLYPH.khtn; GLYPH.hoa_hoc = GLYPH.khoa_hoc; GLYPH.sinh_hoc = GLYPH.khoa_hoc; GLYPH.tnxh = GLYPH.hdtn
+export function Glyph({ subject, className }: { subject?: string | null; className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: GLYPH[subject ?? ''] ?? GLYPH.khtn }} />
+}
+
+// Chuỗi bước quy trình của một mục (thay thanh tab): số bước · tên · mô tả ngắn; bước trước bước đang chọn tô nhạt
+export function FlowSteps<T extends string>({ steps, value, onChange }: { steps: [T, string, ReactNode?][]; value: T | ''; onChange: (v: T) => void }) {
+  const ci = steps.findIndex(s => s[0] === value)
+  return <nav className="p1-flow" aria-label="Các bước">{steps.map(([k, l, d], i) => <Fragment key={k}>
+    {i > 0 && <i aria-hidden="true">›</i>}
+    <button type="button" className={k === value ? 'on' : ci >= 0 && i < ci ? 'past' : ''} aria-current={k === value ? 'step' : undefined} onClick={() => onChange(k)}>
+      <b>{i + 1}</b><span>{l}{d != null && d !== '' && <small>{d}</small>}</span></button></Fragment>)}</nav>
+}
+
+// Thẻ có bìa nhạt theo màu chương trình + biểu tượng môn (đồng bộ với bản mẫu giao diện)
+export function VCard({ color, code, status, title, subtitle, desc, chips, foot, onClick, subject, more = 'Xem chi tiết ›' }: {
   color?: string | null; code?: string | null; icon?: ReactNode; status?: ReactNode; title: ReactNode; subtitle?: ReactNode; desc?: ReactNode
-  chips?: ReactNode[]; foot?: ReactNode; onClick: () => void; more?: string
+  chips?: ReactNode[]; foot?: ReactNode; onClick: () => void; more?: string; subject?: string | null
 }) {
   const c = color ?? '#475569'
   return (
-    <button type="button" className="p1-card" onClick={onClick}>
-      <div className="p1-banner" style={{ background: `linear-gradient(135deg, ${c}, ${shade(c, -30)})` }}>
+    <button type="button" className="p1-card" onClick={onClick} style={{ ['--c' as string]: c }}>
+      <div className="p1-banner">
         {code && <span className="tag">{code}</span>}{status && <span className="tag2">{status}</span>}
-        {code && <span className="big">{code}</span>}
+        <Glyph subject={subject} className="glyph" />
       </div>
       <div className="p1-cardbody">
         <h4>{title}</h4>{subtitle && <span className="subj">{subtitle}</span>}{desc && <p>{desc}</p>}

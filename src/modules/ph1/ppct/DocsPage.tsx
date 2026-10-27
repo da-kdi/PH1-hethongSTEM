@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../../lib/supabase'
-import { Tabs } from '../../../pages/teacher/common'
-import { CtBadge, Empty, Pill, SCHOOL_YEAR, Stat, VCard, errMsg, norm, useOrgList, useRpcBool } from '../ui'
+import { CtBadge, Empty, FlowSteps, Pill, SCHOOL_YEAR, Stat, VCard, errMsg, norm, useOrgList, useRpcBool } from '../ui'
 import { catName, catOf, effectiveCatalog, gradeLabel, gradesOfLevel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
 import { PpctPage } from './PpctPage'
 import { TrackingPage } from '../tracking/TrackingPage'
@@ -60,7 +59,7 @@ const docName = (d: Doc, cat: CatItem[]) => d.title || (d.subject ? `Phân phố
 export function PpctHome({ orgId }: { orgId: string | null }) {
   const [tab, setTab] = useState<'docs' | 'cal' | 'track'>('docs')
   return <>
-    <div className="p1-tabbar"><Tabs items={[['docs', 'Phân phối chương trình'], ['cal', 'Lịch & tiến độ (chờ xem lại)'], ['track', 'Theo dõi (chờ xem lại)']] as ['docs' | 'cal' | 'track', string][]} value={tab} onChange={setTab} /></div>
+    <FlowSteps steps={[['docs', 'Bản phân phối', 'Xếp lịch theo khối, rà soát, phát hành'], ['cal', 'Lịch & tiến độ', 'Theo tuần, bỏ tuần nghỉ (chờ xem lại)'], ['track', 'Theo dõi triển khai', 'Tiến độ theo trường (chờ xem lại)']] as ['docs' | 'cal' | 'track', string, string][]} value={tab} onChange={setTab} />
     {tab === 'docs' ? <PpctDocs orgId={orgId} /> : tab === 'cal' ? <PpctPage orgId={orgId} /> : <TrackingPage orgId={orgId} />}
   </>
 }

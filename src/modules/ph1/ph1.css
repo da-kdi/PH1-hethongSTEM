@@ -381,3 +381,22 @@
 .main .p1-addcard{display:grid;place-items:center;gap:4px;min-height:140px;border:1px dashed var(--line);border-radius:16px;background:none;color:var(--muted)}
 .main .p1-addcard:hover{border-color:var(--primary);color:var(--primary);background:none}
 .p1-addcard b{font-size:16px;color:var(--text)}
+
+/* ===== Đợt 1 (28/10): bìa thẻ nhạt + biểu tượng môn, chuỗi bước quy trình mỗi mục ===== */
+.p1-banner{height:78px;background:color-mix(in srgb,var(--c) 13%,var(--surface));color:color-mix(in srgb,var(--c) 75%,var(--text));border-bottom:3px solid var(--c)}
+.p1-banner .tag{background:var(--c);color:#fff}
+.p1-banner .glyph{position:absolute;right:14px;top:50%;width:52px;height:52px;transform:translateY(-50%) rotate(-8deg);fill:none;stroke:var(--c);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.38}
+.p1-banner .tag2{right:auto;top:auto;left:12px;bottom:9px}
+.p1-flow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:0 0 16px}
+.main .p1-flow>button{flex:1;min-width:170px;display:flex;align-items:center;gap:10px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:10px 12px;color:var(--text);font-weight:400}
+.main .p1-flow>button:hover{border-color:var(--primary);background:var(--surface)}
+.p1-flow>button>b{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--muted);font-size:13px;flex:none}
+.p1-flow>button span{display:grid;font-weight:700;font-size:13.5px;line-height:1.3;min-width:0}
+.p1-flow>button small{font-weight:500;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main .p1-flow>button.on{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);background:color-mix(in srgb,var(--primary) 6%,var(--surface))}
+.p1-flow>button.on>b{background:var(--primary);color:#fff}
+.p1-flow>button.past>b{background:color-mix(in srgb,var(--primary) 15%,var(--surface));color:var(--primary)}
+.p1-flow>i{display:grid;place-items:center;color:#94a3b8;font-style:normal;font-size:20px}
+@media (max-width:900px){.p1-flow>i{display:none}.main .p1-flow>button{min-width:calc(50% - 3px)}}
+@media (max-width:520px){.main .p1-flow>button{min-width:100%}}
+@media print{.p1-flow{display:none!important}}

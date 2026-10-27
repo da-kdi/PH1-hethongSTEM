@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
 import {
-  CtBadge, Drawer, Empty, Mini, Pill, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, errMsg, norm, timeAgo, useRpcBool, useViewMode,
+  CtBadge, Drawer, Empty, FlowSteps, Mini, Pill, Section, Stat, StatusTabs, Thumb, Toolbar, VCard, errMsg, norm, timeAgo, useRpcBool, useViewMode,
 } from '../ui'
 import { Drill, useDrill } from '../drill'
 import { MSTATUS, OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, levelOfGrade, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
@@ -176,7 +176,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const renderLessons = (list: MLesson[]) => {
     const one = (lShown: MLesson[]) => view === 'grid' ? (
         <div className="p1-grid">{lShown.map(l => { const s = setOf(l); const p = progOf(s)
-            return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" status={vPill(l)}
+            return <VCard key={l.id} color={p?.color} code={p?.code} subject={s?.subject} icon="📚" status={vPill(l)}
               title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`} desc={l.objectives}
               chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '', counts.files.get(l.id) ? `${counts.files.get(l.id)} tài liệu` : '']}
               foot={<small>{s?.name}</small>} onClick={() => setPreview(l.id)} /> })}</div>
@@ -211,7 +211,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
       {msg && <p className="msg">{msg}</p>}
       {note && <div className="p1-alert good">{note}{go && <button type="button" onClick={() => go('Soạn bài giảng & kho hoạt động')}>Mở Soạn bài giảng</button>}</div>}
       <div className="bar">
-        <StatusTabs items={[['lessons', 'Học liệu theo chương trình', lessons.length], ['sets', 'Bộ học liệu (chờ xem lại)', sets.length]]} value={tab} onChange={t => { setTab(t); setF({ ...f, set: '', status: '' }) }} />
+        <FlowSteps steps={[['lessons', 'Học liệu theo bài học', `${lessons.length} học liệu · ${cls.filter(c => !hlOf(c)).length} bài chờ`], ['sets', 'Bộ học liệu', `${sets.length} bộ · gom theo chương trình, môn, khối (chờ xem lại)`]] as ['lessons' | 'sets', string, string][]} value={tab} onChange={t => { setTab(t); setF({ ...f, set: '', status: '' }) }} />
         {canManage && <button type="button" className="primary" onClick={newSet}>+ Bộ học liệu</button>}
       </div>
       <Toolbar q={q} onQ={setQ} placeholder={tab === 'lessons' ? 'Tìm theo tên bài, mục tiêu, bộ học liệu…' : 'Tìm bộ học liệu…'} filters={filters} values={f}
@@ -326,7 +326,7 @@ function SetDetail({ set, progs, cat, editable, lessons, counts, onPreview, onOp
       <div className="bar"><h3 style={{ margin: 0 }}>Bài học · {lessons.length}</h3>
         {editable && <button type="button" onClick={() => run(supabase.from('material_lessons').insert({ set_id: set.id, seq: lessons.length + 1, title: 'Bài mới', periods: 1 }))}>+ Bài học</button>}</div>
       {lessons.length === 0 ? <Empty>Bộ học liệu chưa có bài.</Empty> : <div className="p1-grid">{lessons.map(l =>
-        <VCard key={l.id} color={c?.color} code={c?.code} icon={`${l.seq}`} title={l.title} subtitle={l.curriculum_lesson_id ? 'Liên kết bài chuẩn trong chương trình' : 'Chưa liên kết chương trình'}
+        <VCard key={l.id} color={c?.color} code={c?.code} subject={set.subject} icon={`${l.seq}`} title={l.title} subtitle={l.curriculum_lesson_id ? 'Liên kết bài chuẩn trong chương trình' : 'Chưa liên kết chương trình'}
           status={vPill(l)} desc={l.objectives} chips={[`${l.periods} tiết`, `${l.sessions} buổi`, counts.norms.get(l.id) ? `${counts.norms.get(l.id)} vật tư` : '']} onClick={() => onPreview(l.id)}
           foot={<button type="button" className="linkbtn" onClick={e => { e.stopPropagation(); onOpen(l.id) }}>Mở đầy đủ</button>} />)}</div>}
       {drawer}
