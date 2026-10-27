@@ -121,6 +121,8 @@ export function mk(db: DB, subjCat: CatItem[]) {
   const plan = (id: string | null) => db.plans.find(p => p.id === id) ?? null
   const sessOfPlan = (pid: string) => db.sess.filter(s => s.plan_id === pid).sort((a, b) => (a.date + a.start_t).localeCompare(b.date + b.start_t))
   const traineesOf = (pid: string) => db.trainees.filter(t => t.plan_id === pid).map(t => t.teacher_id)
+  const trainee = (pid: string, t: string) => db.trainees.find(x => x.plan_id === pid && x.teacher_id === t)
+  const plansOfTeacher = (t: string) => db.plans.filter(p => db.trainees.some(x => x.plan_id === p.id && x.teacher_id === t))
   const sessEnd = (s: Sess) => s.date < T
   const sessSubj = (s: Sess) => s.subject ?? mod(s.module_id)?.subject ?? null
   const sessTitle = (s: Sess) => mod(s.module_id)?.title ?? SUBJ(s.subject)
@@ -191,7 +193,7 @@ export function mk(db: DB, subjCat: CatItem[]) {
     }
     return out
   }
-  return { T, SUBJ, groups, groupOf, prog, modsOf, mod, subjectsOf, subjMods, allMods, subjH, progH, progS, matsOf, matSt, teacher, orgName, plan, sessOfPlan, traineesOf, sessEnd, sessSubj, sessTitle,
+  return { T, SUBJ, groups, groupOf, prog, modsOf, mod, subjectsOf, subjMods, allMods, subjH, progH, progS, matsOf, matSt, teacher, orgName, plan, sessOfPlan, traineesOf, trainee, plansOfTeacher, sessEnd, sessSubj, sessTitle,
     planSubjs, planRange, planItems, itemSess, itemOpen, itemFrom, itemDue, grOf, itemScore, reqFails, mark, evalOf, planSt, regSt, plansOf, progCover, progPlanSt, eligibleOf, doneProg, canReg,
     progProgress, condText, certOf, compOf, fbOf, fbQs, fbAvg, genSessions }
 }

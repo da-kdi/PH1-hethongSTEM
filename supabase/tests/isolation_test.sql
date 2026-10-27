@@ -1931,6 +1931,17 @@ select pg_temp.chk('iso_gv', 'Giáo án: giáo viên soạn giáo án của trư
   $q$insert into lesson_designs (org_id, title) values (my_org_id(), 'ISO giáo án')$q$, 'rows:1');
 select pg_temp.chk('admin_kb', 'Giáo án: trường khác không thấy giáo án của THCS-PH', format($q$select count(*) from lesson_designs where org_id = %L$q$, pg_temp.oid_('THCS-PH')), '0');
 
+-- PH2 Đào tạo & đánh giá nhà giáo (067)
+select pg_temp.chk('kdi', 'PH2: KDI thấy chương trình tập huấn mẫu', $q$select count(*) from ph2_programs$q$, '>0');
+select pg_temp.chk('so_hy', 'PH2: Sở A thấy sổ điểm đợt của mình', $q$select count(*) from ph2_grades g join ph2_plans p on p.id = g.plan_id where p.title like 'Tập huấn Dạy học STEM cơ bản – đợt 1'$q$, '>0');
+select pg_temp.chk('so_bn', 'PH2: Sở B không xem sổ điểm đợt của Sở A', $q$select count(*) from ph2_grades g join ph2_plans p on p.id = g.plan_id where p.org_id = (select id from organizations where code = 'SO-HY')$q$, '0');
+select pg_temp.chk('so_bn', 'PH2: Sở B không sửa kế hoạch của Sở A', $q$update ph2_plans set title = 'ISO' where org_id = (select id from organizations where code = 'SO-HY')$q$, 'rows:0');
+select pg_temp.chk('so_bn', 'PH2: Sở B không chấm điểm đợt của Sở A', format($q$insert into ph2_grades (plan_id, item_id, teacher_id, score) select %L, 'it-cb1', teacher_id, 10 from ph2_trainees where plan_id = %L limit 1$q$,
+  (select id from ph2_plans where title like 'Tập huấn Dạy học STEM cơ bản – đợt 1'), (select id from ph2_plans where title like 'Tập huấn Dạy học STEM cơ bản – đợt 1')), 'ERR*');
+select pg_temp.chk('so_bn', 'PH2: Sở B không cấp chứng nhận đợt của Sở A', format($q$select ph2_issue_certs(%L, array[]::uuid[])$q$, (select id from ph2_plans where title like 'Tập huấn Dạy học STEM cơ bản – đợt 1')), 'ERR');
+select pg_temp.chk('so_hy', 'PH2: chưa kết thúc đợt thì không cấp chứng nhận', format($q$select ph2_issue_certs(%L, array[]::uuid[])$q$, (select id from ph2_plans where title like 'Tập huấn Dạy học STEM cơ bản – đợt 1')), 'ERR*');
+select pg_temp.chk('admin_kb', 'PH2: trường không sửa điểm danh đợt của Sở', $q$update ph2_attendance set mark = 'a'$q$, 'rows:0');
+
 -- ===== Dọn dẹp + kết quả =====
 select pg_temp.cleanup();
 select case when bool_and(ok) then 'PASS' else 'FAIL' end || ' ' || count(*) filter (where ok) || '/' || count(*) as "Tổng"

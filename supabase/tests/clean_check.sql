@@ -9,7 +9,8 @@ declare
     'competencies',         -- khung năng lực HS/GV (042)
     'curriculum_catalog',   -- danh mục mặc định của chương trình đào tạo: CT1–CT5, cấp học, môn, lĩnh vực… (057)
     'integrations',         -- danh mục kết nối tích hợp (K12Online, VNeID, email, Zalo, Excel)
-    'organizations',        -- chỉ đơn vị cung cấp KDI Education (kiểm tra riêng bên dưới)
+    'organizations',
+    'ph2_catalog',          -- nhóm chương trình tập huấn mặc định BDTX / STEM-CB / STEM-NC của đơn vị cung cấp (067)        -- chỉ đơn vị cung cấp KDI Education (kiểm tra riêng bên dưới)
     'role_permissions',     -- ma trận quyền mặc định
     'rubrics',              -- mẫu tiêu chí đánh giá hệ thống (041)
     'roles',                -- vai trò hệ thống
