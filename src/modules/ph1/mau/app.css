@@ -1,0 +1,20 @@
+/* Chỉnh riêng khi đặt bản mẫu vào khung app (main có lề, nút toàn cục .main button) */
+.mau.mau-wrap{background:transparent;display:grid;gap:18px;font-size:14px;line-height:1.5;color:var(--fg);font-family:var(--font)}
+.main .mau h1{margin:0;font-size:22px;letter-spacing:-.2px}
+.main .mau .pcard:hover{background:var(--surface)}
+.main .mau button:disabled{opacity:.55;cursor:not-allowed}
+.mau .msg{margin:0;color:var(--bad);font-weight:600}
+.mau .okmsg{margin:0;color:var(--good);font-weight:600}
+.mau .linkbtn{border:0;background:none;padding:0;color:var(--primary);font-weight:600;cursor:pointer}
+.mau .cur-cardwrap{display:grid;gap:6px}
+.mau .cur-cardwrap>.linkbtn{justify-self:center;font-size:12.5px}
+.main:has(> .mau)>h1{display:none}
+.mau .band .bandin{border:1px solid transparent;background:transparent;border-radius:8px;padding:4px 8px;font-weight:700;min-width:220px}.mau .band .bandin:hover,.mau .band .bandin:focus{border-color:var(--line);background:var(--surface)}
+.mau table{border:0;border-radius:0;background:transparent;border-collapse:collapse;overflow:visible}
+.mau tr:last-child td{border-bottom:0}
+.mau th,.mau td{font-size:inherit;border-bottom:0}
+.mau .hero{color:var(--fg);margin-bottom:0;padding:18px 20px}
+.mau .hero h2{color:var(--fg)}
+.mau .hero small{color:var(--muted)}
+.mau td input.bandin{width:auto;min-width:240px;display:inline-block}
+.mau tr.addrow{display:table-row}.mau tr.addrow input{flex:none}

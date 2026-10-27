@@ -180,7 +180,7 @@ function Shell({ session }: { session: Session }) {
       <nav className="side" aria-label="Menu chính">
         <div className="sidebrand">
           {brand?.logo_dark ? <img src={brand.logo_dark} alt={brand.display_name ?? 'Logo'} /> : brand?.logo ? <img src={brand.logo} alt={brand.display_name ?? 'Logo'} className="onchip" /> : <img src={logoWhite} alt="KDI education" />}
-          <b>{role === 'platform' ? 'Hệ thống quản lý vận hành' : ROLE_LABEL[role]}</b>
+          <b>{ROLE_LABEL[role]}</b>
         </div>
         {role !== 'department' && role !== 'platform' && role !== 'parent' && <label className="yearpick">
           <span>Năm học · học kỳ</span>
