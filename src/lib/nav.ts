@@ -1,4 +1,5 @@
 import { PH1_NAV, PH1_LABEL, PH1_MODULE_OF, PH1_ENT_MODULE_OF } from '../modules/ph1/nav'
+import { PH2_NAV, PH2_MODULE_OF } from '../modules/ph2/nav'
 
 export type RoleKey = 'school_admin' | 'teacher' | 'student' | 'department' | 'platform' | 'parent' | 'judge'
 // section: tên phân hệ khi phân hệ chia nhiều nhóm (menu hiện tiêu đề phân hệ phía trên các nhóm con)
@@ -23,12 +24,13 @@ export const LABEL: Partial<Record<RoleKey | '*', Record<string, string>>> = {
 }
 export const labelOf = (role: RoleKey, id: string) => LABEL[role]?.[id] ?? LABEL['*']?.[id] ?? id
 
-// BẢN TÁCH PH1: menu chỉ gồm Phân hệ 1, lấy từ src/modules/ph1/nav.ts (repo chính giữ NAV đầy đủ).
-export const NAV: Record<RoleKey, NavGroup[]> = PH1_NAV
+// BẢN TÁCH: menu gồm Phân hệ 1 (src/modules/ph1/nav.ts) và Phân hệ 2 (src/modules/ph2/nav.ts); repo chính giữ NAV đầy đủ.
+export const NAV: Record<RoleKey, NavGroup[]> = Object.fromEntries((Object.keys(PH1_NAV) as RoleKey[]).map(r => [r, [...PH1_NAV[r], ...(PH2_NAV[r] ?? [])]])) as Record<RoleKey, NavGroup[]>
 
 // Mục menu của vai trò Trường – Quản trị → chức năng trong ma trận phân quyền
 export const MODULE_OF: Record<string, string> = {
   ...PH1_MODULE_OF,   // PH1: src/modules/ph1/nav.ts
+  ...PH2_MODULE_OF,   // PH2: src/modules/ph2/nav.ts
   'Giáo viên': 'teachers', 'Lớp học': 'classes', 'Học sinh': 'students', 'Phụ huynh': 'students', 'Phân công giảng dạy': 'assignments',
   'Quản lý Phòng STEM': 'stem_rooms', 'Quản lý Thiết bị': 'equipment', 'Vật tư tiêu hao': 'equipment', 'Đề xuất mua vật tư': 'equipment', 'Vận chuyển vật tư': 'equipment', 'Kiểm kê': 'equipment', 'Bảo hành thiết bị': 'warranty',
   'Thời khóa biểu': 'timetable', 'Duyệt đăng ký dạy STEM': 'stem_registrations', 'Tòa nhà & Tầng': 'buildings',
