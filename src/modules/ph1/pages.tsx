@@ -12,7 +12,7 @@ const MaterialsPage = lazy(() => import('./materials/MaterialsPage').then(m => (
 const PpctPage = lazy(() => import('./ppct/PpctMau').then(m => ({ default: m.PpctMau })))
 const DesignsPage = lazy(() => import('./designs/DesignsMau').then(m => ({ default: m.DesignsMau })))
 const TrackingPage = lazy(() => import('./tracking/TrackingPage').then(m => ({ default: m.TrackingPage })))
-const ElearningByProgram = lazy(() => import('./elearning/ElearningByProgram').then(m => ({ default: m.ElearningByProgram })))
+const ElearningByProgram = lazy(() => import('./elearning/ElearningMau').then(m => ({ default: m.ElearningMau })))
 
 // Màn đã có ở repo chính (giữ nguyên đường dẫn để ghép lại không lệch)
 const Packages = lazy(() => import('../../pages/Packages'))
