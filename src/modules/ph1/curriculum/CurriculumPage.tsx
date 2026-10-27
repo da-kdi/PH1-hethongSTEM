@@ -4,7 +4,7 @@ import { Tabs } from '../../../pages/teacher/common'
 import { CatalogPanel } from './Catalog'
 import { LessonsEditor } from './Lessons'
 import { PackagesPanel } from '../packages/Packages'
-import { Code, Empty, Pill, Section, Stat, Thumb, Toolbar, VCard, norm, useViewMode } from '../ui'
+import { Code, Empty, FlowSteps, Pill, Section, Stat, Thumb, Toolbar, VCard, norm, useViewMode } from '../ui'
 import {
   CSTATUS, OPEN_LESSON_KEY, SCOPE, catName, catOf, effectiveCatalog, errText, gradeLabel, gradesOfLevel, levelOfGrade, loadContent, useCatalog, useOrgs,
   type CatItem, type Content, type Curriculum, type Scope,
@@ -80,7 +80,7 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
   const statusPill = (c: Curriculum) => <Pill tone={CSTATUS[c.status]?.[1]}>{CSTATUS[c.status]?.[0]}</Pill>
   const lvg = (c: Curriculum) => [c.levels.map(l => catName(cat, 'level', l)).join(', '), gradeOf(c) != null ? gradeLabel(gradeOf(c)!) : ''].filter(Boolean).join(' · ')
   const card = (c: Curriculum, showOwner: boolean) => { const i = info.get(c.id); const sj = i?.subjects ?? []
-    return <VCard key={c.id} color={c.color} code={c.code} status={statusPill(c)} title={c.name}
+    return <VCard key={c.id} color={c.color} code={c.code} subject={sj[0]} status={statusPill(c)} title={c.name}
       subtitle={showOwner ? c.owner_name : lvg(c) || 'Chưa chọn khối'} desc={c.summary}
       chips={[...sj.slice(0, 3).map(s => catName(cat, 'subject', s)), sj.length > 3 ? `+${sj.length - 3} môn` : '']}
       foot={<small>{sj.length} môn · {i?.lessons ?? 0} bài · {i?.periods ?? 0} tiết</small>} onClick={() => setOpenId(c.id)} /> }
@@ -101,9 +101,10 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
 
   return (
     <>
+      <FlowSteps steps={[['catalog', 'Danh mục', 'Cấp học, khối, lớp, nhóm, môn'], ['programs', 'Chương trình', `${list.length} chương trình · bài học & phát hành`]] as [Top, string, string][]}
+        value={top === 'packages' ? '' : top} onChange={t => { setTop(t); setCreating(false) }} />
       <div className="bar">
-        <Tabs items={[['programs', 'Tổng quan', list.length], ['catalog', 'Danh mục'], ['packages', 'Gói chương trình (chờ xem lại)']] as [Top, string, number?][]}
-          value={top} onChange={t => { setTop(t); setCreating(false) }} />
+        <button type="button" className={top === 'packages' ? 'primary' : ''} onClick={() => { setTop(top === 'packages' ? 'programs' : 'packages'); setCreating(false) }}>{top === 'packages' ? '← Chương trình' : 'Gói chương trình (chờ xem lại)'}</button>
         {top === 'programs' && canManage && <button type="button" className="primary" onClick={() => { setCreating(true); setMsg(''); setNote('') }}>+ Chương trình mới</button>}
       </div>
       {msg && <p className="msg">{msg}</p>}

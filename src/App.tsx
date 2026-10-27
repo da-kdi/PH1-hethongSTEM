@@ -241,7 +241,7 @@ function Shell({ session }: { session: Session }) {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
           </button>
           <img src={brand?.logo ?? logo} alt={brand?.display_name ?? 'KDI education'} />
-          <span className="title">{role === 'platform' ? 'Hệ thống quản lý vận hành' : brand?.display_name ?? DEFAULT_TITLE}</span>
+          <span className="title">{role === 'platform' ? DEFAULT_TITLE : brand?.display_name ?? DEFAULT_TITLE}</span>
           <MenuSearch entries={groups.flatMap(g => g.items.map(item => ({ item, label: labelOf(role, item), group: g.section ? `${g.section} › ${g.title}` : g.title })))} onGo={i => show(role, i)} />
           <div className="user">
             <Bell open={openFrom} portals={views} orgId={access.profile.org_id} />

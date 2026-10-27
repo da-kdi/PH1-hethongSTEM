@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { Tabs } from '../../../pages/teacher/common'
-import { CtBadge, Drawer, Empty, Mini, Pill, Section, StatusTabs, Thumb, Toolbar, VCard, errMsg, fmtDY, norm, timeAgo, useOrgList, useViewMode } from '../ui'
+import { CtBadge, Drawer, Empty, FlowSteps, Mini, Pill, Section, StatusTabs, Thumb, Toolbar, VCard, errMsg, fmtDY, norm, timeAgo, useOrgList, useViewMode } from '../ui'
 import { Drill, useDrill } from '../drill'
 import { catName, effectiveCatalog, gradeLabel, inUseOf, newerOf, useCatalog, useOrgs, type Curriculum, type MStatus } from '../curriculum/api'
 import { BASIS, NORM_CAT, type MLesson, type Norm } from '../materials/MaterialsPage'
@@ -112,7 +112,7 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
                 <button type="button" title="Soạn" onClick={e => { e.stopPropagation(); setOpen(x.id) }}>✎</button></div></td>
             </tr> })}</tbody></table>
       ) : <div className="p1-grid">{shown.map(x => { const p = progOf(x)
-        return <VCard key={x.id} color={p?.color} code={p?.code} icon="✏️" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill>} title={x.title}
+        return <VCard key={x.id} color={p?.color} code={p?.code} subject={x.subject} icon="✏️" status={<Pill tone={STATUS[x.status]?.[1]}>{STATUS[x.status]?.[0]}</Pill>} title={x.title}
           subtitle={`${catName(cat, 'subject', x.subject)}${x.grade != null ? ' · ' + gradeLabel(x.grade) : ''}`} desc={srcOf(x)}
           chips={[`${x.sessions.length} buổi`, `${acts(x)} hoạt động`, `PB ${verOf(x)}`, newerFor(x) ? `Học liệu có PB ${newerFor(x)!.version_no}` : '']} foot={<small>{timeAgo(x.updated_at)}</small>} onClick={() => setPeek(x.id)} /> })}</div>
   // Kho hoạt động: gom theo học liệu, mỗi học liệu liệt kê các phiên bản bài giảng
@@ -130,9 +130,9 @@ export function DesignsPage({ orgId, teacherId }: { orgId: string | null; teache
   return (
     <>
       {msg && <p className="msg">{msg}</p>}
-      <div className="bar"><Tabs items={[['compose', 'Soạn bài giảng', list.filter(x => x.org_id === orgId && x.status !== 'published').length], ['store', 'Kho hoạt động', list.length]] as ['compose' | 'store', string, number?][]}
+      <FlowSteps steps={[['store', 'Kho hoạt động', `${list.length} bài giảng · gom theo học liệu`], ['compose', 'Soạn bài giảng', `${list.filter(x => x.org_id === orgId && x.status !== 'published').length} đang soạn · từ học liệu, xuất bản`]] as ['compose' | 'store', string, string][]}
         value={tab} onChange={t => { setTab(t); setStatus('all') }} />
-        <button type="button" className="primary" onClick={() => setPicking(true)}>+ Soạn bài giảng</button></div>
+      <div className="bar"><span /><button type="button" className="primary" onClick={() => setPicking(true)}>+ Soạn bài giảng</button></div>
       <p className="sub" style={{ margin: '0 0 10px' }}>{tab === 'compose' ? 'Bài giảng của đơn vị: chọn học liệu rồi chỉnh theo lớp — học liệu gốc không bị thay đổi.' : 'Tất cả bài giảng, theo học liệu; một học liệu có thể có nhiều phiên bản bài giảng.'}</p>
       <StatusTabs items={[['all', 'Tất cả', base.length], ['published', 'Đã xuất bản', base.filter(x => x.status === 'published').length],
         ['draft', 'Nháp', base.filter(x => x.status !== 'published').length]]} value={status} onChange={setStatus} />
@@ -174,7 +174,7 @@ function LessonPicker({ sets, progs, lessons, cat, onPick }: { sets: MSetLite[];
       { key: 'prog', label: 'Tất cả chương trình', options: progs.filter(p => sets.some(s => s.curriculum_id === p.id)).map(p => ({ value: p.id, label: `${p.code} · ${p.name}` })) },
       { key: 'set', label: 'Mọi bộ học liệu', options: sets.map(s => ({ value: s.id, label: s.name })) }]} />
     <div className="p1-grid">{shown.map(l => { const s = sets.find(x => x.id === l.set_id); const p = progs.find(x => x.id === s?.curriculum_id)
-      return <VCard key={l.id} color={p?.color} code={p?.code} icon="📚" title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`}
+      return <VCard key={l.id} color={p?.color} code={p?.code} subject={s?.subject} icon="📚" title={l.title} subtitle={`${catName(cat, 'subject', s?.subject)}${s?.grade != null ? ' · ' + gradeLabel(s.grade) : ''}`}
         desc={l.objectives} chips={[`${l.periods} tiết`, `PB ${l.version_no}`, l.status === 'published' ? '' : 'nháp']} foot={<small>{s?.name}</small>} onClick={() => onPick(l.id)} more="Soạn từ học liệu này ›" /> })}</div>
     {!shown.length && <Empty>Không có bài phù hợp.</Empty>}
   </>)
