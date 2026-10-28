@@ -21,15 +21,16 @@ import HelpWidget from './components/HelpWidget'
 // BẢN TÁCH PH1: chỉ nối các màn của Phân hệ 1 · Chương trình & học liệu (src/modules/ph1/pages.tsx).
 // Repo chính giữ bảng trang đầy đủ; khi ghép về chỉ trộn PH1_PAGES vào các bảng đó (docs/GHEP-VE-REPO-CHINH.md).
 import { PH1_PAGES } from './modules/ph1/pages'
+import { PH2_PAGES } from './modules/ph2/pages'
 
 type PageMap = Record<string, ComponentType<any>>
-const PLATFORM_LIVE = new Set(Object.keys(PH1_PAGES.platform ?? {}))
+const PLATFORM_LIVE = new Set([...Object.keys(PH1_PAGES.platform ?? {}), ...Object.keys(PH2_PAGES.platform ?? {})])
 // Tên trang cũ (liên kết nội bộ của trang Sở) → tên trong menu Quản trị nền tảng
 const PLATFORM_ALIAS: Record<string, string> = {
   'KPI & Xếp hạng Xã/Phường': 'KPI & xếp hạng', 'Thiết bị & kho': 'Thiết bị & vật tư', 'Hiệu quả Phòng STEM': 'Hiệu quả sử dụng phòng STEM',
   'Dashboard điểm danh': 'Buổi dạy & điểm danh', 'Thời khoá biểu & xếp lịch': 'Thời khóa biểu & xếp lịch',
 }
-export const PAGES: Partial<Record<RoleKey, PageMap>> = PH1_PAGES
+export const PAGES: Partial<Record<RoleKey, PageMap>> = Object.fromEntries((Object.keys(PH1_PAGES) as RoleKey[]).map(r => [r, { ...PH1_PAGES[r], ...(PH2_PAGES[r] ?? {}) }]))
 // Khi dev: mục menu không có trang (thường do sửa chuỗi mã trong NAV thay vì thêm LABEL — xem lib/nav.ts)
 if (import.meta.env.DEV) (Object.keys(PAGES) as RoleKey[]).filter(r => r !== 'platform').forEach(r =>
   NAV[r].flatMap(g => g.items).filter(i => !PAGES[r]![i]).forEach(i => console.warn(`[menu] ${r}: "${i}" không có trang`)))
