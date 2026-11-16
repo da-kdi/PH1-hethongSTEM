@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
-import { Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from '../ph1/designs/blocks'
 import { ACTS, clone, setActToast } from '../ph1/designs/acts'
@@ -89,7 +89,7 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
   const [tab, setTab] = useState<string>('info')
   const [calc, setCalc] = useState({ students: 30, groups: 6 })
   const v: Mat | undefined = vs.find(x => x.version_no === (ver ?? m.mat_use ?? vs[vs.length - 1]?.version_no)) ?? vs[vs.length - 1]
-  if (!v) return <><button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Học liệu tập huấn</button><Empty>Mô-đun chưa có học liệu.</Empty></>
+  if (!v) return <><Back onClick={onBack} title={m.title}>Học liệu tập huấn</Back><Empty>Mô-đun chưa có học liệu.</Empty></>
   const ro = v.status !== 'draft' || !P.canManage; const C = v.content
   const saveC = (x: Partial<MatContent>) => P.run(supabase.from('ph2_materials').update({ content: { ...C, ...x } }).eq('id', v.id))
   const toggleG = (key: string) => P.run(supabase.from('ph2_materials').update({ groups: { ...v.groups, [key]: v.groups[key] === 'ok' ? '' : 'ok' } }).eq('id', v.id))
@@ -146,15 +146,14 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
       <td><b>{l.title}</b></td><td>PB {l.mat_version ?? '?'}</td><td>{l.author}</td><td>{l.status === 'published' ? <span className="pill good plain">Đã xuất bản</span> : <span className="pill draft plain">Nháp</span>}</td><td>{vn(l.updated_at)}</td></tr>)}</tbody></table></div>
       : <Empty>Chưa có bài giảng nào soạn từ học liệu này.</Empty>}</Panel>
   return <>
-    <button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Học liệu tập huấn</button>
-    <div className="dhead"><span className="code" style={cssVar(g.color)}>{p.code}</span><div><h1>{m.title}</h1><span className="crumb">{p.name} › {k.SUBJ(m.subject)} · {Number(m.hours)} giờ</span></div></div>
+    <Back onClick={onBack} title={m.title}>Học liệu tập huấn</Back>
+    <div className="dhead"><span className="code" style={cssVar(g.color)}>{p.code}</span><div><h1>{m.title}{v.status !== 'draft' ? <HNote lock tip="Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa." /> : !allOk && <HNote tip="Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản." />}</h1><span className="crumb">{p.name} › {k.SUBJ(m.subject)} · {Number(m.hours)} giờ</span></div></div>
     <div className="verbar"><span className="tag">Phiên bản</span><select value={v.version_no} aria-label="Phiên bản" onChange={e => setVer(+e.target.value)}>{[...vs].reverse().map(x => <option key={x.id} value={x.version_no}>PB {x.version_no} · {x.status === 'published' ? 'Đã phát hành' : 'Nháp'}{x.version_no === m.mat_use ? ' · đang dùng' : ''}</option>)}</select>
       <StatusPill s={v.status} /> {v.version_no === m.mat_use ? <span className="pill good plain">Đang dùng</span> : v.status === 'published' && P.canManage ? <button type="button" className="btn sm" onClick={() => P.run(supabase.from('ph2_modules').update({ mat_use: v.version_no }).eq('id', mid), `✓ Đang dùng PB ${v.version_no}`)}>Dùng phiên bản này</button> : null}
       <small className="sub">Cập nhật {vn(v.updated_at)}</small>
       {P.canManage && <span className="act">{v.status === 'draft' && <button type="button" className="btn sm primary" onClick={async () => { if (!allOk) return P.setMsg('Chốt đủ 4 nhóm trước khi phát hành')
         if (await P.run(supabase.from('ph2_materials').update({ status: 'published', published_at: new Date().toISOString() }).eq('id', v.id))) await P.run(supabase.from('ph2_modules').update({ mat_use: v.version_no }).eq('id', mid), `✓ Đã phát hành PB ${v.version_no} — đơn vị đang dùng bản cũ nhận thông báo`) }}><Ic n="send" /> Phát hành phiên bản</button>}
         <button type="button" className="btn sm" onClick={async () => { const { data, error } = await supabase.rpc('ph2_material_new_version', { p_material: v.id }); if (error) return P.setMsg(error.message); await P.reload(); const n = k.matsOf(mid).length + 1; setVer(n); P.setMsg(`✓ Đã tạo PB ${n} (nháp) từ PB ${v.version_no}`); void data }}><Ic n="copy" /> Tạo phiên bản mới</button></span>}</div>
-    {v.status !== 'draft' ? <p className="note">Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa.</p> : !allOk && <p className="note">Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản.</p>}
     <div className="tabs">{TG4.map(([key, n]) => <button type="button" key={key} className={tab === key ? 'on' : ''} onClick={() => setTab(key)}>{n} <i className={'gst' + (v.groups[key] === 'ok' ? ' ok' : '')} /></button>)}
       <button type="button" className={tab === 'lects' ? 'on' : ''} onClick={() => setTab('lects')}>Kho bài giảng <small>{ls.length}</small></button></div>{body}
   </>
@@ -200,11 +199,11 @@ function LectEditor({ P, k, L, part, setPart, learner, setLearner, onBack, onSto
   const patch = (x: Partial<Part>) => save(L.parts.map((y, i) => i === part ? { ...y, ...x } : y))
   const total = L.parts.reduce((a, x) => a + (+x.minutes || 0), 0)
   if (learner) return <>
-    <div className="edbar"><button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách</button><b>{L.title}</b><span className="pill info plain">View học viên</span><span className="act"><button type="button" className="btn sm" onClick={() => setLearner(false)}>Thoát view học viên</button></span></div>
+    <div className="edbar"><Back onClick={onBack} title={L.title}>Danh sách</Back><b>{L.title}</b><span className="pill info plain">View học viên</span><span className="act"><button type="button" className="btn sm" onClick={() => setLearner(false)}>Thoát view học viên</button></span></div>
     <section className="hero" style={cssVar(g.color)}><h2 style={{ margin: 0 }}>{L.title}</h2><p style={{ margin: 0, color: 'var(--muted)' }}>{m?.title} · {k.SUBJ(m?.subject)}</p>
       <div className="svacts">{L.parts.map((x, i) => <div key={i} className="svact"><div className="svh"><span className="sno">{i + 1}</span><b>{x.title}</b><span className="sm">{x.minutes} phút</span></div>{x.blocks.map((b, bi) => <div key={bi} className="bk"><BlockView b={b} k={`${L.id}.${i}.${bi}`} student /></div>)}</div>)}</div></section></>
   return <>
-    <div className="edbar"><button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách</button><span className="code sm" style={cssVar(g.color)}>{p?.code}</span><b>{L.title}</b>{L.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}
+    <div className="edbar"><Back onClick={onBack} title={L.title}>Danh sách</Back><span className="code sm" style={cssVar(g.color)}>{p?.code}</span><b>{L.title}</b>{L.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}
       <span className="act"><button type="button" className="btn sm" onClick={() => setLearner(true)}><Ic n="eye" /> View học viên</button>{P.canManage && (L.status === 'published' ? <button type="button" className="btn sm" onClick={() => P.run(supabase.from('ph2_lectures').update({ status: 'draft' }).eq('id', L.id))}>Chuyển về nháp để sửa</button>
         : <button type="button" className="btn sm primary" onClick={() => P.run(supabase.from('ph2_lectures').update({ status: 'published' }).eq('id', L.id), '✓ Đã xuất bản bài giảng')}><Ic n="send" /> Xuất bản</button>)}</span></div>
     <div className="editor"><aside className="outline"><div className="olhead">Dàn ý · {total} phút</div>{L.parts.map((x, i) => <button type="button" key={i} className={i === part ? 'on' : ''} onClick={() => setPart(i)}><span>{i + 1}. {x.title}</span><small>{x.minutes}′</small></button>)}

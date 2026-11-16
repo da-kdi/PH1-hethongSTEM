@@ -6,7 +6,7 @@ import {
   OPEN_LESSON_KEY, SCOPE, catName, catOf, effectiveCatalog, errText, gradeLabel, gradesOfLevel, inUseOf, loadContent, useCatalog, useOrgs,
   type CatItem, type Content, type Curriculum, type Lesson, type MVer, type Scope, type Unit,
 } from './api'
-import { Confirm, Cover, Empty, Flow, Group, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { Back, HNote, Confirm, Cover, Empty, Flow, Group, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.1 Chương trình giáo dục — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
 //   Danh sách: chuỗi bước Danh mục → Chương trình, 4 thẻ số liệu, lọc Cấp học / Khối / Môn / Trạng thái, Thẻ | Danh sách.
@@ -295,9 +295,9 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
   const subjects = content ? subjectsOf(content) : []
 
   return <>
-    <div className="crumb"><button type="button" className="btn sm ghost" onClick={back}><Ic n="back" /> Quay lại</button></div>
+    <div className="crumb"><Back onClick={back} title={cur.name}>Quay lại</Back></div>
     <div className="dhead"><span className="code" style={cssVar(color)}>{cur.code ?? '—'}</span>
-      <div><h1>{cur.name}</h1><span className="crumb">{gradesText(cat, cur.grades)}{sourceName && <> · Kế thừa từ <b>{sourceName}</b></>}{!editable && <> · <i>chỉ xem</i></>}</span></div> <StatusPill s={cur.status} />
+      <div><h1>{cur.name}{!editable && <HNote lock tip="Chỉ xem — chương trình của đơn vị khác hoặc bạn chưa có quyền sửa." />}</h1><span className="crumb">{gradesText(cat, cur.grades)}{sourceName && <> · Kế thừa từ <b>{sourceName}</b></>}</span></div> <StatusPill s={cur.status} />
       <div className="act">
         {editable && cur.status === 'draft' && <button type="button" className="btn primary" onClick={() => setStatus('published')}><Ic n="send" /> Phát hành</button>}
         {editable && cur.status === 'published' && <><button type="button" className="btn" onClick={() => setAsk({ text: 'Chuyển về nháp? Đơn vị khác sẽ không còn thấy chương trình.', yes: 'Chuyển về nháp', act: 'draft' })}>Chuyển về nháp</button>

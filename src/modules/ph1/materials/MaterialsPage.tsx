@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { errMsg, norm, timeAgo, useRpcBool } from '../ui'
 import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
 import { gradesText, groupOfCur } from '../curriculum/CurriculumPage'
-import { Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { Back, HNote, Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.2 Học liệu — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
 //   Danh sách: mỗi bài học của chương trình có một học liệu; gom theo Nhóm chương trình › Chương trình; Bảng | Thẻ; chuỗi bước
@@ -324,8 +324,8 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
       : <Empty>Chưa có bài giảng.</Empty>}</section>
 
   return <>
-    <button type="button" className="btn sm ghost" onClick={back} style={{ justifySelf: 'start' }}><Ic n="back" /> Tất cả học liệu</button>
-    <div className="dhead"><span className="code" style={cssVar(color)}>{prog?.code ?? '—'}</span><div><h1>{l.title}</h1><span className="crumb">{prog?.name ?? 'Chưa gắn chương trình'} › {catName(cat, 'subject', subj) || '—'} · {l.periods} tiết</span></div>
+    <Back onClick={back} title={l.title}>Tất cả học liệu</Back>
+    <div className="dhead"><span className="code" style={cssVar(color)}>{prog?.code ?? '—'}</span><div><h1>{l.title}{canOwn && (ro ? <HNote lock tip={l.status === 'published' ? 'Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa.' : 'Phiên bản đã ngừng dùng — chỉ xem.'} /> : !allOk && <HNote tip="Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản này." />)}</h1><span className="crumb">{prog?.name ?? 'Chưa gắn chương trình'} › {catName(cat, 'subject', subj) || '—'} · {l.periods} tiết</span></div>
       {canOwn && <div className="act"><button type="button" className="btn danger" onClick={() => setAsk({ text: `Xoá học liệu “${l.title}” cùng mọi phiên bản, định mức, tài liệu?`, yes: 'Xoá học liệu',
         run: async () => { const { error } = await supabase.from('material_lessons').delete().eq('family_id', l.family_id); if (!fail(error)) { await reload(); back() } } })}><Ic n="trash" /> Xoá học liệu</button></div>}</div>
     {ask && <Confirm danger text={ask.text} yes={ask.yes} onNo={() => setAsk(null)} onYes={() => { ask.run(); setAsk(null) }} />}
@@ -343,7 +343,6 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
         {vs.length > 1 && <button type="button" className="btn sm danger" onClick={() => setAsk({ text: `Xoá phiên bản ${l.version_no}? Bài giảng soạn từ phiên bản này giữ lại nhưng bỏ liên kết.`, yes: 'Xoá phiên bản',
           run: () => verAct(() => supabase.from('material_lessons').delete().eq('id', l.id), () => onSwitch(vs.find(v => v.id !== l.id)!.id)) })}>Xoá PB {l.version_no}</button>}</span>}
     </div>
-    {canOwn && (ro ? <p className="note">{l.status === 'published' ? 'Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa.' : 'Phiên bản đã ngừng dùng — chỉ xem.'}</p> : !allOk && <p className="note">Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản này.</p>)}
     <div className="tabs">{G4.map(([k, n]) => <button type="button" key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n} <i className={'gst' + (g[k] === 'ok' ? ' ok' : '')} /></button>)}
       <button type="button" className={tab === 'designs' ? 'on' : ''} onClick={() => setTab('designs')}>Bài giảng <small>{designs.length}</small></button></div>
     {body}

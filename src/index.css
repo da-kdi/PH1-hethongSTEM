@@ -1025,3 +1025,55 @@ a.btnlink{display:inline-block;padding:8px 14px;border-radius:10px;text-decorati
 .roomacc-name{min-width:180px}.roomacc-sum{margin-left:auto;color:var(--muted)}
 @media (max-width:640px){.roomacc-sum{margin-left:22px;width:100%}.roomtable-exp>td{padding-left:8px}.roomacc-item .roomexp{padding-left:12px}}
 .roomtable td:first-child{min-width:170px}.roomtable td:nth-child(3){min-width:130px}.roomtable td:nth-child(6){min-width:150px}
+
+/* ===== Bản mẫu v315 · A1 Thanh menu kiểu Sapo: logo + tên hệ thống ở đầu menu; thu gọn còn cột icon 52px, rê/bấm icon bung menu con ===== */
+.sidebrand{display:flex!important;align-items:center;gap:10px;padding:2px 6px 14px 8px!important;margin:0 0 8px!important;border-bottom:1px solid rgba(255,255,255,.1);position:relative}
+.sidebrand .bfull{height:34px;width:auto;flex:none;max-width:120px;object-fit:contain}
+.sidebrand .bmark{display:none;width:34px;height:34px;object-fit:contain}
+.sidebrand .bname{font-size:11px;line-height:1.35;font-weight:600;text-transform:uppercase;color:#dbe4f3;flex:1;min-width:0}
+.sidebrand .bname small{display:block;margin-top:2px;text-transform:none;font-weight:500;color:#9fb4d1;font-size:11.5px}
+.side .sidetog{width:28px!important;min-width:28px;height:28px;flex:none!important;padding:0!important;border:0;border-radius:8px;background:rgba(255,255,255,.08);color:#dbe4f3;display:grid;place-items:center;cursor:pointer}
+.side .sidetog:hover{background:rgba(255,255,255,.16)}
+.app{transition:grid-template-columns .2s}
+.flyhead{display:none}
+.top .toggle{display:none}
+@media (min-width:801px){
+  .app.collapsed{grid-template-columns:52px minmax(0,1fr)}
+  .app.collapsed .side{display:block;overflow:visible;padding:10px 6px;z-index:70}
+  .app.collapsed .sidebrand{flex-direction:column;padding:2px 0 12px!important;gap:10px}
+  .app.collapsed .sidebrand .bfull,.app.collapsed .sidebrand .bname,.app.collapsed .yearpick,.app.collapsed .yearwarn{display:none}
+  .app.collapsed .sidebrand .bmark{display:block}
+  .app.collapsed .sidetog svg{transform:rotate(180deg)}
+  .app.collapsed .side .navgroup>.grouphead>span,.app.collapsed .side .navgroup>.grouphead>svg:last-child,.app.collapsed .side .navgroup>.grouphead>.dot{display:none}
+  .app.collapsed .side .navgroup>.grouphead{justify-content:center;padding:10px 0;border-radius:10px}
+  .app.collapsed .side .navgroup>.grouphead .navicon{width:20px;height:20px;margin:0}
+  .app.collapsed .navgroup{position:relative}
+  .app.collapsed .navgroup>.navfly{display:none!important}
+  .app.collapsed .navgroup:hover>.navfly,.app.collapsed .navgroup.flyon>.navfly{display:block!important;position:absolute;left:44px;top:-4px;width:270px;max-height:80vh;overflow:auto;background:var(--navy-2,#1b3366);border-radius:12px;padding:8px;box-shadow:0 18px 40px rgba(0,0,0,.35);border:0;margin:0;z-index:80}
+  .app.collapsed .navgroup:hover>.navfly::before{content:'';position:absolute;left:-14px;top:0;bottom:0;width:14px}
+  .app.collapsed .navfly [hidden]{display:block!important}
+  .app.collapsed .navfly button:not(.grouphead){padding:9px 12px!important;border-radius:8px}
+  .app.collapsed .navfly .grouphead.subhead{pointer-events:none}.app.collapsed .navfly .grouphead.subhead svg{display:none}
+  .app.collapsed .flyhead{display:block;font-size:13px;font-weight:600;color:#fff;padding:8px 12px 10px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:6px}
+  .app.collapsed .navgroup:has(button.on)>.grouphead{background:rgba(255,255,255,.14)}
+}
+@media (max-width:800px){.top .toggle{display:grid}.app.collapsed .side{display:none}}
+
+/* A2 · Đường dẫn mục mẹ / mục con cạnh ô tìm chức năng */
+.top .topsearch{margin-left:0;flex:0 1 230px}
+.top .crumbs{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;margin-left:8px;flex-wrap:nowrap}
+.top .user{flex:none;margin-left:auto}
+.crumbs .crumb{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:220px;height:30px;padding:0 11px;border:0;border-radius:999px;background:var(--soft);color:var(--text);font:inherit;font-size:13px;font-weight:500;cursor:pointer;flex:0 3 auto}
+.crumbs .crumb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumbs .crumb svg{width:15px;height:15px;flex:none;color:var(--muted)}
+.crumbs .crumb:hover{background:color-mix(in srgb,var(--primary) 10%,transparent);color:var(--primary)}
+.crumbs .crumb.cur{cursor:default;max-width:260px;flex-shrink:0;background:color-mix(in srgb,var(--primary) 10%,transparent);color:var(--primary);font-weight:600}
+.crumbs .crumb.cur svg{color:var(--primary)}
+.crumbs .crsep{color:var(--muted);flex:none}
+@media (max-width:1700px){.crumbs .crumb[data-crumb="sub"],.crumbs .crumb[data-crumb="sub"]+.crsep{display:none}}
+@media (max-width:1100px){.crumbs .crumb[data-crumb="grp"],.crumbs .crumb[data-crumb="grp"]+.crsep{display:none}}
+@media (max-width:800px){.top .crumbs{display:none}}
+
+/* A7 · Tooltip dùng chung (data-tip) */
+.ctip{position:fixed;z-index:200;width:max-content;max-width:300px;background:#14213d;color:#fff;border-radius:6px;padding:9px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 8px 24px -8px rgba(20,33,61,.4);pointer-events:none;white-space:pre-line}
+.ctip[hidden]{display:none}

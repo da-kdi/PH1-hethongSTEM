@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
-import { Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { PAGE, TFORMAT, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type K, type Plan, type Prog, type Sess } from './api'
@@ -62,7 +62,6 @@ function KhList({ P, k, onOpen, onPlan }: { P: P2; k: K; onOpen: (id: string) =>
     return <article key={p.id} className="pcard dcard kcard" style={cssVar(g.color)} tabIndex={0} onClick={() => onOpen(p.id)}><div className="cover"><CoverDeco s={k.planSubjs(p)[0]} /><span>{pr.code} · {ss.length} buổi</span><b>{shortTitle(p.title)}</b></div>
       <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
       <div className="chips">{k.planSubjs(p).map(s => <span key={s} className="chip k" style={cssVar(g.color)}>{k.SUBJ(s)}</span>)}<span className="chip">{p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</span></div>
-      <div className="bar"><i style={{ width: `${ss.length ? done / ss.length * 100 : 0}%` }} /></div>
       <div className="foot"><span>{done}/{ss.length} buổi đã học · {k.traineesOf(p.id).length}/{p.cap} đăng ký</span><span className={`pill ${sc} plain`}>{sl}</span></div></article> }
   const planRow = (p: Plan) => { const ss = k.sessOfPlan(p.id); const done = ss.filter(k.sessEnd).length; const [sl, sc] = k.planSt(p)
     return <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}><td><b>{p.title}</b><br /><small className="sub">{p.unit} · {(p.schools ?? []).length || 'mọi'} trường</small></td><td>{k.planSubjs(p).map(k.SUBJ).join(', ')}</td><td>{k.planRange(p)}</td>
@@ -109,7 +108,6 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
     return <article key={p.id} className={'pcard dcard rcard' + (op ? ' open' : '')} style={cssVar(g.color)}><div className="cover"><CoverDeco s={k.planSubjs(p)[0]} /><span>{pr.code} · {kk === 'open' ? 'hạn ĐK ' + vn(p.reg_due) : k.planRange(p)}</span><b>{shortTitle(p.title)}</b></div>
       <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
       <div className="chips">{k.planSubjs(p).map(s => <span key={s} className="chip k" style={cssVar(g.color)}>{k.SUBJ(s)}</span>)}<span className="chip">{p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</span><span className={`pill ${sc} plain`}>{sl}</span></div>
-      <div className="bar"><i style={{ width: `${Math.min(100, n / (cap || 1) * 100)}%` }} /></div>
       <div className="foot"><span>{n}/{cap} đã đăng ký</span><span className="cbtns">{kk === 'draft' ? (P.canManage && <button type="button" className="btn sm primary" onClick={() => publish(P, k, p, true, true)}><Ic n="send" /> Phát hành & mở đăng ký</button>)
         : <button type="button" className="btn sm" onClick={() => setOpenReg(op ? null : p.id)}>{op ? 'Thu gọn' : 'Danh sách đăng ký'}</button>}</span></div>
       {op && <div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Môn dạy</th><th>Ngày đăng ký</th><th>Các đợt trước cùng chương trình</th><th /></tr></thead><tbody>
@@ -289,7 +287,7 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
         {can && <><button type="button" className="btn sm ghost" aria-label="Sửa buổi / phân công" onClick={() => setSedit(s.id)}><Ic n="edit" /></button><button type="button" className="btn sm ghost" aria-label="Xoá buổi" onClick={() => P.run(supabase.from('ph2_sessions').delete().eq('id', s.id), '✓ Đã xoá buổi')}><Ic n="trash" /></button></>}</td></tr> }
   const reg = k.regSt(p)
   return <>
-    <button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách kế hoạch</button>
+    <Back onClick={onBack} title={p.title}>Danh sách kế hoạch</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)} · {p.schools?.length ? p.schools.length + ' trường tham gia' : 'mở cho mọi trường'}</span></div><StatusPill s={p.status} />
       <div className="act">{can && (p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => setPubAsk(true)}><Ic n="send" /> Phát hành kế hoạch</button>
         : !ss.some(s => !k.sessEnd(s)) && !p.confirmed ? <button type="button" className="btn primary" onClick={() => toEval('result')}><Ic n="check" /> Kết thúc đợt & chốt kết quả</button>
@@ -369,7 +367,7 @@ function KhForm({ P, k, orgId, preProg, holOn, onDone }: { P: P2; k: K; orgId: s
     setBusy(false); await P.reload(); P.setMsg(`✓ Đã tạo đợt tập huấn (nháp) với ${prevS.length} buổi — phát hành để mở đăng ký`); onDone(id)
   }
   return <>
-    <button type="button" className="btn sm ghost" onClick={() => onDone()}><Ic n="back" /> Danh sách kế hoạch</button>
+    <Back onClick={() => onDone()} title={'Đợt tập huấn mới'}>Danh sách kế hoạch</Back>
     <div className="tfwrap"><div className="tfmain">
       {sec('book', 1, 'Chương trình & môn học của đợt', 'Một chương trình có thể chia nhiều đợt tập huấn; mỗi đợt chọn một số môn', <>
         <div className="ppick">{pubs.map(p => { const g = k.groupOf(p.group_code)

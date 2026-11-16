@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
 import { catOf } from '../ph1/curriculum/api'
-import { Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { COMP, CXN, IKIND, LV, LVLS, LVP, PAGE, TFORMAT, fmtM, goto, lines, sessOf, slug, takeIntent, uid, vn, type Crit, type Format, type Item, type K, type Prog } from './api'
@@ -22,7 +22,7 @@ export function TrainProgs({ orgId, go }: { orgId: string | null; go?: (p: strin
   const msg = P.msg ? <p className={P.msg.startsWith('✓') ? 'okmsg' : 'msg'} role="status" onClick={() => P.setMsg('')}>{P.msg}</p> : null
   if (!k || !db) return <Mau>{msg}<p className="sub">Đang tải…</p></Mau>
   const p = db.progs.find(x => x.id === open)
-  if (creating) return <Mau>{msg}<button type="button" className="btn sm ghost" onClick={() => setCreating(false)}><Ic n="back" /> Danh sách chương trình</button>
+  if (creating) return <Mau>{msg}<Back onClick={() => setCreating(false)} title="Chương trình mới">Danh sách chương trình</Back>
     <TpForm P={P} k={k} p={null} orgId={orgId} onDone={id => { setCreating(false); if (id) { setOpen(id); setTab('overview') } }} /></Mau>
   if (p) return <Mau>{msg}<TpDetail P={P} k={k} p={p} tab={tab} setTab={setTab} itemSel={itemSel} setItemSel={setItemSel} orgId={orgId}
     onBack={() => { setOpen(null); setTab('overview') }} openMat={mid => goto(go, PAGE.bt, { open: mid })} /></Mau>
@@ -149,7 +149,7 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
   const g = k.groupOf(p.group_code); const ms = k.allMods(p); const plans = k.plansOf(p.id); const subj = k.subjectsOf(p)
   const can = P.canManage
   return <>
-    <button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách chương trình</button>
+    <Back onClick={onBack} title={p.name}>Danh sách chương trình</Back>
     <div className="dhead"><span className="code" style={cssVar(g.color)}>{p.code}</span><div><h1>{p.name}</h1><span className="crumb">{g.name} · {TFORMAT[p.format]} · {fmtM(p.mpp)}/buổi · {p.issuer}</span></div><StatusPill s={p.status} />
       {can && <div className="act">{p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => { if (!ms.length && !subj.length) return P.setMsg('Chưa có môn học / mô-đun nào')
         P.run(supabase.from('ph2_programs').update({ status: 'published', releases: [{ no: (p.releases[0]?.no ?? 0) + 1, date: vn(k.T), by: 'KDI Education', note: p.releases.length ? 'Phát hành lại' : 'Bản đầu tiên', mods: ms.length }, ...p.releases] }).eq('id', p.id), '✓ Đã phát hành — dùng được để lập kế hoạch tập huấn') }}><Ic n="send" /> Phát hành</button>

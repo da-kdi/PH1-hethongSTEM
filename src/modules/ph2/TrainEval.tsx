@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Empty, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { ATTK, COMP, FBG, IKIND, LV, LVC, LVP, PAGE, SUBMIT, SUPK, SURVEY, addD, fmt1, goto, resPill, shortTitle, takeIntent, uid, vn, vnS, type Item, type K, type Plan, type Q } from './api'
 import { useP2, type P2 } from './use'
@@ -35,7 +35,7 @@ export function TrainEval({ orgId, go }: { orgId: string | null; go?: (p: string
     : tab === 'result' ? <DgResult P={P} k={k} p={p} onCert={setCert} onHist={setHist} toAssess={() => goto(go, PAGE.tp, { open: pr.id, tab: 'assess' })} />
     : tab === 'cert' ? <DgCert P={P} k={k} p={p} onCert={setCert} /> : <DgFeedback P={P} k={k} p={p} orgId={orgId} />
   return <Mau>{msg}{head}
-    <button type="button" className="btn sm ghost" onClick={() => { setPlan(null); setCert(null) }}><Ic n="back" /> Tất cả đợt tập huấn</button>
+    <Back onClick={() => { setPlan(null); setCert(null) }} title={p.title}>Tất cả đợt tập huấn</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)}</span></div><span className={`pill ${scl} plain`}>{sl}</span></div>
     <div className="stats"><StatCard c="c-blue" icon="users" label="Học viên" value={tr.length} sub={`${ss.filter(k.sessEnd).length}/${ss.length} buổi đã diễn ra`} />
       <StatCard c="c-green" icon="check" label="Chuyên cần TB" value={Math.round(avg(at) ?? 0) + '%'} sub="trên các buổi đã diễn ra" />

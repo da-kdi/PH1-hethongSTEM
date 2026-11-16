@@ -10,6 +10,9 @@ import { navigatePage, onHistoryPage } from './lib/history'
 import MfaGate from './components/MfaGate'
 import logo from './assets/kdi-logo.png'
 import logoWhite from './assets/kdi-logo-white.png'
+import logoS from './assets/kdi-logo-s.png'
+import { Crumbs } from './components/Crumbs'
+import { TipLayer } from './components/Tip'
 import { NavIcon } from './components/NavIcon'
 import { MenuSearch, UserMenu } from './components/TopBar'
 import Login, { SetPassword } from './pages/Login'
@@ -57,7 +60,10 @@ function Shell({ session }: { session: Session }) {
   const access = useAccess(session)
   const [role, setRole] = useState<RoleKey | null>(null)
   const [page, setPage] = useState('')
-  const [collapsed, setCollapsed] = useState(false)
+  // Bản mẫu v315 · A1: menu thu gọn còn cột icon (nhớ theo trình duyệt: stem-side); nhóm đang bung khi bấm icon lúc thu gọn
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('stem-side') === '1' } catch { return false } })
+  const toggleSide = () => setCollapsed(c => { try { localStorage.setItem('stem-side', c ? '' : '1') } catch { /* bỏ qua */ } return !c })
+  const [fly, setFly] = useState<string | null>(null)
   // Nhóm menu đang thu gọn (nhớ theo trình duyệt)
   const [closed, setClosed] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem('menu.closed') ?? '[]')) } catch { return new Set() } })
   const toggleGroup = (key: string) => setClosed(prev => {
@@ -143,7 +149,7 @@ function Shell({ session }: { session: Session }) {
   if (!role) return null
 
   // Mọi lần đổi trang đi qua show() để ghi vào lịch sử trình duyệt
-  const show = (r: RoleKey, p: string) => { navigatePage(r, p); setRole(r); setPage(p) }
+  const show = (r: RoleKey, p: string) => { navigatePage(r, p); setRole(r); setPage(p); setFly(null) }
   const changeRole = (r: RoleKey) => show(r, NAV[r][0].items[0])
   // Mở một trang từ thông báo (có thể ở giao diện khác)
   const openFrom = (portal: RoleKey | null, target: string) => {
@@ -172,16 +178,21 @@ function Shell({ session }: { session: Session }) {
     else blocks.push({ section: g.section, groups: [g] })
   })
   const Page: ComponentType<any> | undefined = PAGES[role]?.[page]
+  const curGroup = groups.find(g => g.items.includes(page))
   const goPage = (p: string) => show(role, role === 'platform' ? PLATFORM_ALIAS[p] ?? p : p)
   // Tài khoản mã: hiện tên đăng nhập thay cho email nội bộ
   const email = (session.user.user_metadata?.login as string | undefined) ?? session.user.email ?? ''
 
   return (
     <div className={'app' + (collapsed ? ' collapsed' : '')}>
-      <nav className="side" aria-label="Menu chính">
+      <nav className="side" aria-label="Menu chính" onMouseLeave={() => setFly(null)}>
         <div className="sidebrand">
-          {brand?.logo_dark ? <img src={brand.logo_dark} alt={brand.display_name ?? 'Logo'} /> : brand?.logo ? <img src={brand.logo} alt={brand.display_name ?? 'Logo'} className="onchip" /> : <img src={logoWhite} alt="KDI education" />}
-          <b>{ROLE_LABEL[role]}</b>
+          {brand?.logo_dark ? <img className="bfull" src={brand.logo_dark} alt={brand.display_name ?? 'Logo'} /> : brand?.logo ? <img src={brand.logo} alt={brand.display_name ?? 'Logo'} className="bfull onchip" /> : <img className="bfull" src={logoWhite} alt="KDI education" />}
+          <img className="bmark" src={brand?.logo_dark ?? brand?.logo ?? logoS} alt="" aria-hidden="true" />
+          <span className="bname">{role === 'platform' ? DEFAULT_TITLE : brand?.display_name ?? DEFAULT_TITLE}<small>{ROLE_LABEL[role]}</small></span>
+          <button type="button" className="sidetog" onClick={toggleSide} aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'} title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'} aria-expanded={!collapsed}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
+          </button>
         </div>
         {role !== 'department' && role !== 'platform' && role !== 'parent' && <label className="yearpick">
           <span>Năm học · học kỳ</span>
@@ -198,7 +209,8 @@ function Shell({ session }: { session: Session }) {
           const head = (key: string, title: string, items: string[], sub = false) => {
             const shut = closed.has(key)
             return (
-              <button className={'grouphead' + (sub ? ' subhead' : '') + (shut ? ' shut' : '')} onClick={() => toggleGroup(key)} aria-expanded={!shut}
+              <button className={'grouphead' + (sub ? ' subhead' : '') + (shut ? ' shut' : '')} onClick={() => collapsed && !sub ? setFly(f => f === key ? null : key) : toggleGroup(key)} aria-expanded={!shut}
+                title={collapsed && !sub ? title : undefined}
                 aria-controls={'grp-' + key.replace(/[^\p{L}\p{N}]+/gu, '-')}>
                 {!sub && <NavIcon title={title} />}<span>{title}
                   {items.length > 0 && items.every(i => locked.has(i)) && <small className="locknote">Chưa có trong gói</small>}</span>
@@ -207,8 +219,9 @@ function Shell({ session }: { session: Session }) {
               </button>
             )
           }
-          const list = (key: string, items: string[]) => (
-            <div id={'grp-' + key.replace(/[^\p{L}\p{N}]+/gu, '-')} hidden={closed.has(key)}>
+          const list = (key: string, items: string[], fly?: string) => (
+            <div id={'grp-' + key.replace(/[^\p{L}\p{N}]+/gu, '-')} hidden={closed.has(key)} className={fly ? 'navfly' : undefined}>
+              {fly && <b className="flyhead">{fly}</b>}
               {items.map(i => <button key={i} className={(i === page ? 'on' : '') + (locked.has(i) ? ' locked' : '')} onClick={() => show(role, i)}
                 title={locked.has(i) ? 'Chưa có trong gói dịch vụ của đơn vị' : undefined}>
                 {labelOf(role, i)}{role === 'platform' && !PLATFORM_LIVE.has(i) && i !== 'Sơ đồ hệ thống' && <small className="navtag">Khung</small>}
@@ -218,14 +231,15 @@ function Shell({ session }: { session: Session }) {
           )
           if (!b.section) {
             const key = role + ':' + b.groups[0].title
-            return <div key={key} className="navgroup">{head(key, b.groups[0].title, b.groups[0].items)}{list(key, b.groups[0].items)}</div>
+            return <div key={key} className={'navgroup' + (fly === key ? ' flyon' : '')}>{head(key, b.groups[0].title, b.groups[0].items)}{list(key, b.groups[0].items, b.groups[0].title)}</div>
           }
           const key = role + '§' + b.section
           const all = b.groups.flatMap(g => g.items)
           return (
-            <div key={key} className="navgroup">
+            <div key={key} className={'navgroup' + (fly === key ? ' flyon' : '')}>
               {head(key, b.section, all)}
-              <div id={'grp-' + key.replace(/[^\p{L}\p{N}]+/gu, '-')} hidden={closed.has(key)} className="navsub">
+              <div id={'grp-' + key.replace(/[^\p{L}\p{N}]+/gu, '-')} hidden={closed.has(key)} className="navsub navfly">
+                <b className="flyhead">{b.section}</b>
                 {b.groups.map(g => {
                   const k = role + ':' + g.title
                   return <div key={k}>{head(k, g.title, g.items, true)}{list(k, g.items)}</div>
@@ -238,12 +252,13 @@ function Shell({ session }: { session: Session }) {
       </nav>
       <div className="content">
         <header className="top">
-          <button className="toggle" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Hiện menu' : 'Ẩn menu'} aria-expanded={!collapsed}>
+          <button className="toggle" onClick={toggleSide} aria-label={collapsed ? 'Hiện menu' : 'Ẩn menu'} aria-expanded={!collapsed}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
           </button>
-          <img src={brand?.logo ?? logo} alt={brand?.display_name ?? 'KDI education'} />
-          <span className="title">{role === 'platform' ? DEFAULT_TITLE : brand?.display_name ?? DEFAULT_TITLE}</span>
           <MenuSearch entries={groups.flatMap(g => g.items.map(item => ({ item, label: labelOf(role, item), group: g.section ? `${g.section} › ${g.title}` : g.title })))} onGo={i => show(role, i)} />
+          {curGroup && <Crumbs section={curGroup.section} group={curGroup.title} page={labelOf(role, page)}
+            onSection={() => { const g = groups.find(x => x.section === curGroup.section); if (g) show(role, g.items[0]) }}
+            onGroup={() => show(role, curGroup.items[0])} onPage={() => show(role, page)} />}
           <div className="user">
             <Bell open={openFrom} portals={views} orgId={access.profile.org_id} />
             <UserMenu name={access.profile.full_name} email={email}
@@ -261,6 +276,7 @@ function Shell({ session }: { session: Session }) {
             : Page ? <Suspense fallback={<p className="sub">Đang tải…</p>}><Page key={page + (yrs.year?.id ?? '') + (studentId ?? '')} teacherId={teacherId} studentId={studentId} orgId={access.profile.org_id} userName={access.profile.full_name} go={goPage} name={page}
             year={yrs.year} years={yrs.years} reloadYears={yrs.reload} selectYear={yrs.select} /></Suspense> : <p className="sub">Màn hình này sẽ được xây dựng ở bước tiếp theo.</p>}
         </main>
+        <TipLayer />
         <OfflineBar go={() => show(role, role === 'platform' ? 'Ứng dụng di động & ngoại tuyến' : 'Ứng dụng di động')} />
         <HelpWidget role={role} page={labelOf(role, page)} brand={{ name: brand?.display_name ?? null, support: brand?.support_text ?? null }} go={groups.some(g => g.items.includes('Hỗ trợ từ KDI')) ? (p: string) => show(role, p) : undefined}
           menu={groups.flatMap(g => g.items.map(i => `${g.section ? g.section + ' › ' : ''}${g.title} › ${labelOf(role, i)}`))} />
