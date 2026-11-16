@@ -6,6 +6,7 @@ import {
   OPEN_LESSON_KEY, SCOPE, catName, catOf, effectiveCatalog, errText, gradeLabel, gradesOfLevel, inUseOf, loadContent, useCatalog, useOrgs,
   type CatItem, type Content, type Curriculum, type Lesson, type MVer, type Scope, type Unit,
 } from './api'
+import { DataTable } from '../mau/DataTable'
 import { Back, HNote, Confirm, Cover, Empty, Flow, Group, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.1 Chương trình giáo dục — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
@@ -101,15 +102,18 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
       <div className="chips">{c.grades.length ? c.grades.map(g => <span key={g} className="chip k" style={cssVar(col)}>{gradeLabel(g)}</span>) : <span className="chip">Chưa gán khối</span>}</div>
       <div className="foot"><span>{subjCount(ls).size} môn · {ls.length} bài · {ls.reduce((a, l) => a + l.periods, 0)} tiết</span><StatusPill s={c.status} /></div>
     </button> }
-  const table = (cs: Curriculum[], owner: boolean, withClone = false) => <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table>
-    <thead><tr><th></th><th>Chương trình</th><th>Cấp học · Khối</th><th>Môn học</th><th>Quy mô</th><th>Trạng thái</th>{withClone && <th></th>}</tr></thead>
-    <tbody>{cs.map(c => { const ls = lessonsOf(c)
-      return <tr key={c.id} onClick={() => setOpenId(c.id)} style={{ cursor: 'pointer' }}>
-        <td><span className="code" style={{ ...cssVar(colorOf(c)), height: 32, minWidth: 38, fontSize: 11.5, borderRadius: 9 }}>{c.code ?? '—'}</span></td>
-        <td><b>{c.name}</b><br /><small style={{ color: 'var(--muted)' }}>{owner ? c.owner_name : c.summary}</small></td>
-        <td>{gradesText(cat, c.grades)}</td><td>{[...subjCount(ls).keys()].map(s => catName(cat, 'subject', s)).join(', ') || '—'}</td>
-        <td>{ls.length} bài · {ls.reduce((a, l) => a + l.periods, 0)} tiết</td><td><StatusPill s={c.status} /></td>
-        {withClone && <td>{canManage && <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button>}</td>}</tr> })}</tbody></table></div></div>
+  // Bảng dùng chung (bản mẫu v315 · B): chọn dòng, sắp xếp, dòng tổng, chọn cột; "Quy mô" tách Số bài / Số tiết (B9)
+  const table = (cs: Curriculum[], owner: boolean, withClone = false) => <DataTable id={'ct-' + (owner ? 'mine' : 'shared')} rows={cs} rowKey={c => c.id} noun="chương trình" onOpen={c => setOpenId(c.id)}
+    cols={[
+      { key: 'name', label: 'Chương trình', name: true, sort: c => c.name, cell: c => <><b>{c.code ? c.code + ' · ' : ''}{c.name}</b><small>{owner ? c.owner_name : c.summary}</small></> },
+      { key: 'grade', label: 'Cấp học · Khối', cell: c => gradesText(cat, c.grades) },
+      { key: 'subject', label: 'Môn học', cell: c => [...subjCount(lessonsOf(c)).keys()].map(s => catName(cat, 'subject', s)).join(', ') || '—' },
+      { key: 'lessons', label: 'Số bài', sort: c => lessonsOf(c).length, sum: 'sum', cell: c => lessonsOf(c).length },
+      { key: 'periods', label: 'Số tiết', sort: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0), sum: 'sum', cell: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0) },
+      { key: 'date', label: 'Cập nhật', date: true, sort: c => c.updated_at, cell: c => new Date(c.updated_at).toLocaleDateString('vi-VN') },
+      { key: 'status', label: 'Trạng thái', sum: 'status', sort: c => c.status, cell: c => <StatusPill s={c.status} /> },
+      ...(withClone && canManage ? [{ key: 'act', label: 'Thao tác', raw: true, sum: false as const, cell: (c: Curriculum) => <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button> }] : []),
+    ]} />
   const section = (title: string, cs: Curriculum[], owner: boolean, withClone = false, empty?: string) => <>
     <Group title={title} n={cs.length} />
     {!cs.length ? <Empty>{empty ?? 'Không có chương trình phù hợp bộ lọc.'}</Empty> : mode === 'grid'

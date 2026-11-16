@@ -44,3 +44,62 @@
 body.rzing{cursor:col-resize;user-select:none}
 @media (min-width:1001px){.mau .ctw.asoff>aside.ctside>:not(.asbar){display:none}}
 @media (max-width:1000px){.mau .ctw,.mau .ctw.asoff{grid-template-columns:minmax(0,1fr)}.mau .asbar{display:none}.mau .ctw.asoff>aside.ctside{border:0;min-height:0}}
+
+/* ===== B · Bảng dữ liệu dùng chung (DataTable) ===== */
+.mau .dtable{display:grid;gap:10px;min-width:0}
+.mau .dtbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative;z-index:20}
+.mau .dtgrow{flex:1}
+.mau .dtbar .btn.on{border-color:var(--primary);color:var(--primary)}
+.mau .savedf{display:flex;gap:6px;flex-wrap:wrap}
+.mau .chip.sf{display:inline-flex;align-items:center;gap:2px;padding:0 4px 0 10px}
+.mau .chip.sf button{border:0;background:none;padding:3px 2px;cursor:pointer;font-size:12.5px;color:inherit}
+.mau .chip.sf .sfx{color:var(--muted);padding:3px 6px}
+.mau .sfname{display:flex;gap:6px;align-items:center}.mau .sfname input{border:1px solid var(--line);border-radius:8px;padding:5px 9px;width:160px}
+/* B7 · chọn cột: bảng nổi trên bảng */
+.mau .colpkw{position:relative}
+.mau .fpanel.colpk{position:absolute;right:0;top:calc(100% + 6px);width:300px;max-height:60vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(16,24,40,.16);padding:10px;z-index:70;display:grid;gap:8px}
+.mau .colpk header{display:flex;align-items:center;gap:8px}.mau .colpk header .ib{margin-left:auto;border:0;background:none;cursor:pointer;color:var(--muted)}
+.mau .cpvis{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.mau .cpvis li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--surface)}
+.mau .cpvis li:hover{background:var(--soft)}.mau .cpvis li.drag{opacity:.5}
+.mau .cpvis li label{display:flex;align-items:center;gap:8px;flex:1;cursor:pointer}
+.mau .cpgrip{width:12px;color:var(--faint);cursor:grab}
+.mau .colpk footer{display:flex;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:8px}
+/* B1 · ô chọn + thanh thao tác */
+.mau th.chkc,.mau td.chkc{width:44px;padding-left:14px;padding-right:4px}
+.mau .chkc input{width:17px;height:17px;accent-color:var(--primary);cursor:pointer;vertical-align:middle;margin:0;display:block}
+.mau tbody tr.rsel>td{background:color-mix(in srgb,var(--primary) 6%,var(--surface))}
+.mau .bulkbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 14px;background:color-mix(in srgb,var(--primary) 6%,var(--surface));border:1px solid color-mix(in srgb,var(--primary) 25%,var(--line));border-radius:10px;position:sticky;top:68px;z-index:12;font-size:14px}
+.mau .bkall{display:flex;align-items:center;gap:8px;margin-right:10px}.mau .bkall input{width:17px;height:17px;accent-color:var(--primary)}.mau .bkall b{font-weight:600}
+.mau .bkb{border:0;background:none;color:var(--primary);font-weight:500;padding:6px 10px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}.mau .bkb:hover{background:color-mix(in srgb,var(--primary) 10%,transparent)}.mau .bkb .i{width:15px;height:15px}
+.mau .bkmore{position:relative}
+.mau .bkmenu{position:absolute;top:calc(100% + 6px);left:0;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 16px 40px rgba(16,24,40,.16);padding:6px;z-index:30;display:grid}
+.mau .bkmenu button{border:0;background:none;text-align:left;padding:9px 12px;border-radius:6px;font-size:14px;cursor:pointer}.mau .bkmenu button:hover:not(:disabled){background:var(--soft)}
+.mau .bkmenu button.danger{color:var(--bad)}.mau .bkmenu button:disabled{color:var(--faint);cursor:not-allowed}
+.mau .bkx{margin-left:auto;border:0;background:none;color:var(--muted);cursor:pointer;padding:6px 8px}.mau .bkx:hover{color:var(--fg)}
+/* B2 · B3 · cùng cỡ chữ, dòng đều 52px, căn trái */
+.mau table.dt{table-layout:fixed;width:100%}
+.mau table.dt th,.mau table.dt td{text-align:left}
+.mau table.dt tbody td,.mau table.dt tbody td :is(b,strong,span,a,small,div,p):not(.pill):not(.code){font-size:14px;line-height:1.45}
+.mau table.dt tbody td{vertical-align:middle;padding-top:12px;padding-bottom:12px;height:52px}
+.mau table.dt tbody td b,.mau table.dt tbody td strong{font-weight:600}
+.mau table.dt tbody td .pill{font-size:12.5px}
+.mau table.dt td.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mau table.dt td.tcell>b,.mau table.dt td.tcell>strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mau table.dt td.tcell>small{display:block;margin-top:2px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mau table.dt tr.band>td{background:var(--soft);font-weight:600;height:auto;padding-top:8px;padding-bottom:8px}.mau table.dt tr.band small{color:var(--muted);font-weight:500;margin-left:6px}
+/* B4 · sắp xếp */
+.mau table.dt th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.mau table.dt th .srt{display:inline-flex;margin-left:4px;vertical-align:-2px;opacity:.35}
+.mau table.dt th:hover .srt,.mau table.dt th.sorted .srt{opacity:1}
+.mau table.dt th .srt.asc .sd,.mau table.dt th .srt.desc .su{opacity:.3}
+.mau table.dt th.sorted{color:var(--primary)}
+/* B5 · dòng tổng dưới tiêu đề */
+.mau table.dt tr.sumrow th{font-size:13px;font-weight:500;color:var(--fg);background:color-mix(in srgb,var(--soft) 60%,var(--surface));border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.mau table.dt tr.sumrow b{font-weight:700}.mau table.dt tr.sumrow .sl{color:var(--muted);font-size:12px}
+.mau .sxs{display:inline-flex;gap:10px}.mau .sx b{margin-right:2px}
+/* B8 · Mở rộng / kéo ngang */
+.mau .tblwrap.xscroll{overflow-x:auto}.mau .tblwrap.xscroll table.dt{min-width:var(--tmin,100%)}
+.mau .dtable.wide .tblwrap{overflow-x:auto}
+.mau .dtable.wide table.dt{table-layout:auto;width:max-content;min-width:100%}
+.mau .dtable.wide table.dt th,.mau .dtable.wide table.dt td,.mau .dtable.wide table.dt td.one,.mau .dtable.wide table.dt td.tcell>*{white-space:nowrap;text-overflow:clip;overflow:visible;-webkit-line-clamp:unset;display:revert}
