@@ -202,3 +202,24 @@ body.rzing{cursor:col-resize;user-select:none}
 .mau .pres .pttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#94a3b8;font-size:13px;padding-left:8px}
 @media (max-width:900px){.mau .pres .pside{display:none}}
 .mau .pres .pmainbox{position:relative;overflow:hidden}.mau .pres .pmainbox>.pfit{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+
+/* ===== C5 · Trình soạn / nhập câu hỏi, chi tiết đề luyện ===== */
+.mau .qemeta{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.mau .qein{display:grid;gap:10px;margin-top:10px}
+.mau .qein.form{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}.mau .qein .fld.wide,.mau .qein .formact{grid-column:1/-1}
+.mau .qetext{min-height:220px;width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:13.5px/1.55 ui-monospace,Consolas,monospace;background:var(--surface);resize:vertical}
+.mau .qeopt{display:grid;grid-template-columns:22px 20px 1fr;align-items:center;gap:8px}.mau .qeopt>span{font-weight:600}
+.mau .qeout{display:grid;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.mau .qeouth{display:flex;align-items:center;gap:10px}
+.mau .qelist{margin:0;padding-left:22px;display:grid;gap:8px}
+.mau .qelist>li{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.mau .qelist>li.bad{border-color:color-mix(in srgb,var(--bad) 45%,var(--line));background:color-mix(in srgb,var(--bad) 5%,var(--surface))}
+.mau .qelist ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}.mau .qelist ul li.ok{color:var(--good);font-weight:600}
+.mau .qeerr{display:flex;align-items:center;gap:6px;color:var(--bad);margin-top:4px}.mau .qeerr .i{width:14px;height:14px}
+.mau details.qpart{border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-top:8px}
+.mau details.qpart>summary{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;list-style:none}
+.mau details.qpart>summary::-webkit-details-marker{display:none}
+.mau details.qpart>summary .chev{transition:transform .15s}.mau details.qpart[open]>summary .chev{transform:rotate(90deg)}
+.mau .qlist{list-style:none;margin:0;padding:0 14px 10px;display:grid;gap:6px}
+.mau .qlist>li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line)}
+.mau .qlist .qno{color:var(--muted);font-variant-numeric:tabular-nums}.mau .qlist small{display:block;margin-top:2px}
