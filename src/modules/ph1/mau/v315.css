@@ -130,3 +130,47 @@ body.rzing{cursor:col-resize;user-select:none}
 .mau .ctsb small{color:var(--muted);font-size:12px}.mau .ctsb.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,var(--surface))}.mau .ctsb.on b{color:var(--primary)}
 .mau .ctside dl.kv{grid-template-columns:1fr;gap:8px}.mau .ctside .panel{padding:14px}
 @media (max-width:900px){.mau .ctlessons{grid-template-columns:minmax(0,1fr)}.mau .ctsubs{position:static;grid-auto-flow:column;overflow-x:auto}}
+
+/* ===== C2 · Phân phối chương trình: thiết lập 1 bước Cấp học › Khối; xếp lịch chia đôi; Bảng PPCT ===== */
+.mau .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.mau .wlvg{display:grid;gap:8px}.mau .wlvrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.mau .wlvn{width:80px;font-size:13px;color:var(--muted);font-weight:500}
+.mau .ppopts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--line)}.mau .ppopts .seg{margin-right:auto}
+.mau .ppopts .loppw input{width:56px}
+.mau .ppsplit{display:grid;grid-template-columns:var(--ppl,340px) 10px minmax(0,1fr);gap:0;align-items:start;margin-top:4px}
+.mau .ppsplit>.ppleft,.mau .ppsplit>.ppright{position:sticky;top:72px;max-height:calc(100vh - 88px);overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px}
+.mau .ppsplit>.ppright{padding:8px 10px;display:grid;gap:8px;align-content:start}
+.mau .ppsplit:fullscreen{background:var(--bg);padding:12px;overflow:auto}.mau .ppsplit:fullscreen>.ppleft,.mau .ppsplit:fullscreen>.ppright{top:0;max-height:calc(100vh - 24px)}
+.mau .ppdiv{align-self:stretch;cursor:col-resize;position:relative}.mau .ppdiv::after{content:'';position:absolute;left:4px;top:30%;bottom:30%;width:2px;border-radius:2px;background:var(--line)}
+.mau .ppdiv:hover::after,body.rzing .mau .ppdiv::after{background:var(--primary)}
+.mau .ppleft .logrid{grid-template-columns:1fr;gap:8px;display:grid}
+.mau .ppleft .lobox li{padding-top:3px;padding-bottom:3px}
+.mau .ppleft .loh{position:sticky;top:-10px;background:var(--surface);z-index:2;padding:2px 0 6px;display:grid}.mau .ppleft .loh small{color:var(--muted);font-size:12px}
+.mau .ppright .cal{--lab:96px;--cw:minmax(0,1fr);min-width:0;gap:2px}
+.mau .ppright .tblwrap{overflow:visible}
+.mau .ppright .cweek{height:24px;min-width:0;font-size:12px;padding:0}
+.mau .ppright .cday{font-size:10.5px;min-width:0;overflow:hidden}.mau .ppright .cday small{display:none}
+.mau .ppright .clab{font-size:12px;min-width:0;overflow:hidden}.mau .ppright .clab small{display:none}
+.mau .ppright .clesson{min-width:0;font-size:10.5px;padding:0 2px;overflow:hidden}
+.mau .ppsplit[data-hk="1"] .hkblock[data-hkb="2"],.mau .ppsplit[data-hk="2"] .hkblock[data-hkb="1"]{display:none}
+.mau .ppsplit.compact .ppright .crow.chead:has(.cday),.mau .ppsplit.compact .ppright .crow.chead:has(.chol),.mau .ppsplit.compact .ppright .legend,.mau .ppsplit.compact .hktitle small{display:none}
+.mau .ppsplit.compact .ppright .cweek{height:20px;font-size:11px}
+.mau .ppsplit.compact .lobox li{padding-top:1px;padding-bottom:1px;min-height:0}.mau .ppsplit.compact .lobox .low small{display:none}
+.mau .lotitle.losub{flex-wrap:wrap;row-gap:6px;padding:8px 10px;cursor:grab}
+.mau .lotitle.losub .loctl{display:flex;align-items:center;gap:8px;width:100%;padding-left:26px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.mau .lotitle.losub .loctl select{height:30px;padding:0 8px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;background:var(--surface);max-width:150px}
+.mau .loppw{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--muted)}.mau .loppw input{width:52px;height:30px;border:1px solid var(--line);border-radius:6px;padding:0 6px}
+.mau .lotitle .lores{margin-left:auto;color:var(--fg);font-weight:600}
+.mau .lotitle.rowwarn{background:color-mix(in srgb,var(--warn) 8%,var(--surface))}.mau .lotitle.rowerr{background:color-mix(in srgb,var(--bad) 8%,var(--surface))}
+.mau .lotitle.rowwarn .hnote{color:#b45309}.mau .lotitle.rowerr .hnote{color:var(--bad)}
+.mau .lotitle.dropover{outline:2px dashed var(--primary)}
+.mau .lnkhl{outline:2px solid var(--primary);outline-offset:1px;z-index:3;position:relative}
+.mau li.lnkhl{background:color-mix(in srgb,var(--primary) 8%,transparent);outline-offset:-2px}
+.mau .clesson[data-hl]{outline:2px solid var(--primary);outline-offset:1px}
+.mau .ctstats .stwarn{color:#b45309;cursor:help}.mau .ctstats .stwarn b{color:#b45309}
+.mau table.ppcttbl td.wk{background:color-mix(in srgb,var(--soft) 50%,var(--surface));font-weight:600;vertical-align:top}
+.mau table.ppcttbl td.nw{white-space:nowrap;font-weight:400;color:var(--muted)}
+.mau table.ppcttbl td,.mau table.ppcttbl th{height:auto}
+@media (max-width:1100px){.mau .ppsplit{grid-template-columns:1fr}.mau .ppdiv{display:none}.mau .ppsplit>.ppleft,.mau .ppsplit>.ppright{position:static;max-height:none}}
+.mau .lotitle.losub small.locode{margin-left:0}
+.mau table.dt.ppcttbl{table-layout:auto;min-width:860px}
+.mau .ccell.lnkhl{z-index:auto;outline-offset:-2px;background:color-mix(in srgb,var(--primary) 12%,transparent)}
