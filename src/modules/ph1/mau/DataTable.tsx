@@ -151,6 +151,8 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   const hasF = !!filters && Object.values(filters).some(Boolean)
 
   const n = vis.length
+  // B8 · cột ngắn luôn đủ chỗ cho tên cột: bảng có độ rộng tối thiểu, hẹp hơn thì kéo ngang
+  const minW = 44 + vis.reduce((a, c) => a + (c.name ? 240 : c.width && /px$/.test(c.width) ? parseInt(c.width) : 120), 0)
   const x = n >= 9 || wide
   return <div className={'dtable' + (wide ? ' wide' : '')} ref={box}>
     <div className="dtbar">
@@ -187,8 +189,8 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
     {askDel && onDelete && <div className="confirm"><Ic n="info" /><span>Xoá {chosen.length} {noun} đã chọn? Không hoàn tác được.</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
       <button type="button" className="btn sm danger" onClick={() => { setAskDel(false); run(() => onDelete(chosen), `Đã xoá ${chosen.length} ${noun}`) }}>Xoá</button><button type="button" className="btn sm ghost" onClick={() => setAskDel(false)}>Thôi</button></span></div>}
     {msg && <p className="okmsg" role="status">{msg}</p>}
-    {!rows.length ? (empty ?? null) : <div className={'tblwrap' + (x ? ' xscroll' : '')} style={x && !wide ? { ['--tmin' as string]: n * 130 + 'px' } : undefined}>
-      <table className="dt">
+    {!rows.length ? (empty ?? null) : <div className={'tblwrap' + (x ? ' xscroll' : '')} style={{ ['--tmin' as string]: (x && !wide ? Math.max(minW, n * 130) : minW) + 'px' }}>
+      <table className="dt" style={wide ? undefined : { minWidth: 'var(--tmin)' }}>
         {!wide && <colgroup><col style={{ width: 44 }} />{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>}
         <thead>
           <tr><th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>

@@ -94,3 +94,34 @@ export function AsideWrap({ kind = 'det', aside, children, className = '' }: { k
     </aside>
   </div>
 }
+
+// Cây Cấp học › Khối bên trái danh sách (bản mẫu v315 · TREECFG): bấm cấp/khối để lọc; ẩn/hiện sơ đồ (nhớ stem-tree)
+export type TreeLevel = { code: string; name: string; n: number; grades: { g: number; label: string; n: number }[] }
+export function LevelTree({ id, levels, total, level, grade, onPick, children, unit, noCount }: {
+  id: string; levels: TreeLevel[]; total: number; level: string; grade: string; onPick: (level: string, grade: string) => void; children: ReactNode; unit?: string; noCount?: boolean
+}) {
+  const [ui, setUi] = useState<Record<string, unknown>>(() => { try { return JSON.parse(localStorage.getItem('stem-tree') || '{}') } catch { return {} } })
+  const put = (k: string, v: unknown) => { const n = { ...ui, [k]: v }; setUi(n); try { localStorage.setItem('stem-tree', JSON.stringify(n)) } catch { /* bỏ qua */ } }
+  const hide = !!ui[id + ':hide'], open = (ui[id + ':open'] ?? {}) as Record<string, boolean>
+  const act = level || levels.find(l => l.grades.some(x => String(x.g) === grade))?.code || ''
+  const lv = levels.filter(l => l.n > 0)
+  const row = (cls: string, label: ReactNode, n: number, on: boolean, click: () => void, chev?: ReactNode) =>
+    <button type="button" className={'tn ' + cls + (on ? ' on' : '')} onClick={click} aria-pressed={on}>{chev}<span className="tl">{label}</span>{!noCount && <span className="tc">{n}</span>}</button>
+  return <div className={'treewrap' + (hide ? ' thide' : '')}>
+    <aside className="treepane" aria-label="Sơ đồ cấp học và khối">
+      <div className="trh"><b>Cấp học › Khối</b><button type="button" className="ib" title="Ẩn sơ đồ" aria-label="Ẩn sơ đồ" onClick={() => put(id + ':hide', true)}>«</button></div>
+      {row('all', 'Tất cả', total, !level && !grade, () => onPick('', ''))}
+      {lv.map(l => { const op = open[l.code] ?? (act === l.code || !act)
+        return <div key={l.code} className="tgrp">
+          {row('lv', l.name, l.n, act === l.code && !grade, () => onPick(l.code, ''),
+            <span className={'tchev' + (op ? ' op' : '')} role="button" aria-label={op ? 'Thu gọn' : 'Mở'} onClick={e => { e.stopPropagation(); put(id + ':open', { ...open, [l.code]: !op }) }}>{l.grades.length ? '▸' : ''}</span>)}
+          {op && l.grades.length > 0 && <div className="tkids">{l.grades.filter(x => x.n > 0).map(x => <Fragment key={x.g}>{row('gr', x.label, x.n, String(x.g) === grade, () => onPick(l.code, String(x.g)))}</Fragment>)}</div>}
+        </div> })}
+      {!lv.length && <small className="sub" style={{ padding: 8 }}>Chưa có {unit ?? 'dữ liệu'}.</small>}
+    </aside>
+    <div className="treemain">
+      {hide && <button type="button" className="btn sm tshow" title="Hiện sơ đồ Cấp học › Khối" onClick={() => put(id + ':hide', false)}><Ic n="list" /> Sơ đồ</button>}
+      {children}
+    </div>
+  </div>
+}

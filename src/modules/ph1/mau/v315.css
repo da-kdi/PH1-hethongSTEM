@@ -103,3 +103,30 @@ body.rzing{cursor:col-resize;user-select:none}
 .mau .dtable.wide .tblwrap{overflow-x:auto}
 .mau .dtable.wide table.dt{table-layout:auto;width:max-content;min-width:100%}
 .mau .dtable.wide table.dt th,.mau .dtable.wide table.dt td,.mau .dtable.wide table.dt td.one,.mau .dtable.wide table.dt td.tcell>*{white-space:nowrap;text-overflow:clip;overflow:visible;-webkit-line-clamp:unset;display:revert}
+
+/* ===== Cây Cấp học › Khối bên trái danh sách (LevelTree) ===== */
+.mau .treewrap{display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:start}
+.mau .treewrap.thide{grid-template-columns:minmax(0,1fr)}.mau .treewrap.thide>.treepane{display:none}
+.mau .treemain{min-width:0;display:grid;gap:14px;align-content:start}
+.mau .treemain>.tshow{justify-self:start}
+.mau .treepane{position:sticky;top:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:6px;display:flex;flex-direction:column;gap:1px;max-height:calc(100vh - 100px);overflow:auto}
+.mau .treepane .trh{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.mau .treepane .trh b{font-weight:600}.mau .treepane .trh .ib{width:24px;height:24px;border:0;background:none;color:var(--muted);cursor:pointer;font-size:16px}
+.mau .tn{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;text-align:left;padding:7px 8px;border-radius:6px;font-size:13.5px;color:var(--fg);cursor:pointer}
+.mau .tn:hover{background:color-mix(in srgb,var(--primary) 6%,transparent)}
+.mau .tn.on{background:color-mix(in srgb,var(--primary) 11%,transparent);color:var(--primary);font-weight:600}
+.mau .tn .tl{flex:1;min-width:0}.mau .tn .tc{font-size:12px;color:var(--muted);font-weight:400}
+.mau .tn.all{padding-left:30px}.mau .tn.gr{padding-left:32px}
+.mau .tchev{width:16px;flex:none;display:inline-grid;place-items:center;color:var(--muted);font-size:11px;transition:transform .15s}.mau .tchev.op{transform:rotate(90deg)}
+@media (max-width:900px){.mau .treewrap{grid-template-columns:minmax(0,1fr)}.mau .treepane{position:static;max-height:220px}}
+
+/* ===== Chi tiết chương trình (C1): thanh tab + số liệu, cột môn bên trái, Thông tin chung bên phải ===== */
+.mau .ctbar{display:flex;align-items:flex-end;gap:16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.mau .ctbar>.tabs{width:auto;border-bottom:0}
+.mau .ctstats{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;padding-bottom:10px;color:var(--muted);font-size:13px}.mau .ctstats b{color:var(--fg);font-weight:600;margin-right:3px}
+.mau .ctlessons{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:start}
+.mau .ctsubs{display:grid;gap:4px;position:sticky;top:76px}
+.mau .ctsb{display:grid;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;cursor:pointer}
+.mau .ctsb small{color:var(--muted);font-size:12px}.mau .ctsb.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,var(--surface))}.mau .ctsb.on b{color:var(--primary)}
+.mau .ctside dl.kv{grid-template-columns:1fr;gap:8px}.mau .ctside .panel{padding:14px}
+@media (max-width:900px){.mau .ctlessons{grid-template-columns:minmax(0,1fr)}.mau .ctsubs{position:static;grid-auto-flow:column;overflow-x:auto}}
