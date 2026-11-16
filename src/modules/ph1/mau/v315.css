@@ -174,3 +174,31 @@ body.rzing{cursor:col-resize;user-select:none}
 .mau .lotitle.losub small.locode{margin-left:0}
 .mau table.dt.ppcttbl{table-layout:auto;min-width:860px}
 .mau .ccell.lnkhl{z-index:auto;outline-offset:-2px;background:color-mix(in srgb,var(--primary) 12%,transparent)}
+
+/* ===== C4 · Trình chiếu toàn màn hình kiểu Canva / PPT (Presenter) ===== */
+.mau .pres{position:fixed;inset:0;z-index:9999;background:#0b0f19;display:flex;flex-direction:column;color:#e2e8f0;outline:0}
+.mau .pres .pprog{position:absolute;top:0;left:0;right:0;height:3px;background:rgba(255,255,255,.08);z-index:3}.mau .pres .pprog i{display:block;height:100%;background:#3b82f6;transition:width .25s}
+.mau .pres .pstage{flex:1;display:flex;align-items:stretch;gap:20px;padding:16px;min-height:0;position:relative}
+.mau .pres .pmainbox{flex:1;min-width:0;display:flex;align-items:center;justify-content:center}
+.mau .pres .pfit{position:relative;flex:none}
+.mau .pres .pfit>.pslide{position:absolute;top:0;left:0;width:1280px;height:720px;transform:scale(var(--sc,1));transform-origin:0 0;border-radius:6px;padding:64px 84px;overflow:hidden;font-size:26px;background:#fff;color:#14213d;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.mau .pres .pcover{height:100%;display:flex;flex-direction:column;justify-content:center;gap:18px;border-left:14px solid var(--c,#0b63ce);padding-left:48px}
+.mau .pres .pcover h1{font-size:64px;margin:0;line-height:1.1}.mau .pres .pcover small{font-size:20px;color:#5f6b85}.mau .pres .pcover p{font-size:28px;margin:0;color:#334155}
+.mau .pres .pact{display:grid;gap:18px;align-content:start}
+.mau .pres .pact h2{font-size:52px;margin:0;line-height:1.15}.mau .pres .ptag{font-size:18px;color:var(--c,#0b63ce);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.mau .pres .ptask{background:#f1f5f9;border-radius:14px;padding:18px 24px}.mau .pres .ptask b{font-size:19px;color:#5f6b85}.mau .pres .ptask p{font-size:30px;margin:6px 0 0}
+.mau .pres .pbk{font-size:22px}
+.mau .pres .pside{width:340px;flex:none;display:grid;grid-template-rows:auto auto 1fr;gap:14px;min-height:0}
+.mau .pres .ptime,.mau .pres .pnext,.mau .pres .pnotes{background:rgba(255,255,255,.06);border-radius:10px;padding:12px 14px;display:grid;gap:6px;min-height:0}
+.mau .pres .ptime b{font-size:30px;font-variant-numeric:tabular-nums;color:#fff}.mau .pres .ptime span,.mau .pres .pnext span{font-size:12px;color:#94a3b8;text-transform:uppercase}
+.mau .pres .pnext .pfit>.pslide{box-shadow:none}.mau .pres .pend{color:#94a3b8;padding:20px 0}
+.mau .pres .pnotes{overflow:auto}.mau .pres .pnotes p{margin:0;font-size:15px;line-height:1.5;white-space:pre-wrap}
+.mau .pres .pblank{position:absolute;inset:0;z-index:5;display:grid;place-items:end center;padding-bottom:24px;cursor:pointer}.mau .pres .pblank.black{background:#000}.mau .pres .pblank.white{background:#fff;color:#64748b}
+.mau .pres .pblank small{opacity:.5}
+.mau .pres .pctl{display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(15,23,42,.9);border-top:1px solid rgba(255,255,255,.08)}
+.mau .pres .pcb{width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:#cbd5e1;display:grid;place-items:center;cursor:pointer}
+.mau .pres .pcb:hover{background:rgba(255,255,255,.1);color:#fff}.mau .pres .pcb.on{background:#1d4ed8;color:#fff}
+.mau .pres .pno{min-width:64px;text-align:center;font-variant-numeric:tabular-nums;font-size:14px}
+.mau .pres .pttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#94a3b8;font-size:13px;padding-left:8px}
+@media (max-width:900px){.mau .pres .pside{display:none}}
+.mau .pres .pmainbox{position:relative;overflow:hidden}.mau .pres .pmainbox>.pfit{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
