@@ -1,0 +1,46 @@
+/* Bản mẫu giao diện v315 (docs/mockup/he-thong-stem.html, THAY-DOI-UI.md) — khung chung trong phạm vi .mau.
+   Phần ngoài .mau (thanh menu, đường dẫn, tooltip) ở cuối src/index.css. */
+
+/* A3 · Tab con kiểu gạch chân (Sapo): chữ thường, xám; tab chọn xanh + gạch chân 3px; số đếm dạng chip.
+   Thanh bước quy trình có đánh số (.flowsec) vẫn dạng nút bo tròn. */
+.mau .tabs,.mau .seg[role=tablist]{display:flex;gap:4px;padding:0;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;box-shadow:none;width:100%;align-items:flex-end;overflow-x:auto;scrollbar-width:none}
+.mau .tabs>button,.mau .seg[role=tablist]>button{flex:none;white-space:nowrap;height:auto;padding:12px 18px 10px;margin:0 0 -1px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:var(--muted);font-size:14.5px;font-weight:500;text-transform:none;letter-spacing:0;display:inline-flex;gap:7px;align-items:center}
+.mau .tabs>button:hover,.mau .seg[role=tablist]>button:hover{background:transparent;color:var(--fg)}
+.mau .tabs>button.on,.mau .tabs>button[aria-selected=true],.mau .seg[role=tablist]>button.on,.mau .seg[role=tablist]>button[aria-selected=true]{color:var(--primary);border-bottom-color:var(--primary);background:transparent;font-weight:600}
+.mau .tabs>button small,.mau .seg[role=tablist]>button small{background:var(--soft);color:var(--muted);border-radius:999px;padding:0 7px;font-size:11.5px;font-weight:500}
+.mau .tabs>button.on small,.mau .seg[role=tablist]>button.on small{background:color-mix(in srgb,var(--primary) 12%,transparent);color:var(--primary)}
+.mau .tabs>.tabact{margin-left:auto;padding:0 0 6px}
+
+/* A4 · Đầu trang chi tiết gọn: ghi chú → icon ổ khoá/ⓘ cạnh tên; thanh công cụ, thanh phiên bản luôn 1 hàng */
+.mau .hnote{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;color:var(--muted);cursor:help;vertical-align:middle;margin-left:4px;flex:none}
+.mau .hnote:hover,.mau .hnote:focus{color:var(--primary);background:var(--soft)}
+.mau .hnote .i{width:15px;height:15px}
+.mau .dhead h1 .hnote{margin-left:6px}
+.mau .verbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}.mau .verbar>*{flex-shrink:0}
+.mau .verbar>small,.mau .verbar>.sub{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mau .verbar .act{flex-wrap:nowrap}
+.mau .edbar{flex-wrap:nowrap;min-width:0}.mau .edbar>*{flex-shrink:0}
+.mau .edbar>small,.mau .edbar>.sub,.mau .edbar>b{flex-shrink:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mau .edbar .act{flex-wrap:nowrap;flex-shrink:0}
+.mau .cttools{display:flex;align-items:center;gap:10px;flex-wrap:nowrap}
+
+/* A2 · Có đường dẫn trên cùng thì ẩn nút "← Danh sách…" trong trang (màn hẹp vẫn giữ vì đường dẫn bị ẩn) */
+@media (min-width:801px){body.hascrumb .mau .backbtn{display:none}}
+
+/* A5 · Khung thông tin bên phải: kéo rộng/hẹp + thu gọn */
+.mau .ctw{display:grid;grid-template-columns:minmax(0,1fr) var(--asw,300px);gap:22px;align-items:start}
+.mau .ctw.asoff{grid-template-columns:minmax(0,1fr) 36px}
+.mau .ctw>.ctmain{min-width:0;display:grid;gap:16px;align-content:start}
+.mau .ctw>aside.ctside{position:relative;min-width:0;display:grid;gap:14px;align-content:start}
+.mau .ctw.asoff>aside.ctside{min-height:120px;border-left:1px dashed var(--line)}
+.mau .asbar{position:absolute;left:-14px;top:0;bottom:0;width:12px;z-index:5}
+.mau .asrz{position:absolute;left:4px;top:40px;bottom:0;width:6px;cursor:col-resize;border-radius:3px}
+.mau .asrz:hover,body.rzing .mau .asrz{background:color-mix(in srgb,var(--primary) 30%,transparent)}
+.mau .astog{position:absolute;left:-6px;top:6px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.mau .astog:hover{color:var(--primary);border-color:var(--primary)}
+.mau .astog .i{width:14px;height:14px}
+.mau .ctw.asoff .astog .i{transform:rotate(180deg)}
+.mau .ctw.asoff .asbar{left:auto;right:6px}.mau .ctw.asoff .asrz{display:none}
+body.rzing{cursor:col-resize;user-select:none}
+@media (min-width:1001px){.mau .ctw.asoff>aside.ctside>:not(.asbar){display:none}}
+@media (max-width:1000px){.mau .ctw,.mau .ctw.asoff{grid-template-columns:minmax(0,1fr)}.mau .asbar{display:none}.mau .ctw.asoff>aside.ctside{border:0;min-height:0}}

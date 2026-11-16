@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { errMsg } from '../ui'
 import { catName, effectiveCatalog, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { gradesText } from '../curriculum/CurriculumPage'
-import { Empty, Flow, Ic, Mau, PageHead, StatCard, cssVar } from '../mau/kit'
+import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, StatCard, cssVar } from '../mau/kit'
 import { SGLYPH } from '../mau/icons'
 
 const ElearningManage = lazy(() => import('../../../pages/elearning/Manage'))
@@ -79,7 +79,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
     setMsg(`Đã tạo khoá tự học cho ${p.code} với ${rows.length} bài (bản nháp) — bổ sung video, đề luyện ở “Quản lý chi tiết”.`); load()
   }
 
-  if (manage) return <Mau><button type="button" className="btn sm ghost" onClick={() => { setManage(false); load() }}><Ic n="back" /> Quay lại</button>
+  if (manage) return <Mau><Back onClick={() => { setManage(false); load() }} title={'Quản lý chi tiết'}>Quay lại</Back>
     <Suspense fallback={<p className="sub">Đang tải…</p>}><div style={{ fontSize: 14 }}><ElearningManage {...props} /></div></Suspense></Mau>
   const noCourse = progs.filter(p => !courseOf(p))
   return <Mau>
@@ -96,7 +96,6 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
       return <article key={p.id} className="pcard dcard" style={cssVar(p.color)}>
         <div className="cover"><i className="cg"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[mainSubj(p) ?? ''] ?? SGLYPH.khtn }} /></i><span>{gradesText(cat, p.grades)}</span><b>{p.code}</b></div>
         <h3>Khoá tự học: {p.name}</h3>
-        <div className="bar"><i style={{ width: L.done + '%' }} /></div>
         <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
         <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
           {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>

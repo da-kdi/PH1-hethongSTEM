@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { errMsg, norm, useRpcBool } from '../ui'
 import { catName, effectiveCatalog, inUseOf, newerOf, useCatalog, useOrgs, type Curriculum, type MStatus } from '../curriculum/api'
 import { planOf, stepsOf, type MLesson, type Norm } from '../materials/MaterialsPage'
-import { Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, cssVar } from '../mau/kit'
+import { Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, cssVar } from '../mau/kit'
 import { SGLYPH } from '../mau/icons'
 import { ACTS, clone, setActToast, setActUses } from './acts'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from './blocks'
@@ -188,15 +188,15 @@ function Editor({ d, code, ctx, orgName, act, setAct, student, setStudent, canEd
   const setBlocks = (bs: Block[]) => patchAct({ blocks: bs })
   const present = () => { const el = heroRef.current; if (el?.requestFullscreen) el.requestFullscreen().catch(() => setMsg('Trình duyệt không cho mở toàn màn hình')) }
   if (student) return <>
-    <div className="edbar"><button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách</button><b>{d.title}</b><span className="pill info plain">View học sinh</span>
+    <div className="edbar"><Back onClick={onBack} title={d.title}>Danh sách</Back><b>{d.title}</b><span className="pill info plain">View học sinh</span>
       <span className="act"><button type="button" className="btn sm" onClick={present}>Trình chiếu</button><button type="button" className="btn sm" onClick={() => setStudent(false)}>Thoát view học sinh</button></span></div>
     <section className="hero" ref={heroRef} style={{ ...cssVar(ctx.color), overflow: 'auto' }}><h2 style={{ margin: 0 }}>{d.title}</h2><p style={{ margin: 0, color: 'var(--muted)' }}>{d.description}</p>
       {d.sessions.map((s, si) => <div key={si} className="sessbox"><div className="sesshead">{s.title}</div><div className="svacts">{s.activities.map((a, i) => { const k = d.sessions.slice(0, si).reduce((x, y) => x + y.activities.length, 0) + i
         return <div key={i} className="svact"><div className="svh"><span className="sno">{i + 1}</span><b>{a.title}</b><span className="sm">{a.minutes ?? 0} phút</span></div><p className="sub" style={{ margin: 0 }}>Nhiệm vụ: {a.student}</p>
           {(a.blocks ?? []).map((b, bi) => <div key={bi} className="bk"><BlockView b={b} k={`${d.id}.${k}.${bi}`} student /></div>)}</div> })}</div></div>)}</section></>
   return <>
-    <div className="edbar"><button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Danh sách</button><span className="code sm" style={cssVar(ctx.color)}>{ctx.p?.code ?? '—'}</span><b>{code}</b><DStatus d={d} />
-      <small style={{ color: 'var(--muted)' }}>{ro ? 'Đã xuất bản — chỉ xem' : 'Tự động lưu · ' + new Date(d.updated_at).toLocaleDateString('vi-VN')}</small>
+    <div className="edbar"><Back onClick={onBack} title={d.title}>Danh sách</Back><span className="code sm" style={cssVar(ctx.color)}>{ctx.p?.code ?? '—'}</span><b>{code}</b><DStatus d={d} />
+      {ro ? <HNote lock tip="Đã xuất bản — chỉ xem. Muốn chỉnh thì tạo bản sửa." /> : <small style={{ color: 'var(--muted)' }}>{'Tự động lưu · ' + new Date(d.updated_at).toLocaleDateString('vi-VN')}</small>}
       <span className="act"><button type="button" className="btn sm" onClick={() => setStudent(true)}><Ic n="eye" /> View học sinh</button><button type="button" className="btn sm" onClick={() => { setStudent(true); setTimeout(present, 50) }}>Trình chiếu</button>
         {canEdit && (d.status === 'published' && !d.draft_of ? <button type="button" className="btn sm primary" disabled={hasDraft} title={hasDraft ? 'Đã có bản nháp đang sửa' : undefined} onClick={onDraft}><Ic n="edit" /> Sửa (tạo bản nháp)</button>
           : d.draft_of ? <><button type="button" className="btn sm" onClick={onDrop}>Bỏ bản nháp</button><button type="button" className="btn sm primary" onClick={onReplace}>Xuất bản thay bản cũ</button></>

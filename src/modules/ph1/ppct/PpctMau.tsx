@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type Re
 import { supabase } from '../../../lib/supabase'
 import { SCHOOL_YEAR, errMsg, norm, useRpcBool } from '../ui'
 import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradesOfLevel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
-import { Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.3 Phân phối chương trình — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html):
 //   Bước 1 · Năm học & lịch nghỉ: dùng chung cho mọi bản phân phối (ngày bắt đầu, số tuần HK I/II, lịch nghỉ toàn tỉnh + riêng từng trường, khoá tuần).
@@ -448,7 +448,7 @@ function Wizard({ w, setW, cat, schools, progs, les, lessonsOf, progOf, sn, cal,
   const step = (n: number, title: string, body: ReactNode, off?: boolean, opt?: boolean) => <div className={'wstep' + (off ? ' off' : '')}><span className="wno">{n}</span><div className="wbody"><h3>{title}{opt && <small> không bắt buộc</small>}</h3>{!off && body}</div></div>
   let rowFrom: number | null = null
   return <>
-    <button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Quay lại</button>
+    <Back onClick={onBack} title="Thiết lập phân phối">Quay lại</Back>
     <Panel icon="calendar" title={w.id ? 'Xếp lại lịch phân phối' : 'Thiết lập phân phối chương trình'} act={<span style={{ color: 'var(--muted)', fontSize: 12.5 }}>Chọn đúng khối, hệ thống gợi ý chương trình và môn phù hợp</span>}>
       <div className="wsteps">
         {step(0, 'Trường', <select value={w.school} onChange={e => set({ school: e.target.value })} aria-label="Trường"><option value="">Tất cả các trường</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>, false, true)}
@@ -503,7 +503,7 @@ function DocView({ d, st, sn, school, canManage, tip, yearLine, onBack, openMat,
   const h1 = sch.reduce((a, x) => a + x.rows.filter(r => r.week <= cal.HK1).reduce((b, r) => b + r.l.periods, 0), 0)
   const allShut = sch.length > 0 && sch.every((_, k) => shut.has(k))
   return <>
-    <button type="button" className="btn sm ghost" onClick={onBack}><Ic n="back" /> Quay lại</button>
+    <Back onClick={onBack} title={d.title}>Quay lại</Back>
     <div className="dhead"><span className="code" style={cssVar('var(--primary)')}>K{d.grade}</span><div><h1>{d.title}</h1><span className="crumb">Áp dụng: {school} · năm học {d.school_year} · tối đa {Number(d.max_ppw) || 3} tiết STEM/tuần · cập nhật {new Date(d.updated_at).toLocaleDateString('vi-VN')}</span></div><StatusPill s={d.status} />
       {canManage && <div className="act">{d.status !== 'published' && <button type="button" className="btn primary" onClick={onPublish}><Ic n="send" /> Phát hành</button>}
         <button type="button" className="btn" onClick={onEdit}><Ic n="edit" /> Xếp lại lịch</button><button type="button" className="btn" onClick={onCopy}><Ic n="copy" /> Nhân bản</button>
