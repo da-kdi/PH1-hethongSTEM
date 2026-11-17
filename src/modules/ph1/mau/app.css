@@ -36,3 +36,4 @@
 .mau .race .track{height:auto;border-radius:0;overflow:visible}
 .mau .opts{margin:0}
 .mau .dtable .tblwrap:not(.xscroll){overflow-x:hidden}
+:root .mau.mau-wrap{background:transparent;font-family:var(--ui-font,var(--font))}

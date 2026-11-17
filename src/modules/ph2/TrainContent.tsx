@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from '../ph1/designs/blocks'
 import { ACTS, clone, setActToast } from '../ph1/designs/acts'
@@ -38,7 +38,7 @@ export function TrainContent({ orgId, go }: { orgId: string | null; go?: (p: str
   if (tab === 'lect' && L) return <Mau>{msg}<LectEditor P={P} k={k} L={L} part={part} setPart={setPart} learner={learner} setLearner={setLearner} onBack={() => { setLect(null); setLearner(false) }}
     onStore={() => { setTarget({ lect: L.id, part }); setLect(null) }} /></Mau>
   return <Mau>{msg}
-    <PageHead icon="video" title="Nội dung đào tạo" sub="Học liệu theo chuyên đề (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch đào tạo › Lịch">{tab === 'mat' && P.canManage && <button type="button" className="btn primary" onClick={() => P.setMsg('Chọn một chuyên đề “Chưa có” rồi bấm “Tạo học liệu” ở cuối dòng.')}><Ic n="plus" /> Tạo học liệu</button>}</PageHead>
+    <PageHead icon="video" title="Nội dung đào tạo" sub="Học liệu theo chuyên đề (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch đào tạo › Lịch">{tab === 'mat' && P.canManage && <button type="button" className="btn primary" onClick={() => P.setMsg('Bấm vào một chuyên đề “Chưa có” để tạo học liệu.')}><Ic n="plus" /> Tạo học liệu</button>}</PageHead>
     <Flow steps={[['mat', 'Học phần', `${db.mods.filter(m => k.matSt(m).s !== 'none').length} học liệu chuyên đề`], ['lect', 'Bài giảng', `${db.lects.length} bài giảng`],
       ['prac', 'Hoạt động thực hành', `${db.progs.flatMap(p => p.items).filter(i => i.kind !== 'quiz').length} đề bài · gắn khung đánh giá`]]} value={tab} onChange={t => { setTab(t); setOpen(null); setLect(null) }} />
     {tab === 'mat' ? <MatList P={P} k={k} onOpen={setOpen} />
@@ -55,6 +55,7 @@ type MRow = { p: Prog; s: string; m: Mod }
 function MatList({ P, k, onOpen }: { P: P2; k: K; onOpen: (mid: string) => void }) {
   const db = P.db!
   const [F, setF] = useState({ q: '', subj: '', st: '', prog: '' })
+  const [askNew, setAskNew] = useState<Mod | null>(null)
   const [view, setView] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.bt.mat') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const qq = norm(F.q)
   const okM = (s: string, m: Mod) => (!qq || norm(m.title).includes(qq)) && (!F.subj || s === F.subj) && (!F.st || k.matSt(m).s === F.st)
@@ -67,7 +68,8 @@ function MatList({ P, k, onOpen }: { P: P2; k: K; onOpen: (mid: string) => void 
   const inP = (p: Prog) => rows.filter(r => r.p === p); const inS = (p: Prog, s: string) => rows.filter(r => r.p === p && r.s === s)
   const verOf = (m: Mod) => k.matsOf(m.id).find(x => x.version_no === k.matSt(m).v)
   const LSt: Record<string, string> = { ok: 'Đủ', draft: 'Nháp', none: 'Chưa có' }
-  return <DataTable id="bt-mat" rows={rows} rowKey={r => r.m.id} noun="chuyên đề" onOpen={r => k.matSt(r.m).s !== 'none' ? onOpen(r.m.id) : undefined} fold
+  return <>{askNew && <Confirm text={`Tạo học liệu cho chuyên đề “${askNew.title}”? Bản nháp, phiên bản 1.`} yes="Tạo học liệu" onNo={() => setAskNew(null)} onYes={() => { const m = askNew; setAskNew(null); create(m) }} />}
+  <DataTable id="bt-mat" rows={rows} rowKey={r => r.m.id} noun="chuyên đề" onOpen={r => k.matSt(r.m).s !== 'none' ? onOpen(r.m.id) : P.canManage ? setAskNew(r.m) : P.setMsg('Chuyên đề chưa có học liệu.')} fold
     search={{ value: F.q, onChange: q => setF({ ...F, q }), placeholder: 'Tìm chuyên đề…' }}
     filterBox={<><FRow label="Chương trình"><Sel label="Tất cả chương trình" value={F.prog} onChange={v => setF({ ...F, prog: v })} options={db.progs.map(p => [p.id, `${p.code} · ${p.name}`])} /></FRow>
       <FRow label="Học phần"><Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={allS.map(s => [s, k.SUBJ(s)])} /></FRow>
@@ -90,8 +92,7 @@ function MatList({ P, k, onOpen }: { P: P2; k: K; onOpen: (mid: string) => void 
       { key: 'date', label: 'Cập nhật', date: true, sort: r => verOf(r.m) ? vn(verOf(r.m)!.updated_at.slice(0, 10)) : null, cell: r => verOf(r.m) ? vn(verOf(r.m)!.updated_at.slice(0, 10)) : 'Chưa có' },
       { key: 'st', label: 'Tình trạng', sum: 'status', sort: r => LSt[k.matSt(r.m).s], cell: r => <><MatPill k={k} m={r.m} />{k.matSt(r.m).s !== 'none' && <> <small className="sub">PB {k.matSt(r.m).v}</small></>}</> },
       { key: 'lect', label: 'Bài giảng', sum: 'sum', sort: r => db.lects.filter(l => l.module_id === r.m.id).length, cell: r => db.lects.filter(l => l.module_id === r.m.id).length },
-      { key: 'act', label: 'Thao tác', width: '140px', raw: true, sum: false, cell: r => act(r.m) },
-    ]} />
+    ]} /></>
 }
 
 // ---------- Học liệu: chi tiết theo phiên bản ----------

@@ -4,7 +4,7 @@ import { norm } from '../ui'
 import { errMsg } from '../ui'
 import { catName, catOf, effectiveCatalog, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { gradesText } from '../curriculum/CurriculumPage'
-import { Back, Empty, Flow, Ic, Mau, PageHead, Seg, StatusPill, cssVar } from '../mau/kit'
+import { Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Seg, StatusPill, cssVar } from '../mau/kit'
 import { DataTable } from '../mau/DataTable'
 import { ExamDetail, QEditor, type Exam } from './QEditor'
 import { SGLYPH } from '../mau/icons'
@@ -34,6 +34,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
   const [cview, setCview] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.el.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const [openExam, setOpenExam] = useState<string | null>(null)
   const [qe, setQe] = useState(false)
+  const [askC, setAskC] = useState<Curriculum | null>(null)   // bấm dòng chưa có khoá học → hỏi trước khi tạo
   const { all, hidden } = useCatalog()
   const { below } = useOrgs(orgId)
   const cat = effectiveCatalog(all, hidden, below)
@@ -105,6 +106,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
     <Flow steps={[['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`], ['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`]]} value={tab} onChange={setTab} />
     {qe && orgId && <QEditor orgId={orgId} subject="" grade={null} subjects={subjects} onClose={() => setQe(false)} onSaved={ids => { setQe(false); setMsg(`Đã lưu ${ids.length} câu vào ngân hàng câu hỏi — mở một đề để thêm câu vào đề.`) }} />}
     {tab === 'course' ? <>
+      {askC && <Confirm text={`Tạo khoá tự học cho chương trình “${askC.name}”?`} yes="Tạo khoá học" onNo={() => setAskC(null)} onYes={() => { const p = askC; setAskC(null); create(p) }} />}
       {!progs.length ? <Empty>Chưa có chương trình đã phát hành.</Empty>
         : <DataTable id="el-course" rows={crows}
           view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={cview} onChange={v => { setCview(v); try { localStorage.setItem('ph1.el.mode', v) } catch { /* bỏ qua */ } }} />}
@@ -114,7 +116,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
             <h3>Khoá tự học: {p.name}</h3>
             <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
             <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
-              {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>) : undefined} rowKey={r => r.p.id} noun="khoá học" onOpen={r => r.c ? setManage(true) : undefined}
+              {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>) : undefined} rowKey={r => r.p.id} noun="khoá học" onOpen={r => r.c ? setManage(true) : orgId ? setAskC(r.p) : undefined}
           bulk={[{ label: 'Phát hành', run: rs => setSt('courses', 'published', 'Đã phát hành')(rs.filter(r => r.c).map(r => r.c!)) }, { label: 'Đóng', run: rs => setSt('courses', 'archived', 'Đã đóng')(rs.filter(r => r.c).map(r => r.c!)) }]}
           cols={[
             { key: 'title', label: 'Khoá học', name: true, sort: r => r.p.name, cell: r => <><b>Khoá tự học: {r.p.name}</b><small>{r.c ? r.c.title : 'Chưa tạo khoá học'}</small></> },
@@ -125,8 +127,6 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
             { key: 'learn', label: 'Học viên', sum: 'sum', sort: r => learnersOf(r.c).n, cell: r => learnersOf(r.c).n },
             { key: 'done', label: '% hoàn thành', sort: r => learnersOf(r.c).done, cell: r => r.c ? learnersOf(r.c).done + '%' : '—' },
             { key: 'status', label: 'Trạng thái', sum: 'status', sort: r => r.c?.status ?? 'none', cell: r => r.c ? <StatusPill s={r.c.status} /> : <span className="pill draft plain">Chưa tạo</span> },
-            { key: 'act', label: 'Thao tác', raw: true, sum: false, cell: r => r.c ? <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); setManage(true) }}>Mở ›</button>
-              : <button type="button" className="btn sm primary" disabled={!orgId} onClick={e => { e.stopPropagation(); create(r.p) }}><Ic n="plus" /> Tạo khoá học</button> },
           ]} />
     }</>
       : <DataTable id="el-test" rows={exams.filter(e => !eq || norm(e.title).includes(norm(eq)))} search={{ value: eq, onChange: setEq, placeholder: 'Tìm…' }} rowKey={e => e.id} noun="đề luyện" onOpen={e => setOpenExam(e.id)}

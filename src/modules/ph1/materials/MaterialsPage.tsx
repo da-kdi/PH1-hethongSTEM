@@ -54,7 +54,8 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const [allL, setAllL] = useState<MLesson[]>([])
   const [chosen, setChosen] = useState<Map<string, string>>(new Map())
   const [cls, setCls] = useState<CL[]>([])
-  const [open, setOpen] = useState<string | null>(null)       // id phiên bản học liệu đang mở
+  const [open, setOpen] = useState<string | null>(null)
+  const [askNew, setAskNew] = useState<CL | null>(null)   // bấm dòng bài chưa có học liệu → hỏi trước khi tạo       // id phiên bản học liệu đang mở
   const [q, setQ] = useState('')
   const [f, setF] = useState({ grp: '', prog: '', subj: '', level: '', grade: '', fs: '' })
   const [mode, setMode] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.hl.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
@@ -148,7 +149,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
     <FRow label="Môn học"><Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(cls.map(c => c.subject).filter(Boolean) as string[])).map(s => [s, catName(cat, 'subject', s)])} /></FRow>
     <FRow label="Học liệu"><Sel label="Mọi trạng thái" value={f.fs} onChange={v => setF({ ...f, fs: v })} options={[['none', 'Chưa có'], ['draft', 'Nháp'], ['ok', 'Đủ']]} /></FRow></>
   const ordered = byGrp.flatMap(x => x.ps.flatMap(y => [...y.rs].sort((a, b) => (a.cl.subject ?? '').localeCompare(b.cl.subject ?? '') || a.cl.seq - b.cl.seq)))
-  const list = <DataTable id="hl" rows={ordered} rowKey={r => r.cl.id} noun="học liệu" onOpen={r => r.v ? setOpen(r.v.id) : undefined} fold
+  const list = <DataTable id="hl" rows={ordered} rowKey={r => r.cl.id} noun="học liệu" onOpen={r => r.v ? setOpen(r.v.id) : canManage ? setAskNew(r.cl) : setMsg('Bài chưa có học liệu.')} fold
     search={{ value: q, onChange: setQ, placeholder: 'Tìm bài học…' }} filterBox={fbox} fcount={fc} onClearFilters={() => setF({ ...f, grp: '', prog: '', subj: '', fs: '' })}
     filters={{ q, grp: f.grp, prog: f.prog, subj: f.subj, fs: f.fs }} onFilters={x => { setQ(x.q ?? ''); setF({ ...f, grp: x.grp ?? '', prog: x.prog ?? '', subj: x.subj ?? '', fs: x.fs ?? '' }) }}
     view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={mode} onChange={v => { setMode(v); try { localStorage.setItem('ph1.hl.mode', v) } catch { /* bỏ qua */ } }} />}
@@ -165,7 +166,6 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
       { key: 'mat', label: 'Học liệu', sum: 'status', sort: r => matOf(r.v), cell: r => { const nw = newerOf(allL, r.v); return <><MatPill v={r.v} />{nw && <> <span className="pill info plain">có PB {nw.version_no}</span></>}</> } },
       { key: 'g4', label: '4 nhóm', raw: true, sum: false, sort: r => r.v ? (['info', 'content', 'links', 'norms'] as const).filter(k => r.v!.groups?.[k] === 'ok').length : null, cell: r => r.v ? <GDots v={r.v} /> : '—' },
       { key: 'date', label: 'Cập nhật', date: true, sort: r => r.v ? new Date((r.v as any).updated_at ?? r.v.published_at ?? Date.now()).toLocaleDateString('vi-VN') : null, cell: r => r.v ? new Date((r.v as any).updated_at ?? r.v.published_at ?? Date.now()).toLocaleDateString('vi-VN') : 'Chưa có' },
-      { key: 'act', label: 'Thao tác', width: '140px', raw: true, sum: false, cell: r => <span onClick={e => e.stopPropagation()}>{action(r)}</span> },
     ]} />
   // Cây Khối bên trái (bản mẫu v315 · TREECFG.hl)
   const treeLv: TreeLevel[] = catOf(cat, 'level').map(l => { const gs = gradesOfLevel(cat, l.code)
@@ -182,9 +182,10 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
 
   return <Mau>
     <PageHead icon="file" title="Học liệu" sub="Mỗi bài học có một học liệu, nhiều phiên bản: thông tin, nội dung, link học liệu, định mức vật tư">
-      {canManage && wait > 0 && <button type="button" className="btn primary" onClick={() => { setF({ ...f, fs: 'none' }); setMsg('Chọn một bài “Chưa có” rồi bấm “Tạo học liệu” ở cuối dòng.') }}><Ic n="plus" /> Tạo học liệu</button>}</PageHead>
+      {canManage && wait > 0 && <button type="button" className="btn primary" onClick={() => { setF({ ...f, fs: 'none' }); setMsg('Bấm vào một bài “Chưa có” để tạo học liệu.') }}><Ic n="plus" /> Tạo học liệu</button>}</PageHead>
     {msg && <p className="msg">{msg}</p>}
     <LevelTree id="hl" levels={treeLv} total={rows.length} level={f.level} grade={f.grade} noCount onPick={(l, g) => setF({ ...f, level: l, grade: g })}>
+      {askNew && <Confirm text={`Tạo học liệu cho bài “${askNew.title}”? Học liệu mới ở trạng thái nháp, phiên bản 1.`} yes="Tạo học liệu" onNo={() => setAskNew(null)} onYes={() => { const c = askNew; setAskNew(null); createFor(c) }} />}
       {list}
     </LevelTree>
   </Mau>
