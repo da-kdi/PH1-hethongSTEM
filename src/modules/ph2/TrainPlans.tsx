@@ -5,7 +5,7 @@ import { DataTable } from '../ph1/mau/DataTable'
 import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
-import { PAGE, SUBMIT, TFORMAT, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type K, type Plan, type Prog, type Sess } from './api'
+import { IKIND, PAGE, SUBMIT, TFORMAT, resPill, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type Item, type K, type Plan, type Prog, type Sess } from './api'
 import { useP2, type P2 } from './use'
 
 // 2.1b Kế hoạch & lịch đào tạo — dựng theo bản mẫu giao diện: Kế hoạch đào tạo (theo chương trình đã phát hành: chưa lập / đang lập dở / đã lập)
@@ -275,7 +275,7 @@ function TrainCal({ k, sessions, holOn }: { k: K; sessions: { date: string; star
 function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: { P: P2; k: K; p: Plan; holOn: (iso: string) => Hol[]; sedit: string | null; setSedit: (v: string | null) => void
   onSess: (id: string) => void; onBack: () => void; toEval: (tab: string) => void }) {
   const pr = k.prog(p.program_id)!; const ss = k.sessOfPlan(p.id); const done = ss.filter(k.sessEnd).length
-  const [sub, setSub] = useState<'sched' | 'people'>('sched'); const [view, setView] = useState<'table' | 'cal'>('table')
+  const [sub, setSub] = useState<'sched' | 'people' | 'asg'>('sched'); const [view, setView] = useState<'table' | 'cal'>('table')
   const [addS, setAddS] = useState(false); const [pubAsk, setPubAsk] = useState(false); const [hv, setHv] = useState(true); const [bgh, setBgh] = useState(true)
   const can = P.canManage; const trs = k.traineesOf(p.id); const mods = k.allMods(pr)
   const trainers = P.db!.cat.filter(c => c.kind === 'trainer')
@@ -322,10 +322,12 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
     <section className="panel kinfo"><dl className="kv"><div><dt>Đơn vị tổ chức</dt><dd>{p.unit}</dd></div><div><dt>Giảng viên</dt><dd>{Array.from(new Set(ss.map(s => s.trainer).filter(Boolean))).join(', ') || 'Chưa phân công'}</dd></div><div><dt>Trợ giảng</dt><dd>{p.assist?.join(', ') || '—'}</dd></div>
       <div><dt>Đăng ký</dt><dd>{trs.length}/{p.cap} · hạn {vn(p.reg_due)}</dd></div><div><dt>Điều kiện tham gia</dt><dd>{k.condText(p).map((x, i) => <Fragment key={i}>{i > 0 && <br />}{x}</Fragment>)}{!k.condText(p).length && 'Không giới hạn'}{p.schools?.length > 0 && <><br /><small className="sub">{p.schools.length} trường được mời</small></>}</dd></div>
       <div><dt>Thông báo</dt><dd>{p.notice ? `Đã gửi ${p.notice.date} · ${p.notice.n} học viên${p.notice.bgh ? ' + BGH' : ''}` : <span className="sub">Chưa gửi</span>}</dd></div></dl></section>
-    <div className="ctbar"><div className="seg" role="tablist"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button><button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button></div>
-      <div className="ctstats"><span><b>{done}/{ss.length}</b>buổi đã học · {ss.filter(s => s.mode === 'on').length} trực tuyến</span><span><b>{k.planSubjs(p).reduce((a, s) => a + k.subjH(pr, s), 0)}</b>giờ · {fmtM(pr.mpp)}/buổi</span>
-        <span>Có mặt <b>{st.att[0]}/{st.att[1]}</b></span><span>Đã nộp <b>{st.sub[0]}/{st.sub[1]}</b>{st.late > 0 && <small className="badtxt"> · {st.late} quá hạn</small>}</span><span>Đã chấm <b>{st.gr[0]}/{st.gr[1]}</b></span></div></div>
-    {sub === 'people' ? <KhPeople P={P} k={k} p={p} pr={pr} /> : <>
+    {/* Bản mẫu v315: 3 tab — Lịch buổi · Học viên đăng ký · Bài tập & kiểm tra (Đã nộp x/y · n quá hạn, Chấm x/y — không thanh tiến độ) */}
+    <div className="tabs"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button>
+      <button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button>
+      <button type="button" className={sub === 'asg' ? 'on' : ''} onClick={() => setSub('asg')}>Bài tập & kiểm tra <small>{k.planItems(p).length}</small></button></div>
+    {sub === 'people' ? <KhPeople P={P} k={k} p={p} pr={pr} /> : sub === 'asg' ? <KhAsg k={k} p={p} st={st} toEval={toEval} /> : <>
+      <div className="ctstats" style={{ marginLeft: 0 }}><span><b>{ss.length}</b>buổi đào tạo</span><span><b>{ss.filter(s => s.mode === 'on').length}</b>trực tuyến</span><span><b>{k.planSubjs(p).reduce((a, s) => a + k.subjH(pr, s), 0)}</b>tổng giờ</span><span><b>{trs.length}</b>học viên đăng ký</span><span>Có mặt <b>{st.att[0]}/{st.att[1]}</b></span></div>
       <div className="toolbar"><Seg label="Kiểu xem" items={[['table', 'Bảng'], ['cal', 'Lịch']]} value={view} onChange={setView} />{can && <button type="button" className="btn sm" onClick={() => setAddS(!addS)}><Ic n="plus" /> Thêm buổi</button>}</div>
       {addS && <Panel icon="plus" title="Thêm buổi đào tạo"><div className="form3">
         <label className="fld"><span>Ngày</span><input type="date" value={ns.date} onChange={e => setNs({ ...ns, date: e.target.value })} /></label><label className="fld"><span>Bắt đầu</span><input type="time" value={ns.from} onChange={e => setNs({ ...ns, from: e.target.value })} /></label>
@@ -339,6 +341,36 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
       {view === 'cal' ? <section className="panel"><TrainCal k={k} sessions={ss} holOn={holOn} /></section>
         : <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>STT</th><th>Thứ</th><th>Ngày</th><th>Giờ</th><th>Chuyên đề</th><th>Hình thức</th><th>Địa điểm / lớp ảo</th><th>Giảng viên</th><th>Trạng thái</th><th /></tr></thead><tbody>{ss.map(row)}</tbody>
           <tfoot><tr><td className="n">{ss.length}</td><td /><td colSpan={2}>Tổng {ss.length} buổi</td><td>{new Set(ss.map(s => s.module_id ?? s.subject)).size} chuyên đề</td><td>{ss.filter(s => s.mode === 'on').length} trực tuyến</td><td colSpan={2} /><td>{done} đã diễn ra</td><td /></tr></tfoot></table></div></div>}</>}
+  </>
+}
+// Tab “Bài tập & kiểm tra” của đợt (bản mẫu v315)
+function KhAsg({ k, p, st, toEval }: { k: K; p: Plan; st: { late: number }; toEval: (tab: string) => void }) {
+  const its = k.planItems(p); const trs = k.traineesOf(p.id); const n = trs.length
+  const subOf = (i: Item) => trs.filter(t => k.grOf(p, i, t)?.sub).length
+  const lateOf = (i: Item) => k.itemOpen(p, i) && k.itemDue(p, i) < k.T ? trs.filter(t => !k.grOf(p, i, t)?.sub).length : 0
+  const gdOf = (i: Item) => trs.filter(t => k.itemScore(p, i, t) != null).length
+  const stOf = (i: Item): [string, string] => !k.itemOpen(p, i) ? ['Chưa mở', 'draft'] : k.itemDue(p, i) < k.T ? ['Đã đóng', 'warn'] : ['Đang mở', 'good']
+  const cell = (i: Item, t: string) => { const sc = k.itemScore(p, i, t); if (sc != null) return <span className="wk ok">{Math.round(sc * 10) / 10}</span>
+    if (k.grOf(p, i, t)?.sub) return <span className="wk sub" title="Đã nộp, chờ chấm"><Ic n="upload" /></span>
+    if (!k.itemOpen(p, i)) return <span className="wk">·</span>; return k.itemDue(p, i) < k.T ? <span className="wk bad" title="Quá hạn">!</span> : <span className="wk wait">…</span> }
+  void st
+  return <>
+    <p className="note">Đầu điểm lấy từ Khung đánh giá của chương trình; mở sau buổi học của chuyên đề, hạn nộp 7 ngày.</p>
+    <Panel icon="list" title="Bài tập & kiểm tra của đợt">
+      <DataTable id="kh-asg" plain rows={its} rowKey={i => i.id} noun="đầu điểm" onOpen={() => toEval('grade')} empty={<Empty>Chương trình chưa có đầu điểm.</Empty>}
+        cols={[
+          { key: 'name', label: 'Bài tập / kiểm tra', name: true, sort: i => i.name, cell: i => <><b>{i.name}</b><small>{IKIND[i.kind]?.[0]} · {i.w}%</small></> },
+          { key: 'from', label: 'Mở từ', date: true, sort: i => vn(k.itemFrom(p, i)), cell: i => vn(k.itemFrom(p, i)) },
+          { key: 'due', label: 'Hạn nộp', sort: i => vn(k.itemDue(p, i)), cell: i => vn(k.itemDue(p, i)) },
+          { key: 'st', label: 'Trạng thái', sum: 'status', sort: i => stOf(i)[0], cell: i => <span className={`pill ${stOf(i)[1]} plain`}>{stOf(i)[0]}</span> },
+          { key: 'sub', label: 'Nộp bài', raw: true, sum: false, sort: i => subOf(i), cell: i => !k.itemOpen(p, i) ? <span className="sub">—</span> : SUBMIT(i.kind) ? <>{subOf(i)}/{n}{lateOf(i) > 0 && <small className="badtxt"> · {lateOf(i)} quá hạn</small>}</> : <span className="sub">không cần nộp</span> },
+          { key: 'gd', label: 'Chấm', sum: 'frac', sort: i => gdOf(i), cell: i => `${gdOf(i)}/${n}` },
+        ]} /></Panel>
+    <Panel icon="users" title={<>Tiến độ theo học viên <small className="sub">bấm để mở Đánh giá kết quả</small></>} act={<span className="legend"><span><span className="wk ok">8</span> đã chấm</span><span><span className="wk sub"><Ic n="upload" /></span> đã nộp, chờ chấm</span><span><span className="wk wait">…</span> đang mở</span><span><span className="wk bad">!</span> quá hạn</span><span><span className="wk">·</span> chưa mở</span></span>}>
+      <div className="tblwrap"><table className="wktbl"><thead><tr><th>Học viên</th>{its.map(i => <th key={i.id} className="c" title={i.name}>{i.name.length > 16 ? i.name.slice(0, 15) + '…' : i.name}</th>)}<th className="c">Chuyên cần</th><th>Kết quả</th></tr></thead><tbody>
+        {trs.map(t => { const e = k.evalOf(p, t); return <tr key={t} className="rowlink" onClick={() => toEval('result')}><td><b>{k.teacher(t).full_name}</b></td>{its.map(i => <td key={i.id} className="c">{cell(i, t)}</td>)}
+          <td className="c">{e.att == null ? '—' : e.att + '%'}</td><td><span className={`pill ${resPill(e.result)} plain`}>{e.result}</span></td></tr> })}
+        {!trs.length && <tr><td colSpan={its.length + 3} className="sub">Chưa có học viên.</td></tr>}</tbody></table></div></Panel>
   </>
 }
 function KhPeople({ P, k, p, pr }: { P: P2; k: K; p: Plan; pr: Prog }) {
