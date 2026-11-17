@@ -207,28 +207,43 @@ function KhCal({ P, D, k, onSess }: { P: P2; D: NonNullable<P2['db']>; k: K; onS
   const SKN: Record<string, [string, string]> = { ended: ['Đã kết thúc', 'draft'], live: ['● Đang diễn ra', 'bad'], soon: ['Sắp diễn ra', 'info'] }
   const up = all.filter(x => kind(x.s) !== 'ended'), past = all.filter(x => kind(x.s) === 'ended')
   const schools = Array.from(new Set(D.teachers.map(t => t.org_id))).map(id => [id, k.orgName(id)] as [string, string]).filter(x => x[1])
+  // Bản mẫu v315 (Triển khai đào tạo): trái “Lịch tổng quan” — số liệu tháng + danh sách buổi theo ngày (Sắp tới | Cả tháng); phải lịch tháng lớn; bộ lọc gom vào nút Lọc
+  const [agMode, setAgMode] = useState<'up' | 'month'>('up')
+  const [fo, setFo] = useState(false)
+  const inMonth = plans.flatMap(p => k.sessOfPlan(p.id).filter(s => s.date.startsWith(month) && sf(s)).map(s => ({ p, s })))
+  const agItems = (agMode === 'up' ? plans.flatMap(p => k.sessOfPlan(p.id).filter(s => s.date >= k.T && sf(s)).map(s => ({ p, s }))) : inMonth).sort((a, b) => (a.s.date + a.s.start_t).localeCompare(b.s.date + b.s.start_t))
+  const byDay = Array.from(new Set(agItems.map(x => x.s.date)))
+  const fc = [C.school, C.subj, C.prog].filter(Boolean).length
   return <>
-    <div className="toolbar"><Sel label="Tất cả trường" value={C.school} onChange={v => setC({ ...C, school: v })} options={schools} />
-      <Sel label="Tất cả học phần" value={C.subj} onChange={v => setC({ ...C, subj: v })} options={Array.from(new Set(D.plans.flatMap(k.planSubjs))).map(s => [s, k.SUBJ(s)])} />
-      <Sel label="Tất cả chương trình" value={C.prog} onChange={v => setC({ ...C, prog: v })} options={D.progs.filter(p => p.status !== 'draft').map(p => [p.id, `${p.code} · ${p.name}`])} />
-      {(C.school || C.subj || C.prog) && <button type="button" className="btn sm ghost" onClick={() => setC({ school: '', subj: '', prog: '' })}>Xoá lọc</button>}
-      <small className="sub" style={{ marginLeft: 'auto' }}>{n} buổi · {plans.filter(p => k.sessOfPlan(p.id).some(sf)).length} đợt{C.school ? ' · đợt mở cho trường hoặc có học viên của trường' : ''}</small></div>
-    <Panel icon="calendar" title={`Tháng ${m}/${y}`} act={<><button type="button" className="btn sm" onClick={() => setMonth(prev)}>‹ Tháng trước</button><button type="button" className="btn sm" onClick={() => setMonth(k.T.slice(0, 7))}>Hôm nay</button><button type="button" className="btn sm" onClick={() => setMonth(next)}>Tháng sau ›</button></>}>
-      <div className="mcal">{['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => <div key={x} className="mh">{x}</div>)}
+    <div className="toolbar tbc"><div className="btngrp tools"><div className="fwrap"><button type="button" className={'btn sm fbtn' + (fc ? ' on' : '')} aria-expanded={fo} onClick={() => setFo(!fo)}><Ic n="filter" /> Lọc{fc ? <em>{fc}</em> : null}</button>
+      <div className="fpanel" hidden={!fo} role="group" aria-label="Bộ lọc">
+        <FRow label="Trường"><Sel label="Tất cả trường" value={C.school} onChange={v => setC({ ...C, school: v })} options={schools} /></FRow>
+        <FRow label="Học phần"><Sel label="Tất cả học phần" value={C.subj} onChange={v => setC({ ...C, subj: v })} options={Array.from(new Set(D.plans.flatMap(k.planSubjs))).map(s => [s, k.SUBJ(s)])} /></FRow>
+        <FRow label="Chương trình"><Sel label="Tất cả chương trình" value={C.prog} onChange={v => setC({ ...C, prog: v })} options={D.progs.filter(p => p.status !== 'draft').map(p => [p.id, `${p.code} · ${p.name}`])} /></FRow>
+        <div className="fpfoot"><button type="button" className="btn sm ghost" disabled={!fc} onClick={() => setC({ school: '', subj: '', prog: '' })}>Xoá bộ lọc</button><button type="button" className="btn sm" onClick={() => setFo(false)}>Xong</button></div></div></div></div>
+      <span className="tbcount">{n} buổi · {plans.filter(p => k.sessOfPlan(p.id).some(sf)).length} đợt</span></div>
+    <div className="calwrap">
+      <Panel className="agenda" title="Lịch tổng quan">
+        <div className="agsum"><span><b>{inMonth.length}</b>buổi/tháng</span><span><b>{inMonth.filter(x => x.s.mode === 'on').length}</b>trực tuyến</span>
+          <span className={inMonth.some(x => x.s.mode === 'on' && !x.s.link) ? 'warn' : ''}><b>{inMonth.filter(x => x.s.mode === 'on' && !x.s.link).length}</b>chưa có link</span><span className={inMonth.some(x => !x.s.trainer) ? 'warn' : ''}><b>{inMonth.filter(x => !x.s.trainer).length}</b>chưa có GV</span></div>
+        <Seg label="Danh sách buổi" items={[['up', 'Sắp tới'], ['month', `Cả tháng ${m}`]]} value={agMode} onChange={setAgMode} />
+        <div className="aglist">{byDay.map(d => <div key={d} className={'agday' + (d === k.T ? ' today' : '')}><div className="agdh"><span>{wd(d)}</span><b>{vnS(d)}</b>{d === k.T && <em>HÔM NAY</em>}</div>
+          <div className="agcards">{agItems.filter(x => x.s.date === d).map(({ p, s }) => { const ss = k.sessOfPlan(p.id); const kd = kind(s)
+            return <div key={s.id} className={'agc ' + kd} style={cssVar(color(p))}><button type="button" className="agt" onClick={() => onSess(s.id)}><span className="agtime">{s.start_t}–{s.end_t}</span><b>{k.sessTitle(s)}</b><small>{p.title} · buổi {ss.indexOf(s) + 1}/{ss.length}</small></button>
+              <div className="agm"><span><Ic n={s.mode === 'on' ? 'video' : 'pinmap'} /> {s.mode === 'on' ? (s.link ? platformOf(s.link) : 'Trực tuyến · chưa có link') : s.place || 'Trực tiếp'}</span><span><Ic n="user" /> {s.trainer || 'chưa có GV'}</span><span><Ic n="users" /> {k.traineesOf(p.id).length} học viên</span><span className={`pill ${SKN[kd][1]} plain`}>{SKN[kd][0]}</span></div>
+              {s.mode === 'on' && <div className="formact agact"><VirtBtns P={P} k={k} s={s} onSess={onSess} /></div>}</div> })}</div></div>)}
+          {!byDay.length && <Empty>{agMode === 'up' ? 'Không có buổi sắp tới.' : 'Tháng này chưa có buổi.'}</Empty>}</div>
+      </Panel>
+      <Panel className="calbig" title={`Tháng ${m}/${y}`} act={<><button type="button" className="btn sm ghost" aria-label="Tháng trước" onClick={() => setMonth(prev)}>‹</button><button type="button" className="btn sm" onClick={() => setMonth(k.T.slice(0, 7))}>Hôm nay</button><button type="button" className="btn sm ghost" aria-label="Tháng sau" onClick={() => setMonth(next)}>›</button></>}>
+        <div className="mcal">{['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(x => <div key={x} className="mh">{x}</div>)}
         {Array.from({ length: off }, (_, i) => <div key={'o' + i} className="cd out" />)}
         {Array.from({ length: days }, (_, i) => { const date = `${month}-${String(i + 1).padStart(2, '0')}`
           const ss = plans.flatMap(p => k.sessOfPlan(p.id).filter(s => s.date === date && sf(s)).map(s => ({ p, s })))
           return <div key={date} className={'cd' + (date === k.T ? ' today' : '')}><span className="dn">{i + 1}</span>{ss.map(({ p, s }) => <button type="button" key={s.id} className={'cev ' + s.mode} style={cssVar(color(p))} title={`${p.title} · ${k.sessTitle(s)}`} onClick={() => onSess(s.id)}>
             <b>{s.start_t}</b> {k.sessTitle(s)}{s.mode === 'on' && <> <Ic n="video" /></>}</button>)}</div> })}</div>
-      <div className="legend">{plans.filter(p => k.sessOfPlan(p.id).some(sf)).map(p => <span key={p.id}><i style={{ background: color(p) }} />{p.title}</span>)}<span><Ic n="video" /> trực tuyến</span></div></Panel>
-    <Panel icon="video" title={<>Lớp học trực tuyến <small className="sub">{up.length} sắp tới · {all.filter(x => !x.s.link).length} chưa có link</small></>} act={past.length > 0 && <button type="button" className="btn sm ghost" onClick={() => setVpast(!vpast)}>{vpast ? 'Ẩn' : 'Xem'} {past.length} buổi đã kết thúc</button>}>
-      {all.length ? <div className="vgrid">{[...up, ...(vpast ? past : [])].map(({ p, s }) => { const kd = kind(s)
-        return <article key={s.id} className={'vcard ' + kd}><div className="vtop"><span className={`pill ${SKN[kd][1]} plain`}>{SKN[kd][0]}</span><small>{s.link ? platformOf(s.link) : 'chưa có link'}</small></div>
-          <button type="button" className="linkbtn2 vtitle" onClick={() => onSess(s.id)}><b>{k.sessTitle(s)}</b></button><small className="sub">{p.title}</small>
-          <div className="vmeta"><span><Ic n="calendar" /> {wd(s.date)}, {vn(s.date)}</span><span><Ic n="clock" /> {s.start_t}–{s.end_t}</span><span><Ic n="user" /> {s.trainer}</span><span><Ic n="users" /> {k.traineesOf(p.id).length} học viên</span></div>
-          <div className="formact"><VirtBtns P={P} k={k} s={s} onSess={onSess} /></div></article> })}{!up.length && !vpast && <Empty>Không có buổi trực tuyến sắp tới.</Empty>}</div>
-        : <Empty>Không có buổi trực tuyến trong bộ lọc.</Empty>}
-      <small className="sub">Lớp ảo tạo từ buổi “Trực tuyến” của kế hoạch; hệ thống kết nối Google Meet/Zoom/MS Teams để tạo link, ghi hình và điểm danh theo thời gian tham gia.</small></Panel>
+      <div className="legend">{plans.filter(p => k.sessOfPlan(p.id).some(sf)).map(p => <span key={p.id}><i style={{ background: color(p) }} />{p.title}</span>)}<span><Ic n="video" /> trực tuyến</span></div>
+      </Panel>
+    </div>
   </>
 }
 function VirtBtns({ k, s, onSess, P }: { k: K; s: Sess; onSess: (id: string) => void; P?: P2 }) {

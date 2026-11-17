@@ -178,6 +178,7 @@ function LectList({ P, k, newLect, onOpen }: { P: P2; k: K; newLect: (mid: strin
   const [sub, setSub] = useState<'compose' | 'store'>(TARGET ? 'store' : 'compose')
   const [pick, setPick] = useState(false)
   const [, force] = useState(0)
+  const [lv, setLv] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.bt.lect') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const mods = db.progs.flatMap(p => k.allMods(p).filter(x => k.matSt(x.m).s !== 'none').map(x => ({ p, ...x })))
   const sum = (ps: Part[]) => ps.reduce((a, x) => a + (+x.minutes || 0), 0)
   const addBlock = async (L: Lect, part: number, b: Block) => { const parts = L.parts.map((x, i) => i === part ? { ...x, blocks: [...x.blocks, b] } : x)
@@ -196,13 +197,30 @@ function LectList({ P, k, newLect, onOpen }: { P: P2; k: K; newLect: (mid: strin
       {pick && <Panel icon="file" title="Chọn chuyên đề có học liệu" act={<button type="button" className="btn sm ghost" onClick={() => setPick(false)}>Đóng</button>}><div className="grid">{mods.map(({ p, s, m }) =>
         <button type="button" key={m.id} className="pcard mini" style={cssVar(k.groupOf(p.group_code).color)} onClick={() => newLect(m.id)}><div className="top"><span className="code sm">{p.code}</span><div style={{ minWidth: 0 }}><h3>{m.title}</h3><small style={{ color: 'var(--muted)' }}>{k.SUBJ(s)} · PB {k.matSt(m).v}</small></div></div></button>)}
         {!mods.length && <Empty>Chưa có chuyên đề nào có học liệu.</Empty>}</div></Panel>}
-      <div className="grid dgrid">{db.lects.map(l => { const m = k.mod(l.module_id); const p = m ? k.prog(m.program_id) : null; const g = k.groupOf(p?.group_code ?? null)
+      {/* Bản mẫu v315: bảng bài giảng gom theo chương trình (còn Thẻ) */}
+      <DataTable id="bt-lect" rows={db.lects} rowKey={l => l.id} noun="bài giảng" fold onOpen={l => onOpen(l.id, false)}
+        view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={lv} onChange={v => { setLv(v); try { localStorage.setItem('ph2.bt.lect', v) } catch { /* bỏ qua */ } }} />}
+        grid={lv === 'grid' ? (<div className="grid dgrid">{db.lects.map(l => { const m = k.mod(l.module_id); const p = m ? k.prog(m.program_id) : null; const g = k.groupOf(p?.group_code ?? null)
         return <article key={l.id} className="pcard dcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={m?.subject} /><span>{p?.code} · {k.SUBJ(m?.subject)}</span><b>{shortTitle(l.title).slice(0, 26)}</b></div><h3>{l.title}</h3>
           <small className="sub">{m?.title} · học liệu PB {l.mat_version ?? '?'} · {l.author}</small>
           <div className="chips">{l.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}<span className="chip">{l.parts.length} phần · {sum(l.parts)} phút</span></div>
           <div className="foot"><span>cập nhật {vn(l.updated_at)}</span><span className="cbtns"><button type="button" className="btn sm" onClick={() => onOpen(l.id, false)}><Ic n="edit" /> Soạn</button><button type="button" className="btn sm ghost" aria-label="View học viên" onClick={() => onOpen(l.id, true)}><Ic n="eye" /></button>
             <button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => P.run(supabase.from('ph2_lectures').delete().eq('id', l.id), '✓ Đã xoá bài giảng').then(() => force(x => x + 1))}><Ic n="trash" /></button></span></div></article> })}
-        {!db.lects.length && <Empty>Chưa có bài giảng.</Empty>}</div></>}
+        {!db.lects.length && <Empty>Chưa có bài giảng.</Empty>}</div>) : undefined}
+        groupBy={l => { const m = k.mod(l.module_id); const p = m ? k.prog(m.program_id) : null; const n = db.lects.filter(x => k.mod(x.module_id)?.program_id === m?.program_id).length
+          return [p?.id ?? '_', p ? <><span className="pcd">{p.code}</span><div className="ptit"><b>{p.name}</b></div><small className="pmeta">{n} bài giảng</small></> : <div className="ptit"><b>Chưa gắn chương trình</b></div>, k.groupOf(p?.group_code ?? null).color] }}
+        bulk={[{ label: 'Xuất bản', run: async rs => { const { error } = await supabase.from('ph2_lectures').update({ status: 'published' }).in('id', rs.map(l => l.id)); if (error) return error.message; await P.reload(); return `Đã xuất bản ${rs.length} bài giảng` } }]}
+        onDelete={async rs => { await P.run(supabase.from('ph2_lectures').delete().in('id', rs.map(l => l.id)), `✓ Đã xoá ${rs.length} bài giảng`) }}
+        empty={<Empty>Chưa có bài giảng.</Empty>}
+        cols={[
+          { key: 'title', label: 'Bài giảng', name: true, sort: l => l.title, cell: l => <b>{l.title}</b> },
+          { key: 'mod', label: 'Chuyên đề', sort: l => k.mod(l.module_id)?.title ?? null, cell: l => k.mod(l.module_id)?.title ?? '—' },
+          { key: 'mat', label: 'Học liệu', sort: l => l.mat_version ?? null, cell: l => 'PB ' + (l.mat_version ?? '?') },
+          { key: 'dur', label: 'Thời lượng', sort: l => sum(l.parts), cell: l => `${l.parts.length} phần · ${sum(l.parts)} phút` },
+          { key: 'who', label: 'Người soạn', sort: l => l.author ?? null, cell: l => l.author || '—' },
+          { key: 'date', label: 'Cập nhật', date: true, sort: l => vn(l.updated_at), cell: l => vn(l.updated_at) },
+          { key: 'status', label: 'Trạng thái', sum: 'status', sort: l => l.status, cell: l => l.status === 'published' ? <span className="pill good plain">Đã xuất bản</span> : <span className="pill draft plain">Nháp</span> },
+        ]} /></>}
   </>
 }
 function LectEditor({ P, k, L, part, setPart, learner, setLearner, onBack, onStore }: { P: P2; k: K; L: Lect; part: number; setPart: (n: number) => void; learner: boolean; setLearner: (v: boolean) => void; onBack: () => void; onStore: () => void }) {
