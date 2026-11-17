@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { PAGE, SUBMIT, TFORMAT, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type K, type Plan, type Prog, type Sess } from './api'
@@ -37,9 +37,9 @@ export function TrainPlans({ orgId, go }: { orgId: string | null; go?: (p: strin
   const allS = db.sess
   return <Mau>{msg}
     <PageHead icon="calendar" title="Kế hoạch đào tạo" sub="Theo dõi từng chương trình đã phát hành: chưa lập kế hoạch, đang lập dở hay đã lập; buổi, học viên, tiến độ">
-      {P.canManage && <button type="button" className="btn primary" onClick={() => setCreating(null)}><Ic n="plus" /> Lập kế hoạch</button>}</PageHead>
-    <Flow steps={[['plans', 'Kế hoạch đào tạo', `${db.plans.length} đợt · chọn học phần, thời gian`], ['reg', 'Đăng ký tham gia', `${db.plans.filter(x => k.regSt(x)[2] === 'open').length} đợt đang mở · học viên tự đăng ký`],
-      ['cal', 'Lịch & lớp học trực tuyến', `${allS.length} buổi · ${allS.filter(s => s.mode === 'on' && !k.sessEnd(s)).length} buổi online sắp tới`]]} value={tab} onChange={setTab} />
+      {P.canManage && <button type="button" className="btn primary" onClick={() => setCreating(null)}><Ic n="plus" /> Lập đợt đào tạo</button>}</PageHead>
+    <Flow steps={[['plans', 'Tạo đợt đào tạo', `${db.plans.length} đợt · chọn học phần, thời gian`], ['reg', 'Thông báo và đăng ký tham gia', `${db.plans.filter(x => k.regSt(x)[2] === 'open').length} đợt đang mở · học viên tự đăng ký`],
+      ['cal', 'Triển khai đào tạo', `${allS.length} buổi · ${allS.filter(s => s.mode === 'on' && !k.sessEnd(s)).length} buổi online sắp tới`]]} value={tab} onChange={setTab} />
     {tab === 'plans' ? <KhList P={P} k={k} onOpen={id => { setOpen(id); scrollTo(0, 0) }} onPlan={pid => { setCreating(pid); scrollTo(0, 0) }} />
       : tab === 'reg' ? <KhReg P={P} k={k} orgId={orgId} /> : <KhCal P={P} D={db} k={k} onSess={setSess} />}
     {modal}</Mau>
@@ -75,32 +75,33 @@ function KhList({ P, k, onOpen, onPlan }: { P: P2; k: K; onOpen: (id: string) =>
       const { error } = await supabase.from('ph2_plans').update({ notice: { ...(p.notice ?? { bgh: false }), date: vn(k.T), n: m } }).eq('id', p.id); if (error) return errMsg(error.message) }
     await P.reload(); return `Đã gửi nhắc ${ok.length} đợt · ${n} học viên chưa đăng ký${rs.length - ok.length ? ` · bỏ qua ${rs.length - ok.length} đợt không mở đăng ký` : ''}` }
   return <>
-    <div className="toolbar"><Search value={f.q} onChange={q => setF({ ...f, q })} placeholder="Tìm chương trình hoặc kế hoạch…" />
-      <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={pubs.map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <Sel label="Mọi tình trạng lập kế hoạch" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['none', 'Chưa lập kế hoạch'], ['doing', 'Nháp'], ['part', 'Chưa đủ học phần'], ['done', 'Đã lập kế hoạch']]} />
-      <Sel label="Tất cả các trường" value={f.sch} onChange={v => setF({ ...f, sch: v })} options={schools} />
-      <Sel label="Tất cả học phần" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(pubs.flatMap(k.subjectsOf))).map(s => [s, k.SUBJ(s)])} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.kh.mode', v) } catch { /* bỏ qua */ } }} />
-      {Object.values(f).some(Boolean) && <button type="button" className="btn sm ghost" onClick={() => setF({ q: '', prog: '', status: '', sch: '', subj: '' })}>Xoá lọc</button>}</div>
-    {view === 'table' ? <DataTable id="kh" rows={rows} rowKey={p => p.id} noun="đợt" onOpen={p => onOpen(p.id)}
-      groupBy={p => { const pr = k.prog(p.program_id)!; return [pr.id, progHead(pr, k.plansOf(pr.id).filter(pOk).length)] }}
+    <DataTable id="kh" rows={rows} rowKey={p => p.id} noun="kế hoạch" onOpen={p => onOpen(p.id)} fold
+      search={{ value: f.q, onChange: q => setF({ ...f, q }), placeholder: 'Tìm chương trình hoặc kế hoạch…' }}
+      filterBox={<><FRow label="Chương trình"><Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={pubs.map(p => [p.id, `${p.code} · ${p.name}`])} /></FRow>
+        <FRow label="Tình trạng lập kế hoạch"><Sel label="Mọi tình trạng" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['none', 'Chưa lập kế hoạch'], ['doing', 'Nháp'], ['part', 'Chưa đủ học phần'], ['done', 'Đã lập kế hoạch']]} /></FRow>
+        <FRow label="Trường"><Sel label="Tất cả các trường" value={f.sch} onChange={v => setF({ ...f, sch: v })} options={schools} /></FRow>
+        <FRow label="Học phần"><Sel label="Tất cả học phần" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(pubs.flatMap(k.subjectsOf))).map(s => [s, k.SUBJ(s)])} /></FRow></>}
+      fcount={[f.prog, f.status, f.sch, f.subj].filter(Boolean).length} onClearFilters={() => setF({ ...f, prog: '', status: '', sch: '', subj: '' })}
+      filters={f} onFilters={x => setF({ q: x.q ?? '', prog: x.prog ?? '', status: x.status ?? '', sch: x.sch ?? '', subj: x.subj ?? '' })}
+      view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.kh.mode', v) } catch { /* bỏ qua */ } }} />}
+      grid={view === 'grid' ? (<>{shown.filter(pr => k.plansOf(pr.id).some(pOk)).map(pr => { const g = k.groupOf(pr.group_code); const ps = k.plansOf(pr.id).filter(pOk)
+        return <details key={pr.id} className="panel kprog" style={{ padding: 0, gap: 0 }} open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
+          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span>{progHead(pr, ps.length)}</summary>
+          <div className="prgrid kgrid">{ps.map(planCard)}</div></details> })}</>) : undefined}
+      groupBy={p => { const pr = k.prog(p.program_id)!; return [pr.id, <><span className="pcd">{pr.code}</span><div className="ptit"><b>{pr.name}</b></div></>, k.groupOf(pr.group_code).color] }}
       empty={<Empty>Chưa có đợt đào tạo phù hợp.</Empty>}
       bulk={P.canManage ? [{ label: 'Gửi thông báo nhắc', run: remind },
         { label: 'Phát hành', run: async rs => { const ds = rs.filter(p => p.status === 'draft'); for (const p of ds) await publish(P, k, p, false, false); return `Đã phát hành ${ds.length} đợt${rs.length - ds.length ? ` · bỏ qua ${rs.length - ds.length} đợt đã phát hành` : ''}` } }] : []}
       onDelete={P.canManage ? async rs => { await P.run(supabase.from('ph2_plans').delete().in('id', rs.map(p => p.id)), `✓ Đã xoá ${rs.length} đợt`) } : undefined}
       cols={[
         { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit} · {(p.schools ?? []).length || 'mọi'} trường</small></> },
-        { key: 'subj', label: 'Học phần trong đợt', sort: p => k.planSubjs(p).map(k.SUBJ).join(', '), cell: p => k.planSubjs(p).map(k.SUBJ).join(', ') },
+        { key: 'subj', label: 'Học phần trong đợt', hidden: true, sort: p => k.planSubjs(p).map(k.SUBJ).join(', '), cell: p => k.planSubjs(p).map(k.SUBJ).join(', ') },
         { key: 'date', label: 'Thời gian', date: true, sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
         { key: 'sess', label: 'Buổi', sum: 'sum', sort: p => k.sessOfPlan(p.id).length, cell: p => k.sessOfPlan(p.id).length },
-        { key: 'done', label: 'Đã học', sum: 'frac', sort: p => k.sessOfPlan(p.id).filter(k.sessEnd).length, cell: p => `${k.sessOfPlan(p.id).filter(k.sessEnd).length}/${k.sessOfPlan(p.id).length}` },
         { key: 'reg', label: 'Đăng ký', sum: 'frac', sort: p => k.traineesOf(p.id).length, cell: p => `${k.traineesOf(p.id).length}/${p.cap}` },
+        { key: 'done', label: 'Tiến độ', sum: 'frac', sort: p => k.sessOfPlan(p.id).filter(k.sessEnd).length, cell: p => `${k.sessOfPlan(p.id).filter(k.sessEnd).length}/${k.sessOfPlan(p.id).length} buổi` },
         { key: 'status', label: 'Trạng thái', sum: 'status', sort: p => k.planSt(p)[0], cell: p => { const [sl, sc] = k.planSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
       ]} />
-      : shown.filter(pr => k.plansOf(pr.id).some(pOk)).map(pr => { const g = k.groupOf(pr.group_code); const ps = k.plansOf(pr.id).filter(pOk)
-        return <details key={pr.id} className="panel kprog" style={{ padding: 0, gap: 0 }} open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
-          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span>{progHead(pr, ps.length)}</summary>
-          <div className="prgrid kgrid">{ps.map(planCard)}</div></details> })}
     {noPlan.length > 0 && <Panel icon="alert" title={<>Chương trình chưa lập kế hoạch <small className="sub">{noPlan.length}</small></>}>
       {noPlan.map(pr => <div key={pr.id} className="panel kprog noplan" style={{ padding: 0, gap: 0 }}><div className="phead" style={cssVar(k.groupOf(pr.group_code).color)}>{progHead(pr, 0)}</div></div>)}</Panel>}
     {!shown.length && <Empty>Không có chương trình phù hợp.</Empty>}
@@ -321,7 +322,7 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
     <section className="panel kinfo"><dl className="kv"><div><dt>Đơn vị tổ chức</dt><dd>{p.unit}</dd></div><div><dt>Giảng viên</dt><dd>{Array.from(new Set(ss.map(s => s.trainer).filter(Boolean))).join(', ') || 'Chưa phân công'}</dd></div><div><dt>Trợ giảng</dt><dd>{p.assist?.join(', ') || '—'}</dd></div>
       <div><dt>Đăng ký</dt><dd>{trs.length}/{p.cap} · hạn {vn(p.reg_due)}</dd></div><div><dt>Điều kiện tham gia</dt><dd>{k.condText(p).map((x, i) => <Fragment key={i}>{i > 0 && <br />}{x}</Fragment>)}{!k.condText(p).length && 'Không giới hạn'}{p.schools?.length > 0 && <><br /><small className="sub">{p.schools.length} trường được mời</small></>}</dd></div>
       <div><dt>Thông báo</dt><dd>{p.notice ? `Đã gửi ${p.notice.date} · ${p.notice.n} học viên${p.notice.bgh ? ' + BGH' : ''}` : <span className="sub">Chưa gửi</span>}</dd></div></dl></section>
-    <div className="ctbar"><div className="tabs"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button><button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button></div>
+    <div className="ctbar"><div className="seg" role="tablist"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button><button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button></div>
       <div className="ctstats"><span><b>{done}/{ss.length}</b>buổi đã học · {ss.filter(s => s.mode === 'on').length} trực tuyến</span><span><b>{k.planSubjs(p).reduce((a, s) => a + k.subjH(pr, s), 0)}</b>giờ · {fmtM(pr.mpp)}/buổi</span>
         <span>Có mặt <b>{st.att[0]}/{st.att[1]}</b></span><span>Đã nộp <b>{st.sub[0]}/{st.sub[1]}</b>{st.late > 0 && <small className="badtxt"> · {st.late} quá hạn</small>}</span><span>Đã chấm <b>{st.gr[0]}/{st.gr[1]}</b></span></div></div>
     {sub === 'people' ? <KhPeople P={P} k={k} p={p} pr={pr} /> : <>

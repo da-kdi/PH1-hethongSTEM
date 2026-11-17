@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { CatalogPanel } from './Catalog'
 import { norm } from '../ui'
@@ -7,7 +7,7 @@ import {
   type CatItem, type Content, type Curriculum, type Lesson, type MVer, type Scope, type Unit,
 } from './api'
 import { DataTable } from '../mau/DataTable'
-import { AsideWrap, LevelTree, type TreeLevel, Back, HNote, Confirm, Cover, Empty, Flow, Group, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { AsideWrap, LevelTree, type TreeLevel, Back, HNote, Confirm, Cover, Empty, FRow, Flow, Group, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.1 Chương trình giáo dục — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
 //   Danh sách: chuỗi bước Danh mục → Chương trình, 4 thẻ số liệu, lọc Cấp học / Khối / Môn / Trạng thái, Thẻ | Danh sách.
@@ -126,26 +126,12 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
       <div className="chips">{c.grades.length ? c.grades.map(g => <span key={g} className="chip k" style={cssVar(col)}>{gradeLabel(g)}</span>) : <span className="chip">Chưa gán khối</span>}</div>
       <div className="foot"><span>{subjCount(ls).size} môn · {ls.length} bài · {ls.reduce((a, l) => a + l.periods, 0)} tiết</span><StatusPill s={c.status} /></div>
     </button> }
-  // Bảng dùng chung (bản mẫu v315 · B): chọn dòng, sắp xếp, dòng tổng, chọn cột; "Quy mô" tách Số bài / Số tiết (B9)
-  const table = (cs: Curriculum[], owner: boolean, withClone = false) => <DataTable id={'ct-' + (owner ? 'mine' : 'shared')} rows={cs} rowKey={c => c.id} noun="chương trình" onOpen={c => setOpenId(c.id)}
-    bulk={canManage ? [{ label: 'Phát hành', run: bulkPublish }, { label: 'Nhân bản', run: bulkClone }] : []}
-    onDelete={canManage && !owner ? bulkDelete : undefined}
-    cols={[
-      { key: 'name', label: 'Chương trình', name: true, sort: c => c.name, cell: c => <><b>{c.code ? c.code + ' · ' : ''}{c.name}</b><small>{owner ? c.owner_name : c.summary}</small></> },
-      { key: 'grade', label: 'Cấp học · Khối', cell: c => gradesText(cat, c.grades) },
-      { key: 'subject', label: 'Môn học', cell: c => [...subjCount(lessonsOf(c)).keys()].map(s => catName(cat, 'subject', s)).join(', ') || '—' },
-      { key: 'lessons', label: 'Số bài', sort: c => lessonsOf(c).length, sum: 'sum', cell: c => lessonsOf(c).length },
-      { key: 'periods', label: 'Số tiết', sort: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0), sum: 'sum', cell: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0) },
-      { key: 'date', label: 'Phát hành gần nhất', date: true, sort: c => pubOf(c) ? new Date(pubOf(c)!).toLocaleDateString('vi-VN') : null, cell: c => pubOf(c) ? new Date(pubOf(c)!).toLocaleDateString('vi-VN') : <span className="sub">Chưa phát hành</span> },
-      { key: 'status', label: 'Trạng thái', sum: 'status', sort: c => c.status, cell: c => <StatusPill s={c.status} /> },
-      ...(withClone && canManage ? [{ key: 'act', label: 'Thao tác', raw: true, sum: false as const, cell: (c: Curriculum) => <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button> }] : []),
-    ]} />
-  const section = (title: string, cs: Curriculum[], owner: boolean, withClone = false, empty?: string) => <>
-    <Group title={title} n={cs.length} />
-    {!cs.length ? <Empty>{empty ?? 'Không có chương trình phù hợp bộ lọc.'}</Empty> : mode === 'grid'
-      ? <div className="grid">{cs.map(c => withClone && canManage ? <div key={c.id} className="cur-cardwrap">{card(c, owner)}<button type="button" className="linkbtn" onClick={() => clone(c)}>Kế thừa để điều chỉnh</button></div> : card(c, owner))}</div>
-      : table(cs, owner, withClone)}</>
-
+  // Bảng dùng chung (bản mẫu v315 · B): một bảng, thanh công cụ của bảng (Tìm · Lọc · Cột · Mở rộng · Lưu bộ lọc · Xuất · Danh sách|Thẻ); nhóm theo nguồn chương trình
+  const secOf = (c: Curriculum) => mine.includes(c) ? 'mine' : shared.includes(c) ? 'shared' : 'child'
+  const SEC: Record<string, string> = { mine: me?.type === 'provider' ? 'Chương trình của KDI' : `Chương trình của ${me?.name ?? 'đơn vị'}`, shared: 'Được phát hành tới đơn vị', child: 'Của đơn vị trực thuộc' }
+  const all3 = [...mine, ...shared, ...children]
+  const multi = new Set(all3.map(secOf)).size > 1
+  const fc = [f.subject, f.status].filter(Boolean).length
   return <Mau>
     <PageHead icon="book" title="Chương trình giáo dục" sub="Khung chương trình STEM theo cấp học, khối, môn và bài học">
       {top === 'programs' && canManage && <button type="button" className="btn primary" onClick={() => { setCreating(true); setMsg('') }}><Ic n="plus" /> Chương trình mới</button>}
@@ -166,16 +152,30 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
           setCreating(false); await load(); setOpenId(id); return null
         }} />}
       <LevelTree id="ct" levels={treeLv} total={list.length} level={f.level} grade={f.grade} unit="chương trình" onPick={(l, g) => setF({ ...f, level: l, grade: g })}>
-      <div className="toolbar">
-        <Search value={q} onChange={setQ} placeholder="Tìm theo mã, tên, mô tả chương trình…" />
-        <Sel label="Tất cả môn học" value={f.subject} onChange={v => setF({ ...f, subject: v })} options={subjOpts.map(s => [s, catName(cat, 'subject', s)])} />
-        <Sel label="Mọi trạng thái" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['draft', 'Nháp'], ['published', 'Đã phát hành'], ['archived', 'Ngừng dùng']]} />
-        <Seg label="Kiểu xem" items={[['grid', 'Thẻ'], ['table', 'Danh sách']]} value={mode} onChange={v => { setMode(v); try { localStorage.setItem('ph1.ct.mode', v) } catch { /* bỏ qua */ } }} />
-      </div>
-      {section(me?.type === 'provider' ? 'Chương trình của KDI' : `Chương trình của ${me?.name ?? 'đơn vị'}`, mine, false, false,
-        canManage ? 'Chưa có chương trình riêng. Bấm “Chương trình mới” hoặc kế thừa một chương trình bên dưới.' : 'Đơn vị chưa có chương trình riêng.')}
-      {shared.length > 0 && section('Được phát hành tới đơn vị', shared, true, true)}
-      {children.length > 0 && section('Của đơn vị trực thuộc', children, true)}
+      <DataTable id="ct" rows={all3} rowKey={c => c.id} noun="chương trình" onOpen={c => setOpenId(c.id)}
+        search={{ value: q, onChange: setQ, placeholder: 'Tìm theo mã, tên, mô tả chương trình…' }}
+        filterBox={<><FRow label="Môn học"><Sel label="Tất cả môn học" value={f.subject} onChange={v => setF({ ...f, subject: v })} options={subjOpts.map(s => [s, catName(cat, 'subject', s)])} /></FRow>
+          <FRow label="Trạng thái"><Sel label="Mọi trạng thái" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['draft', 'Nháp'], ['published', 'Đã phát hành'], ['archived', 'Ngừng dùng']]} /></FRow></>}
+        fcount={fc} onClearFilters={() => setF({ ...f, subject: '', status: '' })}
+        filters={{ q, subject: f.subject, status: f.status }} onFilters={x => { setQ(x.q ?? ''); setF({ ...f, subject: x.subject ?? '', status: x.status ?? '' }) }}
+        view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={mode} onChange={v => { setMode(v); try { localStorage.setItem('ph1.ct.mode', v) } catch { /* bỏ qua */ } }} />}
+        groupBy={multi ? c => [secOf(c), SEC[secOf(c)]] : undefined}
+        empty={<Empty>{!list.length && canManage ? 'Chưa có chương trình. Bấm “Chương trình mới”.' : 'Không có chương trình phù hợp bộ lọc.'}</Empty>}
+        grid={mode === 'grid' ? (all3.length ? <>{(['mine', 'shared', 'child'] as const).map(k => { const cs = all3.filter(c => secOf(c) === k); if (!cs.length) return null
+          return <Fragment key={k}>{multi && <Group title={SEC[k]} n={cs.length} />}<div className="grid">{cs.map(c => k === 'shared' && canManage ? <div key={c.id} className="cur-cardwrap">{card(c, true)}<button type="button" className="linkbtn" onClick={() => clone(c)}>Kế thừa để điều chỉnh</button></div> : card(c, k !== 'mine'))}</div></Fragment> })}</>
+          : <Empty>Không có chương trình phù hợp bộ lọc.</Empty>) : undefined}
+        bulk={canManage ? [{ label: 'Phát hành', run: bulkPublish }, { label: 'Nhân bản', run: bulkClone }] : []}
+        onDelete={canManage ? (rs => bulkDelete(rs.filter(c => secOf(c) === 'mine'))) : undefined}
+        cols={[
+          { key: 'name', label: 'Chương trình', name: true, sort: c => c.name, cell: c => <><b>{c.name}</b><small>{c.code ?? ''}{secOf(c) !== 'mine' && c.owner_name ? ' · ' + c.owner_name : ''}</small></> },
+          { key: 'grade', label: 'Cấp học · Khối', cell: c => gradesText(cat, c.grades) },
+          { key: 'subject', label: 'Môn học', cell: c => [...subjCount(lessonsOf(c)).keys()].map(s => catName(cat, 'subject', s)).join(', ') || '—' },
+          { key: 'lessons', label: 'Số bài', sort: c => lessonsOf(c).length, sum: 'sum', cell: c => lessonsOf(c).length },
+          { key: 'periods', label: 'Số tiết', sort: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0), sum: 'sum', cell: c => lessonsOf(c).reduce((a, l) => a + l.periods, 0) },
+          { key: 'date', label: 'Phát hành gần nhất', date: true, sort: c => pubOf(c) ? new Date(pubOf(c)!).toLocaleDateString('vi-VN') : null, cell: c => pubOf(c) ? new Date(pubOf(c)!).toLocaleDateString('vi-VN') : 'Chưa phát hành' },
+          { key: 'status', label: 'Trạng thái', sum: 'status', sort: c => c.status, cell: c => <StatusPill s={c.status} /> },
+          ...(canManage && shared.length ? [{ key: 'act', label: 'Thao tác', raw: true, sum: false as const, hidden: true, cell: (c: Curriculum) => secOf(c) === 'shared' ? <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); clone(c) }}>Kế thừa</button> : null }] : []),
+        ]} />
       </LevelTree>
     </>}
   </Mau>
@@ -335,7 +335,7 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
     {ask && <Confirm text={ask.text} yes={ask.yes} danger={ask.act === 'delete'} onNo={() => setAsk(null)} onYes={() => { const a = ask.act; setAsk(null); a === 'delete' ? removeProgram() : setStatus(a === 'archive' ? 'archived' : 'draft') }} />}
     {msg && <p className="msg">{msg}</p>}
     {note && <p className="okmsg">{note}</p>}
-    <div className="ctbar"><div className="tabs" role="tablist">
+    <div className="ctbar"><div className="seg" role="tablist">
       <button type="button" role="tab" className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>Chương trình</button>
       <button type="button" role="tab" className={tab === 'deploy' ? 'on' : ''} onClick={() => setTab('deploy')}>Phân phối & trường áp dụng</button>
       {editable && <button type="button" role="tab" className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>Thiết lập</button>}</div>

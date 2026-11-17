@@ -122,7 +122,6 @@ body.rzing{cursor:col-resize;user-select:none}
 
 /* ===== Chi tiết chương trình (C1): thanh tab + số liệu, cột môn bên trái, Thông tin chung bên phải ===== */
 .mau .ctbar{display:flex;align-items:flex-end;gap:16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.mau .ctbar>.tabs{width:auto;border-bottom:0}
 .mau .ctstats{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;padding-bottom:10px;color:var(--muted);font-size:13px}.mau .ctstats b{color:var(--fg);font-weight:600;margin-right:3px}
 .mau .ctlessons{display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;align-items:start}
 .mau .ctsubs{display:grid;gap:4px;position:sticky;top:76px}

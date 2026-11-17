@@ -5,7 +5,7 @@ import { catName, catOf, gradesOfLevel, effectiveCatalog, inUseOf, newerOf, useC
 import { planOf, stepsOf, type MLesson, type Norm } from '../materials/MaterialsPage'
 import { DataTable } from '../mau/DataTable'
 import { Presenter } from './Presenter'
-import { LevelTree, type TreeLevel, Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, cssVar } from '../mau/kit'
+import { LevelTree, FRow, type TreeLevel, Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, cssVar } from '../mau/kit'
 import { SGLYPH } from '../mau/icons'
 import { ACTS, clone, setActToast, setActUses } from './acts'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from './blocks'
@@ -39,6 +39,7 @@ export function DesignsMau({ orgId, teacherId }: { orgId: string | null; teacher
   const [chosen, setChosen] = useState<Map<string, string>>(new Map())
   const [tab, setTab] = useState<'store' | 'compose'>('compose')
   const [fs, setFs] = useState<'all' | 'published' | 'draft'>('all')
+  const [bq, setBq] = useState('')
   // Danh sách dạng bảng (mặc định) | thẻ, cây Cấp học › Khối (bản mẫu v315 · C4)
   const [bview, setBview] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.bg.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const [tg, setTg] = useState({ level: '', grade: '' })
@@ -138,7 +139,8 @@ export function DesignsMau({ orgId, teacherId }: { orgId: string | null; teacher
   const inTree = (x: Design) => (!tg.grade || gradeOf(x) === Number(tg.grade)) && (!tg.level || gradesOfLevel(cat, tg.level).includes(gradeOf(x) ?? -1))
   const treeLv: TreeLevel[] = catOf(cat, 'level').map(l => { const gs = gradesOfLevel(cat, l.code)
     return { code: l.code, name: l.name, n: mine.filter(x => gs.includes(gradeOf(x) ?? -1)).length, grades: gs.map(g => ({ g, label: 'Khối ' + g, n: mine.filter(x => gradeOf(x) === g).length })) } })
-  const shown = mine.filter(inTree).filter(x => fs === 'all' || (fs === 'published' ? x.status === 'published' && !x.draft_of : x.status !== 'published' || x.draft_of))
+  const bqq = norm(bq)
+  const shown = mine.filter(inTree).filter(x => !bqq || norm(`${code.get(x.id) ?? ''} ${x.title}`).includes(bqq)).filter(x => fs === 'all' || (fs === 'published' ? x.status === 'published' && !x.draft_of : x.status !== 'published' || x.draft_of))
   const tgt = target ? list.find(x => x.id === target.design) ?? null : null
   return <Mau>
     {msg && <p className="msg" role="status" onClick={() => setMsg('')}>{msg}</p>}
@@ -160,30 +162,12 @@ export function DesignsMau({ orgId, teacherId }: { orgId: string | null; teacher
         onNew: async (mlId, a, cfg) => { const n = await newDesign(mlId, undefined, { type: 'activity', act: a.id, cfg: clone(cfg) }); if (n) { setTab('compose'); setAct(0) } } }} />
       : <>
         <LevelTree id="bg" levels={treeLv} total={mine.length} level={tg.level} grade={tg.grade} unit="bài giảng" onPick={(l, g) => setTg({ level: l, grade: g })}>
-        <div className="toolbar"><Seg label="Trạng thái" items={[['all', 'Tất cả'], ['published', 'Đã xuất bản'], ['draft', 'Nháp']]} value={fs} onChange={setFs} />
-          <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={bview} onChange={v => { setBview(v); try { localStorage.setItem('ph1.bg.mode', v) } catch { /* bỏ qua */ } }} />
-          <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>Bài giảng của {orgName(orgId ?? '') || 'đơn vị'}</span></div>
-        {bview === 'table' ? <DataTable id="bg" rows={shown} rowKey={x => x.id} noun="bài giảng" onOpen={x => { setOpen(x.id); setAct(0); setStudent(false); scrollTo(0, 0) }}
-          groupBy={x => { const c = ctxOf(x); return [c.p?.id ?? '_', c.p ? <><span className="code sm" style={cssVar(c.color)}>{c.p.code}</span> {c.p.name}</> : 'Chưa gắn chương trình'] }}
-          empty={<Empty>Chưa có bài giảng ở trạng thái này.</Empty>}
-          bulk={[{ label: 'Xuất bản', run: async rs => { const ids = rs.filter(x => x.status !== 'published' && !x.draft_of).map(x => x.id)
-              if (ids.length) { const { error } = await supabase.from('lesson_designs').update({ status: 'published' }).in('id', ids); if (error) return errMsg(error.message) }
-              await load(); return `Đã xuất bản ${ids.length} bài giảng${rs.length - ids.length ? ` · bỏ qua ${rs.length - ids.length} (đã xuất bản hoặc là bản nháp sửa)` : ''}` } },
-            { label: 'Nhân bản', run: async rs => { let n = 0
-              for (const x of rs) { const { id: _i, created_at: _c, updated_at: _u, ...rest } = x; const r = await supabase.from('lesson_designs').insert({ ...rest, title: x.title + ' (bản sao)', status: 'draft', draft_of: null, based_on_id: x.id }); if (!r.error) n++ }
-              await load(); return `Đã nhân bản ${n} bài giảng` } }]}
-          onDelete={async rs => { const { error } = await supabase.from('lesson_designs').delete().in('id', rs.map(x => x.id)); if (error) setMsg(errMsg(error.message)); await load() }}
-          cols={[
-            { key: 'title', label: 'Bài giảng', name: true, sort: x => x.title, cell: x => <><b>{x.title}</b><small>{code.get(x.id)} · {orgName(x.org_id)}</small></> },
-            { key: 'prog', label: 'Chương trình', sort: x => ctxOf(x).p?.code ?? null, cell: x => ctxOf(x).p?.code ?? '—' },
-            { key: 'subj', label: 'Môn học', sort: x => ctxOf(x).sn, cell: x => ctxOf(x).sn || '—' },
-            { key: 'grade', label: 'Khối', sum: false, sort: x => gradeOf(x), cell: x => gradeOf(x) != null ? 'Khối ' + gradeOf(x) : '—' },
-            { key: 'ml', label: 'Học liệu', sort: x => ctxOf(x).ml?.version_no ?? null, cell: x => { const c = ctxOf(x); return <>{c.ml ? 'PB ' + c.ml.version_no : '—'}{c.newer && <> <span className="pill info plain">có PB {c.newer.version_no}</span></>}</> } },
-            { key: 'acts', label: 'Hoạt động', sum: 'sum', sort: x => actsOf(x).length, cell: x => actsOf(x).length },
-            { key: 'date', label: 'Cập nhật', date: true, sort: x => new Date(x.updated_at).toLocaleDateString('vi-VN'), cell: x => new Date(x.updated_at).toLocaleDateString('vi-VN') },
-            { key: 'status', label: 'Trạng thái', sum: 'status', sort: x => x.draft_of ? 'Nháp sửa' : x.status, cell: x => <DStatus d={x} /> },
-          ]} />
-        : !shown.length ? <Empty>Chưa có bài giảng ở trạng thái này.</Empty> : <div className="grid dgrid">{shown.map(x => { const c = ctxOf(x)
+        <DataTable id="bg" rows={shown} fold
+          search={{ value: bq, onChange: setBq, placeholder: 'Tìm theo mã, tên bài giảng…' }}
+          filterBox={<FRow label="Trạng thái"><Sel label="Mọi trạng thái" value={fs === 'all' ? '' : fs} onChange={v => setFs((v || 'all') as typeof fs)} options={[['published', 'Đã xuất bản'], ['draft', 'Nháp']]} /></FRow>}
+          fcount={fs === 'all' ? 0 : 1} onClearFilters={() => setFs('all')}
+          view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={bview} onChange={v => { setBview(v); try { localStorage.setItem('ph1.bg.mode', v) } catch { /* bỏ qua */ } }} />}
+          grid={bview === 'grid' ? (!shown.length ? <Empty>Chưa có bài giảng ở trạng thái này.</Empty> : <div className="grid dgrid">{shown.map(x => { const c = ctxOf(x)
           return <article key={x.id} className="pcard dcard" style={cssVar(c.color)}>
             <div className="cover"><CoverDeco s={c.s} /><span>{c.p?.code ?? '—'} · {c.sn}</span><b>{code.get(x.id)}</b></div>
             <div className="top"><div style={{ minWidth: 0 }}><h3>{x.title}</h3><small style={{ color: 'var(--muted)' }}>{c.sn} · học liệu PB {c.ml?.version_no ?? '?'} · {orgName(x.org_id)}</small></div></div>
@@ -196,7 +180,25 @@ export function DesignsMau({ orgId, teacherId }: { orgId: string | null; teacher
               <button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => setAsk(x.id)}><Ic n="trash" /></button></span></div>
             {ask === x.id && <div className="confirm sm">Xoá {code.get(x.id)}? <button type="button" className="btn sm danger" onClick={async () => { const { error } = await supabase.from('lesson_designs').delete().eq('id', x.id); setAsk(null); if (error) setMsg(errMsg(error.message)); else { setMsg(`Đã xoá ${code.get(x.id)}`); load() } }}>Xoá</button>
               <button type="button" className="btn sm ghost" onClick={() => setAsk(null)}>Thôi</button></div>}
-          </article> })}</div>}
+          </article> })}</div>) : undefined}
+          subBy={x => { const c = ctxOf(x); return [c.s ?? '', <><span className="tag">Môn</span> <b className="hpname">{c.sn || '—'}</b></>] }} rowKey={x => x.id} noun="bài giảng" onOpen={x => { setOpen(x.id); setAct(0); setStudent(false); scrollTo(0, 0) }}
+          groupBy={x => { const c = ctxOf(x); return [c.p?.id ?? '_', c.p ? <><span className="pcd">{c.p.code}</span><div className="ptit"><b>{c.p.name}</b></div></> : <div className="ptit"><b>Chưa gắn chương trình</b></div>, c.color] }}
+          empty={<Empty>Chưa có bài giảng ở trạng thái này.</Empty>}
+          bulk={[{ label: 'Xuất bản', run: async rs => { const ids = rs.filter(x => x.status !== 'published' && !x.draft_of).map(x => x.id)
+              if (ids.length) { const { error } = await supabase.from('lesson_designs').update({ status: 'published' }).in('id', ids); if (error) return errMsg(error.message) }
+              await load(); return `Đã xuất bản ${ids.length} bài giảng${rs.length - ids.length ? ` · bỏ qua ${rs.length - ids.length} (đã xuất bản hoặc là bản nháp sửa)` : ''}` } },
+            { label: 'Nhân bản', run: async rs => { let n = 0
+              for (const x of rs) { const { id: _i, created_at: _c, updated_at: _u, ...rest } = x; const r = await supabase.from('lesson_designs').insert({ ...rest, title: x.title + ' (bản sao)', status: 'draft', draft_of: null, based_on_id: x.id }); if (!r.error) n++ }
+              await load(); return `Đã nhân bản ${n} bài giảng` } }]}
+          onDelete={async rs => { const { error } = await supabase.from('lesson_designs').delete().in('id', rs.map(x => x.id)); if (error) setMsg(errMsg(error.message)); await load() }}
+          cols={[
+            { key: 'title', label: 'Bài giảng', name: true, sort: x => x.title, cell: x => <b>{x.title}</b> },
+            { key: 'grade', label: 'Khối', sort: x => gradeOf(x), cell: x => gradeOf(x) != null ? 'Khối ' + gradeOf(x) : '—' },
+            { key: 'ml', label: 'Từ học liệu', sort: x => ctxOf(x).ml?.version_no ?? null, cell: x => { const c = ctxOf(x); return <>{c.ml ? 'PB ' + c.ml.version_no : '—'}{c.newer && <> <span className="pill info plain">có PB {c.newer.version_no}</span></>}</> } },
+            { key: 'who', label: 'Người soạn', sort: x => orgName(x.org_id), cell: x => orgName(x.org_id) || '—' },
+            { key: 'status', label: 'Trạng thái', sum: 'status', sort: x => x.draft_of ? 'Nháp sửa' : x.status, cell: x => <DStatus d={x} /> },
+            { key: 'date', label: 'Cập nhật', date: true, sort: x => new Date(x.updated_at).toLocaleDateString('vi-VN'), cell: x => new Date(x.updated_at).toLocaleDateString('vi-VN') },
+          ]} />
         </LevelTree>
       </>}
   </Mau>

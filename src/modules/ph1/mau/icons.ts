@@ -1,5 +1,10 @@
 // Bộ biểu tượng lấy từ bản mẫu giao diện (ph1-chuong-trinh-mau.html) — nét 24×24, stroke currentColor
 export const I: Record<string, string> = {
+"filter": "<path d=\"M3 5h18l-7 8v6l-4 2v-8z\"/>",
+"cols": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M9 4v16M15 4v16\"/>",
+"download": "<path d=\"M12 4v12M7 11l5 5 5-5M4 20h16\"/>",
+"import": "<path d=\"M12 16V4M7 9l5-5 5 5M4 20h16\"/>",
+"tpl": "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5\"/>",
 "book": "<path d=\"M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z\"/><path d=\"M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z\"/>",
 "layers": "<path d=\"m12 2 10 5-10 5L2 7z\"/><path d=\"m2 17 10 5 10-5\"/><path d=\"m2 12 10 5 10-5\"/>",
 "list": "<path d=\"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01\"/>",
