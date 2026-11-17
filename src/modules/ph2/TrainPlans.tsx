@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
-import { norm } from '../ph1/ui'
-import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../ph1/mau/kit'
+import { errMsg, norm } from '../ph1/ui'
+import { DataTable } from '../ph1/mau/DataTable'
+import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
-import { PAGE, TFORMAT, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type K, type Plan, type Prog, type Sess } from './api'
+import { PAGE, SUBMIT, TFORMAT, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type K, type Plan, type Prog, type Sess } from './api'
 import { useP2, type P2 } from './use'
 
 // 2.1b Kế hoạch & lịch đào tạo — dựng theo bản mẫu giao diện: Kế hoạch đào tạo (theo chương trình đã phát hành: chưa lập / đang lập dở / đã lập)
@@ -45,14 +46,15 @@ export function TrainPlans({ orgId, go }: { orgId: string | null; go?: (p: strin
 }
 
 // ---------- Danh sách theo chương trình ----------
+// Bản mẫu v315 · C7: bỏ thẻ số tổng và nhãn trạng thái chung trên dòng chương trình (trạng thái chỉ ở từng đợt); bảng dùng chung gom theo chương trình, không thanh tiến độ;
+// thao tác hàng loạt Gửi thông báo nhắc · Phát hành
 function KhList({ P, k, onOpen, onPlan }: { P: P2; k: K; onOpen: (id: string) => void; onPlan: (pid: string) => void }) {
   const db = P.db!
   const [f, setF] = useState({ q: '', prog: '', status: '', sch: '', subj: '' })
-  const [view, setView] = useState<'table' | 'grid'>('table')
+  const [view, setView] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.kh.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const [shut, setShut] = useState<Set<string>>(new Set())
   const pubs = db.progs.filter(p => p.status === 'published'); const drafts = db.progs.filter(p => p.status === 'draft')
-  const cnt = (x: string) => pubs.filter(p => k.progPlanSt(p)[0] === x).length
-  const qq = norm(f.q); const order: Record<string, number> = { none: 0, doing: 1, done: 2 }
+  const qq = norm(f.q); const order: Record<string, number> = { none: 0, doing: 1, part: 2, done: 3 }
   const pOk = (p: Plan) => (!f.sch || !p.schools?.length || p.schools.includes(f.sch)) && (!f.subj || k.planSubjs(p).includes(f.subj))
   const shown = pubs.filter(pr => (!f.prog || pr.id === f.prog) && (!f.status || k.progPlanSt(pr)[0] === f.status) && (!qq || norm(`${pr.code} ${pr.name} ${k.plansOf(pr.id).map(p => p.title).join(' ')}`).includes(qq)))
     .filter(pr => !(f.sch || f.subj) || k.plansOf(pr.id).some(pOk) || (!k.plansOf(pr.id).length && (!f.subj || k.subjectsOf(pr).includes(f.subj))))
@@ -63,30 +65,44 @@ function KhList({ P, k, onOpen, onPlan }: { P: P2; k: K; onOpen: (id: string) =>
       <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
       <div className="chips">{k.planSubjs(p).map(s => <span key={s} className="chip k" style={cssVar(g.color)}>{k.SUBJ(s)}</span>)}<span className="chip">{p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</span></div>
       <div className="foot"><span>{done}/{ss.length} buổi đã học · {k.traineesOf(p.id).length}/{p.cap} đăng ký</span><span className={`pill ${sc} plain`}>{sl}</span></div></article> }
-  const planRow = (p: Plan) => { const ss = k.sessOfPlan(p.id); const done = ss.filter(k.sessEnd).length; const [sl, sc] = k.planSt(p)
-    return <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}><td><b>{p.title}</b><br /><small className="sub">{p.unit} · {(p.schools ?? []).length || 'mọi'} trường</small></td><td>{k.planSubjs(p).map(k.SUBJ).join(', ')}</td><td>{k.planRange(p)}</td>
-      <td className="c">{ss.length}</td><td className="c">{k.traineesOf(p.id).length}/{p.cap}</td><td><div className="bar sm"><i style={{ width: `${ss.length ? done / ss.length * 100 : 0}%` }} /></div><small className="sub">{done}/{ss.length} buổi</small></td>
-      <td><span className={`pill ${sc} plain`}>{sl}</span></td></tr> }
+  const progHead = (pr: Prog, n: number) => { const ps = k.plansOf(pr.id).filter(pOk); const tv = new Set(ps.flatMap(p => k.traineesOf(p.id))).size; const c = k.progCover(pr), all = k.subjectsOf(pr).length
+    return <><span className="code sm" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span> <b>{pr.name}</b> <small>{k.progH(pr)} giờ · {n} đợt · đã lên kế hoạch {c}/{all} học phần · {tv} học viên</small>
+      {P.canManage && <button type="button" className="btn sm" style={{ marginLeft: 8 }} onClick={e => { e.preventDefault(); e.stopPropagation(); onPlan(pr.id) }}><Ic n="plus" /> Lập đợt đào tạo</button>}</> }
+  const rows = shown.flatMap(pr => k.plansOf(pr.id).filter(pOk))
+  const noPlan = shown.filter(pr => !k.plansOf(pr.id).length)
+  const remind = async (rs: Plan[]) => { const ok = rs.filter(p => k.regSt(p)[2] === 'open'); let n = 0
+    for (const p of ok) { const m = k.eligibleOf(p).filter(t => !k.traineesOf(p.id).includes(t.id)).length; n += m
+      const { error } = await supabase.from('ph2_plans').update({ notice: { ...(p.notice ?? { bgh: false }), date: vn(k.T), n: m } }).eq('id', p.id); if (error) return errMsg(error.message) }
+    await P.reload(); return `Đã gửi nhắc ${ok.length} đợt · ${n} học viên chưa đăng ký${rs.length - ok.length ? ` · bỏ qua ${rs.length - ok.length} đợt không mở đăng ký` : ''}` }
   return <>
-    <div className="stats"><StatCard c="c-blue" icon="book" label="Chương trình đã phát hành" value={pubs.length} sub={drafts.length ? drafts.length + ' chương trình còn nháp' : 'sẵn sàng lập kế hoạch'} />
-      <StatCard c="c-red" icon="alert" label="Chưa lập kế hoạch" value={cnt('none')} sub="chương trình cần lập" />
-      <StatCard c="c-amber" icon="edit" label="Đang lập dở" value={cnt('doing')} sub={db.plans.filter(p => p.status === 'draft').length + ' kế hoạch nháp'} />
-      <StatCard c="c-green" icon="calendar" label="Đã lập kế hoạch" value={cnt('done')} sub={`${db.plans.length} kế hoạch · ${db.sess.length} buổi`} /></div>
     <div className="toolbar"><Search value={f.q} onChange={q => setF({ ...f, q })} placeholder="Tìm chương trình hoặc kế hoạch…" />
       <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={pubs.map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <Sel label="Mọi tình trạng lập kế hoạch" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['none', 'Chưa lập kế hoạch'], ['doing', 'Đang lập dở'], ['done', 'Đã lập kế hoạch']]} />
-      <Sel label="Tất cả trường" value={f.sch} onChange={v => setF({ ...f, sch: v })} options={schools} />
+      <Sel label="Mọi tình trạng lập kế hoạch" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['none', 'Chưa lập kế hoạch'], ['doing', 'Nháp'], ['part', 'Chưa đủ học phần'], ['done', 'Đã lập kế hoạch']]} />
+      <Sel label="Tất cả các trường" value={f.sch} onChange={v => setF({ ...f, sch: v })} options={schools} />
       <Sel label="Tất cả học phần" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(pubs.flatMap(k.subjectsOf))).map(s => [s, k.SUBJ(s)])} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={setView} />
+      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.kh.mode', v) } catch { /* bỏ qua */ } }} />
       {Object.values(f).some(Boolean) && <button type="button" className="btn sm ghost" onClick={() => setF({ q: '', prog: '', status: '', sch: '', subj: '' })}>Xoá lọc</button>}</div>
-    {shown.map(pr => { const g = k.groupOf(pr.group_code); const ps = k.plansOf(pr.id).filter(pOk); const [, sl, sc] = k.progPlanSt(pr); const tv = new Set(ps.flatMap(p => k.traineesOf(p.id))).size
-      const head = <>{ps.length > 0 && <span className="chev"><Ic n="chev" /></span>}<span className="code sm">{pr.code}</span><b>{pr.name}</b>
-        <small>{k.progH(pr)} giờ · {ps.length} đợt · đã lên kế hoạch {k.progCover(pr)}/{k.subjectsOf(pr).length} học phần · {tv} học viên</small><span className={`pill ${sc} plain`}>{sl}</span>
-        {P.canManage && <span className="act"><button type="button" className={'btn sm' + (ps.length ? '' : ' primary')} onClick={e => { e.preventDefault(); e.stopPropagation(); onPlan(pr.id) }}><Ic n="plus" /> Lập kế hoạch</button></span>}</>
-      return ps.length ? <details key={pr.id} className="panel kprog" style={{ padding: 0, gap: 0 }} open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
-        <summary className="phead" style={cssVar(g.color)}>{head}</summary>
-        {view === 'grid' ? <div className="prgrid kgrid">{ps.map(planCard)}</div> : <div className="tblwrap"><table><thead><tr><th>Đợt đào tạo</th><th>Học phần trong đợt</th><th>Thời gian</th><th className="c">Buổi</th><th className="c">Đăng ký</th><th>Tiến độ</th><th>Trạng thái</th></tr></thead><tbody>{ps.map(planRow)}</tbody></table></div>}</details>
-        : <div key={pr.id} className="panel kprog noplan" style={{ padding: 0, gap: 0 }}><div className="phead" style={cssVar(g.color)}>{head}</div></div> })}
+    {view === 'table' ? <DataTable id="kh" rows={rows} rowKey={p => p.id} noun="đợt" onOpen={p => onOpen(p.id)}
+      groupBy={p => { const pr = k.prog(p.program_id)!; return [pr.id, progHead(pr, k.plansOf(pr.id).filter(pOk).length)] }}
+      empty={<Empty>Chưa có đợt đào tạo phù hợp.</Empty>}
+      bulk={P.canManage ? [{ label: 'Gửi thông báo nhắc', run: remind },
+        { label: 'Phát hành', run: async rs => { const ds = rs.filter(p => p.status === 'draft'); for (const p of ds) await publish(P, k, p, false, false); return `Đã phát hành ${ds.length} đợt${rs.length - ds.length ? ` · bỏ qua ${rs.length - ds.length} đợt đã phát hành` : ''}` } }] : []}
+      onDelete={P.canManage ? async rs => { await P.run(supabase.from('ph2_plans').delete().in('id', rs.map(p => p.id)), `✓ Đã xoá ${rs.length} đợt`) } : undefined}
+      cols={[
+        { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit} · {(p.schools ?? []).length || 'mọi'} trường</small></> },
+        { key: 'subj', label: 'Học phần trong đợt', sort: p => k.planSubjs(p).map(k.SUBJ).join(', '), cell: p => k.planSubjs(p).map(k.SUBJ).join(', ') },
+        { key: 'date', label: 'Thời gian', date: true, sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
+        { key: 'sess', label: 'Buổi', sum: 'sum', sort: p => k.sessOfPlan(p.id).length, cell: p => k.sessOfPlan(p.id).length },
+        { key: 'done', label: 'Đã học', sum: 'frac', sort: p => k.sessOfPlan(p.id).filter(k.sessEnd).length, cell: p => `${k.sessOfPlan(p.id).filter(k.sessEnd).length}/${k.sessOfPlan(p.id).length}` },
+        { key: 'reg', label: 'Đăng ký', sum: 'frac', sort: p => k.traineesOf(p.id).length, cell: p => `${k.traineesOf(p.id).length}/${p.cap}` },
+        { key: 'status', label: 'Trạng thái', sum: 'status', sort: p => k.planSt(p)[0], cell: p => { const [sl, sc] = k.planSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
+      ]} />
+      : shown.filter(pr => k.plansOf(pr.id).some(pOk)).map(pr => { const g = k.groupOf(pr.group_code); const ps = k.plansOf(pr.id).filter(pOk)
+        return <details key={pr.id} className="panel kprog" style={{ padding: 0, gap: 0 }} open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
+          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span>{progHead(pr, ps.length)}</summary>
+          <div className="prgrid kgrid">{ps.map(planCard)}</div></details> })}
+    {noPlan.length > 0 && <Panel icon="alert" title={<>Chương trình chưa lập kế hoạch <small className="sub">{noPlan.length}</small></>}>
+      {noPlan.map(pr => <div key={pr.id} className="panel kprog noplan" style={{ padding: 0, gap: 0 }}><div className="phead" style={cssVar(k.groupOf(pr.group_code).color)}>{progHead(pr, 0)}</div></div>)}</Panel>}
     {!shown.length && <Empty>Không có chương trình phù hợp.</Empty>}
     {drafts.length > 0 && <p className="note">{drafts.length} chương trình đang nháp ({drafts.map(p => p.code).join(', ')}) chưa lập kế hoạch được — phát hành ở mục Chương trình đào tạo trước.</p>}
   </>
@@ -108,7 +124,7 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
     return <article key={p.id} className={'pcard dcard rcard' + (op ? ' open' : '')} style={cssVar(g.color)}><div className="cover"><CoverDeco s={k.planSubjs(p)[0]} /><span>{pr.code} · {kk === 'open' ? 'hạn ĐK ' + vn(p.reg_due) : k.planRange(p)}</span><b>{shortTitle(p.title)}</b></div>
       <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
       <div className="chips">{k.planSubjs(p).map(s => <span key={s} className="chip k" style={cssVar(g.color)}>{k.SUBJ(s)}</span>)}<span className="chip">{p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</span><span className={`pill ${sc} plain`}>{sl}</span></div>
-      <div className="foot"><span>{n}/{cap} đã đăng ký</span><span className="cbtns">{kk === 'draft' ? (P.canManage && <button type="button" className="btn sm primary" onClick={() => publish(P, k, p, true, true)}><Ic n="send" /> Phát hành & mở đăng ký</button>)
+      <div className="foot"><span>Đăng ký {n}/{cap}</span><span className="cbtns">{kk === 'draft' ? (P.canManage && <button type="button" className="btn sm primary" onClick={() => publish(P, k, p, true, true)}><Ic n="send" /> Phát hành & mở đăng ký</button>)
         : <button type="button" className="btn sm" onClick={() => setOpenReg(op ? null : p.id)}>{op ? 'Thu gọn' : 'Danh sách đăng ký'}</button>}</span></div>
       {op && <div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Học phần dạy</th><th>Ngày đăng ký</th><th>Các đợt trước cùng chương trình</th><th /></tr></thead><tbody>
         {tr.map(x => { const tt = k.teacher(x.teacher_id); const prev = k.plansOf(p.program_id).filter(y => y.id !== p.id && k.traineesOf(y.id).includes(x.teacher_id))
@@ -121,18 +137,14 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
   const progs = db.progs.filter(pr => db.plans.some(p => p.program_id === pr.id && ok(p)))
   const schools = Array.from(new Set(db.teachers.map(t => t.org_id))).map(id => [id, k.orgName(id)] as [string, string]).filter(x => x[1])
   return <>
-    <div className="stats"><StatCard c="c-green" icon="users" label="Đang mở đăng ký" value={open.length} sub={open.reduce((a, p) => a + Math.max(0, p.cap - k.traineesOf(p.id).length), 0) + ' chỗ còn trống'} />
-      <StatCard c="c-blue" icon="list" label="Lượt đăng ký" value={db.trainees.length} sub={new Set(db.trainees.map(x => x.teacher_id)).size + ' học viên'} />
-      <StatCard c="c-violet" icon="book" label="Đang học dở chương trình" value={progRows.filter(x => x.g.done.size < x.g.all.length).length} sub="cần thêm đợt để đủ học phần" />
-      <StatCard c="c-amber" icon="award" label="Hoàn thành cả chương trình" value={progRows.filter(x => x.g.done.size === x.g.all.length).length} sub="đủ tất cả học phần" /></div>
     <Panel icon="calendar" title="Đợt đào tạo & đăng ký" act={<small className="sub">Theo chương trình · học viên tự đăng ký ở cổng học viên</small>}>
       <div className="toolbar"><Search value={F.q} onChange={q => setF({ ...F, q })} placeholder="Tìm chương trình, đợt…" /><Sel label="Tất cả trường" value={F.school} onChange={v => setF({ ...F, school: v })} options={schools} />
         <Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={Array.from(new Set(db.plans.flatMap(k.planSubjs))).map(s => [s, k.SUBJ(s)])} />
         <Sel label="Mọi trạng thái đợt" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['open', 'Đang mở đăng ký'], ['draft', 'Chưa mở đăng ký'], ['closed', 'Quá hạn đăng ký']]} />
         {(F.school || F.subj || F.st || F.q) && <button type="button" className="btn sm ghost" onClick={() => setF({ school: '', subj: '', st: '', q: '' })}>Xoá lọc</button>}</div>
-      {progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = db.plans.filter(p => p.program_id === pr.id && ok(p)).sort((a, b) => order[k.regSt(a)[2]] - order[k.regSt(b)[2]]); const nOpen = ps.filter(p => k.regSt(p)[2] === 'open').length
+      {progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = db.plans.filter(p => p.program_id === pr.id && ok(p)).sort((a, b) => order[k.regSt(a)[2]] - order[k.regSt(b)[2]]); 
         return <details key={pr.id} className="kprog rprog" open={!rshut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setRshut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
-          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{ps.length} đợt · {ps.reduce((a, p) => a + k.traineesOf(p.id).length, 0)} lượt đăng ký</small>{nOpen > 0 && <span className="pill good plain">{nOpen} đang mở</span>}</summary>
+          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{ps.length} đợt · {ps.reduce((a, p) => a + k.traineesOf(p.id).length, 0)} lượt đăng ký</small></summary>
           <div className="prgrid">{ps.map(card)}</div></details> })}
       {!progs.length && <Empty>Không có đợt phù hợp bộ lọc.</Empty>}</Panel>
     <Panel icon="users" title="Tiến độ hoàn thành chương trình theo học viên"><div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Chương trình</th><th>Học phần đã hoàn thành</th><th>Đang học / còn thiếu</th><th>Trạng thái</th></tr></thead><tbody>
@@ -286,12 +298,20 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button type="button" className="btn sm ghost" aria-label="Chi tiết buổi" onClick={() => onSess(s.id)}><Ic n="eye" /></button>
         {can && <><button type="button" className="btn sm ghost" aria-label="Sửa buổi / phân công" onClick={() => setSedit(s.id)}><Ic n="edit" /></button><button type="button" className="btn sm ghost" aria-label="Xoá buổi" onClick={() => P.run(supabase.from('ph2_sessions').delete().eq('id', s.id), '✓ Đã xoá buổi')}><Ic n="trash" /></button></>}</td></tr> }
   const reg = k.regSt(p)
+  // Số liệu đợt: có mặt (buổi đã diễn ra × học viên), bài nộp (đầu điểm cần nộp đã mở), đã chấm (mọi đầu điểm)
+  const st = (() => { const past = ss.filter(k.sessEnd); const its = k.planItems(p); const subIts = its.filter(i => SUBMIT(i.kind) && k.itemOpen(p, i))
+    const pres = past.reduce((a, s) => a + trs.filter(t => ['p', 'l'].includes(k.mark(s, t) ?? '')).length, 0)
+    const sb = subIts.reduce((a, i) => a + trs.filter(t => k.grOf(p, i, t)?.sub).length, 0)
+    const late = subIts.filter(i => k.itemDue(p, i) < k.T).reduce((a, i) => a + trs.filter(t => !k.grOf(p, i, t)?.sub).length, 0)
+    const gd = its.reduce((a, i) => a + trs.filter(t => k.itemScore(p, i, t) != null).length, 0)
+    return { att: [pres, past.length * trs.length], sub: [sb, subIts.length * trs.length], late, gr: [gd, its.length * trs.length] } })()
   return <>
     <Back onClick={onBack} title={p.title}>Danh sách kế hoạch</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)} · {p.schools?.length ? p.schools.length + ' trường tham gia' : 'mở cho mọi trường'}</span></div><StatusPill s={p.status} />
       <div className="act">{can && (p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => setPubAsk(true)}><Ic n="send" /> Phát hành kế hoạch</button>
         : !ss.some(s => !k.sessEnd(s)) && !p.confirmed ? <button type="button" className="btn primary" onClick={() => toEval('result')}><Ic n="check" /> Kết thúc đợt & chốt kết quả</button>
         : reg[2] === 'open' ? <button type="button" className="btn" onClick={() => { const n = k.eligibleOf(p).filter(t => !trs.includes(t.id)).length; P.run(supabase.from('ph2_plans').update({ notice: { ...(p.notice ?? { bgh: false }), date: vn(k.T), n } }).eq('id', p.id), `✓ Đã gửi nhắc đăng ký tới ${n} học viên chưa đăng ký`) }}><Ic n="send" /> Gửi thông báo nhắc</button> : null)}
+        {can && p.status === 'published' && !p.confirmed && <button type="button" className="btn" disabled data-tip="TODO: CSDL chưa có trạng thái “Đã huỷ” cho đợt (ph2_plans.status chỉ nhận draft/published) — cần bổ sung migration">Huỷ đợt</button>}
         <button type="button" className="btn" onClick={() => toEval('att')}><Ic n="award" /> Đánh giá kết quả</button></div></div>
     {pubAsk && <Panel className="pubask" icon="send" title="Phát hành & gửi thông báo">
       <label className="chk"><input type="checkbox" checked={hv} onChange={e => setHv(e.target.checked)} /> Gửi thông báo mở đăng ký tới <b>{k.eligibleOf(p).length} học viên</b> đủ điều kiện (ứng dụng + email)</label>
@@ -301,11 +321,9 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
     <section className="panel kinfo"><dl className="kv"><div><dt>Đơn vị tổ chức</dt><dd>{p.unit}</dd></div><div><dt>Giảng viên</dt><dd>{Array.from(new Set(ss.map(s => s.trainer).filter(Boolean))).join(', ') || 'Chưa phân công'}</dd></div><div><dt>Trợ giảng</dt><dd>{p.assist?.join(', ') || '—'}</dd></div>
       <div><dt>Đăng ký</dt><dd>{trs.length}/{p.cap} · hạn {vn(p.reg_due)}</dd></div><div><dt>Điều kiện tham gia</dt><dd>{k.condText(p).map((x, i) => <Fragment key={i}>{i > 0 && <br />}{x}</Fragment>)}{!k.condText(p).length && 'Không giới hạn'}{p.schools?.length > 0 && <><br /><small className="sub">{p.schools.length} trường được mời</small></>}</dd></div>
       <div><dt>Thông báo</dt><dd>{p.notice ? `Đã gửi ${p.notice.date} · ${p.notice.n} học viên${p.notice.bgh ? ' + BGH' : ''}` : <span className="sub">Chưa gửi</span>}</dd></div></dl></section>
-    <div className="stats"><StatCard c="c-blue" icon="list" label="Buổi đào tạo" value={ss.length} sub={`${done} đã diễn ra · ${ss.length - done} sắp tới`} />
-      <StatCard c="c-violet" icon="video" label="Trực tuyến" value={ss.filter(s => s.mode === 'on').length} sub="buổi học qua lớp ảo" />
-      <StatCard c="c-green" icon="clock" label="Tổng giờ" value={k.planSubjs(p).reduce((a, s) => a + k.subjH(pr, s), 0)} sub={fmtM(pr.mpp) + '/buổi'} />
-      <StatCard c="c-amber" icon="users" label="Học viên đăng ký" value={trs.length} sub="người" /></div>
-    <div className="tabs"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button><button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button></div>
+    <div className="ctbar"><div className="tabs"><button type="button" className={sub === 'sched' ? 'on' : ''} onClick={() => setSub('sched')}>Lịch buổi <small>{ss.length}</small></button><button type="button" className={sub === 'people' ? 'on' : ''} onClick={() => setSub('people')}>Học viên đăng ký <small>{trs.length}/{p.cap}</small></button></div>
+      <div className="ctstats"><span><b>{done}/{ss.length}</b>buổi đã học · {ss.filter(s => s.mode === 'on').length} trực tuyến</span><span><b>{k.planSubjs(p).reduce((a, s) => a + k.subjH(pr, s), 0)}</b>giờ · {fmtM(pr.mpp)}/buổi</span>
+        <span>Có mặt <b>{st.att[0]}/{st.att[1]}</b></span><span>Đã nộp <b>{st.sub[0]}/{st.sub[1]}</b>{st.late > 0 && <small className="badtxt"> · {st.late} quá hạn</small>}</span><span>Đã chấm <b>{st.gr[0]}/{st.gr[1]}</b></span></div></div>
     {sub === 'people' ? <KhPeople P={P} k={k} p={p} pr={pr} /> : <>
       <div className="toolbar"><Seg label="Kiểu xem" items={[['table', 'Bảng'], ['cal', 'Lịch']]} value={view} onChange={setView} />{can && <button type="button" className="btn sm" onClick={() => setAddS(!addS)}><Ic n="plus" /> Thêm buổi</button>}</div>
       {addS && <Panel icon="plus" title="Thêm buổi đào tạo"><div className="form3">

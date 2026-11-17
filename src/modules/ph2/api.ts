@@ -153,12 +153,13 @@ export function mk(db: DB, subjCat: CatItem[]) {
     return { att, score, items, fails, graded: got.length, total: its.length, result }
   }
   const planSt = (p: Plan): [string, string] => { const ss = sessOfPlan(p.id)
-    return p.status === 'draft' ? ['Đang lập (nháp)', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Học xong · chờ kết thúc', 'warn'] }
+    return p.status === 'cancelled' ? ['Đã huỷ', 'bad'] : p.status === 'draft' ? ['Nháp', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Chờ đánh giá', 'warn'] }
   const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
     : (p.reg_due ?? '0') >= T && sessOfPlan(p.id).some(s => !sessEnd(s)) ? ['Đang mở đăng ký', 'good', 'open'] : ['Quá hạn đăng ký', 'warn', 'closed']
   const plansOf = (pid: string) => db.plans.filter(p => p.program_id === pid)
   const progCover = (pr: Prog) => { const c = new Set(plansOf(pr.id).flatMap(planSubjs)); return subjectsOf(pr).filter(k => c.has(k)).length }
-  const progPlanSt = (pr: Prog): [string, string, string] => { const ps = plansOf(pr.id); return !ps.length ? ['none', 'Chưa lập kế hoạch', 'bad'] : ps.some(p => p.status === 'draft') || progCover(pr) < subjectsOf(pr).length ? ['doing', 'Đang lập dở', 'warn'] : ['done', 'Đã lập kế hoạch', 'good'] }
+  const progPlanSt = (pr: Prog): [string, string, string] => { const ps = plansOf(pr.id).filter(p => p.status !== 'cancelled'); const n = subjectsOf(pr).length, c = progCover(pr)
+    return !ps.length ? ['none', 'Chưa lập kế hoạch', 'bad'] : ps.some(p => p.status === 'draft') ? ['doing', 'Nháp', 'warn'] : c < n ? ['part', `Chưa đủ học phần (${c}/${n})`, 'warn'] : ['done', 'Đã lập kế hoạch', 'good'] }
   const eligibleOf = (p: Plan) => db.teachers.filter(t => (!p.schools?.length || p.schools.includes(t.org_id)) && (!p.subj_only || planSubjs(p).includes(t.subj)))
   const doneProg = (t: string, pid: string) => db.plans.some(p => p.program_id === pid && traineesOf(p.id).includes(t) && evalOf(p, t).result === 'Hoàn thành')
   const canReg = (p: Plan, t: string) => { const Tt = teacher(t); if (regSt(p)[2] !== 'open') return 'Đợt không mở đăng ký'
