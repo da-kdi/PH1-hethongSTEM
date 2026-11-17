@@ -10,21 +10,22 @@ export type Item = { id: string; name: string; kind: string; mod: string; mode: 
 export type Rel = { no: number; date: string; by: string; note: string; mods: number }
 export type Prog = { id: string; owner_org_id: string; code: string | null; name: string; group_code: string | null; format: Format; mpp: number; status: string; issuer: string | null
   summary: string | null; outcomes: string | null; goal: string | null; audience: { levels: string[]; note: string }; subjects: string[]; subj_hours: Record<string, number>
-  criteria: { att: number; score: number; req: boolean }; cert: string | null; items: Item[]; releases: Rel[]; created_at: string; updated_at: string }
+  criteria: { att: number; score: number; req: boolean }; cert: string | null; items: Item[]; releases: Rel[]; created_at: string; updated_at: string
+  comps?: string[]; edu?: string[] }   // 070: năng lực hướng tới, chương trình giáo dục liên quan
 export type Mod = { id: string; program_id: string; subject: string; seq: number; title: string; hours: number; sessions: number; mat_use: number | null }
 export type MatContent = { desc: string; outcomes: string[]; product: string[]; doc: { written: string[][]; reviewed: string[][]; edited: string[][] }
   acts: { title: string; minutes: number; items: string[] }[]; practice: string; links: { kind: string; title: string; url: string }[]
   norms: { name: string; unit: string; qty: number; basis: string; cat: string }[] }
 export type Mat = { id: string; module_id: string; version_no: number; status: string; groups: Record<string, string>; content: MatContent; published_at: string | null; updated_at: string }
 export type Plan = { id: string; org_id: string; program_id: string; title: string; unit: string | null; status: string; subjs: string[]; cap: number; reg_due: string | null; schools: string[]
-  subj_only: boolean; prereq: string | null; cond: string | null; assist: string[]; notice: { date: string; n: number; bgh: boolean } | null; confirmed: { date: string; by: string } | null
+  subj_only: boolean; prereq: string | null; cond: string | null; assist: string[]; notice: { date: string; n: number; bgh: boolean } | null; confirmed: { date: string; by: string } | null; cancelled?: { date: string; by: string } | null
   survey: { form?: Q[]; sent?: string | null; due?: string; anon?: boolean; req?: boolean }; created_at: string }
 export type Sess = { id: string; plan_id: string; date: string; start_t: string; end_t: string; module_id: string | null; subject: string | null; mode: 'off' | 'on'; place: string | null; link: string | null; rec: string | null; trainer: string | null }
 export type Trainee = { plan_id: string; teacher_id: string; reg_at: string; supp: { kind: string; due: string } | null }
 export type Grade = { plan_id: string; item_id: string; teacher_id: string; score: number | null; lv: Record<string, number> | null; note: string | null; sub: { at: string; file: string; late: boolean } | null }
 export type Cert = { plan_id: string; teacher_id: string; no: string; issued_on: string }
 export type Fb = { plan_id: string; teacher_id: string; answers: Record<string, number | string> }
-export type CatRow = { id: string; owner_org_id: string | null; kind: 'group' | 'unit' | 'trainer'; code: string | null; name: string; color: string | null; info: Record<string, string>; sort: number }
+export type CatRow = { id: string; owner_org_id: string | null; kind: 'group' | 'unit' | 'trainer' | 'comp'; code: string | null; name: string; color: string | null; info: Record<string, string>; sort: number }
 export type Lect = { id: string; org_id: string; module_id: string; mat_version: number | null; title: string; author: string | null; status: string; parts: Part[]; updated_at: string }
 export type Part = { title: string; minutes: number; note: string; blocks: { type: string; [k: string]: any }[] }
 export type Q = { id: string; g: string; q: string; type?: 'scale' | 'text' }
@@ -154,7 +155,7 @@ export function mk(db: DB, subjCat: CatItem[]) {
   }
   const planSt = (p: Plan): [string, string] => { const ss = sessOfPlan(p.id)
     return p.status === 'cancelled' ? ['Đã huỷ', 'bad'] : p.status === 'draft' ? ['Nháp', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Chờ đánh giá', 'warn'] }
-  const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
+  const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'cancelled' ? ['Đã huỷ', 'bad', 'closed'] : p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
     : (p.reg_due ?? '0') >= T && sessOfPlan(p.id).some(s => !sessEnd(s)) ? ['Đang mở đăng ký', 'good', 'open'] : ['Quá hạn đăng ký', 'warn', 'closed']
   const plansOf = (pid: string) => db.plans.filter(p => p.program_id === pid)
   const progCover = (pr: Prog) => { const c = new Set(plansOf(pr.id).flatMap(planSubjs)); return subjectsOf(pr).filter(k => c.has(k)).length }

@@ -6,7 +6,7 @@
   --radius:12px;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+body{margin:0;font-family:var(--ui-font,"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif);background:var(--bg);color:var(--text);font-size:14px}
 button{font-family:inherit}
 
 /* Khung chính */
@@ -1079,14 +1079,36 @@ a.btnlink{display:inline-block;padding:8px 14px;border-radius:10px;text-decorati
 .ctip[hidden]{display:none}
 
 /* Bản mẫu v315 · giao diện "modern" (mặc định của bản mẫu) cho khung: thanh trên mờ kính, menu nền chuyển màu, mục đang mở là thẻ trắng */
-.top{background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(12px);border-bottom:1px solid rgba(229,233,241,.8);height:62px}
-.topsearch{border-radius:999px;background:#eef2f8;border-color:transparent;transition:background .15s,box-shadow .15s}
-.topsearch:focus-within{background:#fff;box-shadow:0 0 0 3px rgba(20,99,216,.15);border-color:#1463d8}
-.bellbtn,.userbtn{border-color:transparent;background:#eef2f8;transition:background .15s}
-.bellbtn:hover,.userbtn:hover{background:#e3e9f4}
-.userbtn .avatar{background:linear-gradient(135deg,#1463d8,#4f8ff7)}
-.side{background:linear-gradient(180deg,#0f2350 0%,#132c63 60%,#16336f 100%);padding:16px 12px}
-.side button{border-radius:10px;transition:background .15s,color .15s}
-.side button:hover{background:rgba(255,255,255,.08)}
-.side .navsub button.on,.side .navgroup>div>button.on{background:#fff;color:#0f2350;font-weight:600;box-shadow:0 4px 14px -4px rgba(0,0,0,.35)}
-.side .navsub{border-left-color:rgba(255,255,255,.1)}
+:root:not([data-skin="classic"]) .top{background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(12px);border-bottom:1px solid rgba(229,233,241,.8);height:62px}
+:root:not([data-skin="classic"]) .topsearch{border-radius:999px;background:#eef2f8;border-color:transparent;transition:background .15s,box-shadow .15s}
+:root:not([data-skin="classic"]) .topsearch:focus-within{background:#fff;box-shadow:0 0 0 3px rgba(20,99,216,.15);border-color:#1463d8}
+:root:not([data-skin="classic"]) .bellbtn,:root:not([data-skin="classic"]) .userbtn{border-color:transparent;background:#eef2f8;transition:background .15s}
+:root:not([data-skin="classic"]) .bellbtn:hover,:root:not([data-skin="classic"]) .userbtn:hover{background:#e3e9f4}
+:root:not([data-skin="classic"]) .userbtn .avatar{background:linear-gradient(135deg,#1463d8,#4f8ff7)}
+:root:not([data-skin="classic"]) .side{background:linear-gradient(180deg,#0f2350 0%,#132c63 60%,#16336f 100%);padding:16px 12px}
+:root:not([data-skin="classic"]) .side button{border-radius:10px;transition:background .15s,color .15s}
+:root:not([data-skin="classic"]) .side button:hover{background:rgba(255,255,255,.08)}
+:root:not([data-skin="classic"]) .side .navsub button.on,:root:not([data-skin="classic"]) .side .navgroup>div>button.on{background:#fff;color:#0f2350;font-weight:600;box-shadow:0 4px 14px -4px rgba(0,0,0,.35)}
+:root:not([data-skin="classic"]) .side .navsub{border-left-color:rgba(255,255,255,.1)}
+
+/* Bản mẫu v315 · nút Aa: giao diện, cỡ chữ, phông chữ (src/components/UiMenu.tsx) */
+.uiwrap{position:relative}
+.toppanel{position:absolute;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:4px;box-shadow:0 1px 2px rgba(20,33,61,.05),0 8px 24px -12px rgba(20,33,61,.18);z-index:60;padding:6px}
+:root:not([data-skin="classic"]) .toppanel{border-radius:14px;box-shadow:0 18px 40px -12px rgba(16,24,40,.25)}
+.user .uibtn{width:38px;height:38px;padding:0;display:grid;place-items:center}
+.uibtn b{font-size:13.5px;font-weight:700;letter-spacing:-.02em}.uibtn.on{border-color:#1463d8;color:#1463d8}
+.uipanel{right:0;width:330px;padding:14px;display:grid;gap:10px;text-align:left}
+.uih{font-size:13.5px;font-weight:600}
+.uiskin{display:grid;grid-template-columns:1fr 1fr;gap:8px}.user .uiskin button{display:flex;gap:8px;align-items:center;text-align:left;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+.uiskin button span{display:grid;gap:1px}.uiskin button span b{font-size:13px}.uiskin button small{font-size:11px;color:#5d6a82;line-height:1.3}
+.user .uiskin button.on{border-color:#1463d8;background:color-mix(in srgb,#1463d8 7%,#fff)}
+.sk{width:34px;height:34px;flex:none;display:grid;gap:3px;padding:5px;background:#eef2f8;border-radius:6px;box-sizing:border-box}.sk b{display:block;background:#fff;border:1px solid #d5dce8}
+.sk-modern{border-radius:10px;background:linear-gradient(135deg,#e5efff,#f3f6fb)}.sk-modern b{border-radius:4px;border:0;box-shadow:0 1px 2px rgba(0,0,0,.08)}.sk-modern b:first-child{background:#1463d8}
+.sk-classic b{border-radius:0}
+.uisz{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.user .uisz button{display:grid;justify-items:center;gap:2px;padding:10px 4px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+.uisz button span{font-size:12.5px;color:#5d6a82}.user .uisz button.on{border-color:#1463d8;background:color-mix(in srgb,#1463d8 7%,#fff);color:#1463d8}
+.uifont{display:grid;gap:2px;max-height:250px;overflow:auto}.user .uifont button{display:flex;align-items:center;gap:10px;padding:7px 8px;border:0;border-radius:4px;background:none;cursor:pointer;font-size:14px;text-align:left}
+.uifont button span{width:30px;font-size:16px;font-weight:600;color:#5d6a82}.uifont button .i{margin-left:auto;width:16px;height:16px;color:#1463d8}
+.user .uifont button:hover{background:#eef2f8}.user .uifont button.on{background:color-mix(in srgb,#1463d8 8%,transparent);color:#1463d8;font-weight:600}.uifont button.on span{color:#1463d8}
+.uinote{font-size:12px;color:#5d6a82;line-height:1.5}
+.top{z-index:50}   /* bảng Aa / thông báo luôn nằm trên nội dung trang */

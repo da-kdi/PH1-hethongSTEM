@@ -8,9 +8,10 @@ const G = (title: string): NavGroup => ({ section: SECTION, title, items: [...CO
 
 export const PH2_NAV: Partial<Record<RoleKey, NavGroup[]>> = {
   platform: [G('2.1. Đào tạo & đánh giá năng lực nhà giáo')],
-  department: [{ title: 'Đào tạo & đánh giá nhà giáo', items: [...CORE] }],
-  school_admin: [{ title: 'Đào tạo & đánh giá nhà giáo', items: [...CORE] }],
-  teacher: [{ title: 'Đào tạo của tôi', items: ['Kế hoạch tập huấn', 'Nội dung tập huấn', 'Đánh giá kết quả'] }],
+  // Bản mẫu v315: mọi cổng dùng cùng cấu trúc phân hệ › nhóm như bản mẫu
+  department: [G('2.1. Đào tạo & đánh giá năng lực nhà giáo')],
+  school_admin: [G('2.1. Đào tạo & đánh giá năng lực nhà giáo')],
+  teacher: [{ section: SECTION, title: '2.1. Đào tạo của tôi', items: ['Kế hoạch tập huấn', 'Nội dung tập huấn', 'Đánh giá kết quả'] }],
 }
 // Mục menu → chức năng (quyền vai trò ở cổng Trường, gói dịch vụ): phân hệ "training"
 // Bản mẫu v315: “tập huấn” → “đào tạo” (chỉ đổi tên hiển thị, giữ mã trang)

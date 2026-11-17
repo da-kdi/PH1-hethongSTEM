@@ -34,8 +34,9 @@ export function Flow<T extends string>({ steps, value, onChange }: { steps: [T, 
       <b>{i + 1}</b><span>{l}{d != null && <small>{d}</small>}</span></button></Fragment>)}<FlowAct /></nav>
 }
 export type Tone = 'c-blue' | 'c-green' | 'c-violet' | 'c-amber' | 'c-red'
-export function StatCard({ c, icon, label, value, sub }: { c: Tone; icon: string; label: string; value: ReactNode; sub?: ReactNode }) {
-  return <div className={'stat ' + c}><span className="tr"><Ic n="trend" /></span><div className="ico"><Ic n={icon} /></div><div className="lbl">{label}</div><div className="val">{value}</div><div className="sub">{sub}</div></div>
+// Bản mẫu v315: số tổng hiện thành chip nhỏ (.sumchip) trong dải .stats (= .sumline), chi tiết phụ hiện khi rê chuột
+export function StatCard({ c, label, value, sub }: { c: Tone; icon?: string; label: string; value: ReactNode; sub?: ReactNode }) {
+  return <div className={'sumchip ' + c} data-tip={typeof sub === 'string' && sub ? label + ': ' + sub : undefined}><b>{value}</b> {label}</div>
 }
 export function Panel({ icon, title, act, children, className = '', style }: { icon?: string; title?: ReactNode; act?: ReactNode; children?: ReactNode; className?: string; style?: CSSProperties }) {
   return <section className={'panel ' + className} style={style}>{title != null && <header><h2>{icon && <span className="hi"><Ic n={icon} /></span>}{title}</h2>{act && <span className="act">{act}</span>}</header>}{children}</section>
@@ -52,6 +53,20 @@ export function Group({ title, n }: { title: ReactNode; n?: number }) { return <
 // Bản mẫu v315 · đầu trang chi tiết (.cthead): mã, tên, nhãn trạng thái; dòng phụ; nút bên phải
 export function CtHead({ code, color, title, pills, sub, act }: { code?: ReactNode; color?: string | null; title: ReactNode; pills?: ReactNode; sub?: ReactNode; act?: ReactNode }) {
   return <div className="cthead"><div className="cttitle"><div className="ctname">{code != null && <span className="code" style={cssVar(color)}>{code}</span>}<h1>{title}</h1>{pills}</div>{sub && <small className="sub">{sub}</small>}</div>{act && <div className="act">{act}</div>}</div>
+}
+// Bản mẫu v315: bảng thường (ma trận điểm danh, sổ điểm…) cũng có thanh nhỏ Xuất · Mở rộng như bảng dùng chung
+export function TblWrap({ children, name = 'bang' }: { children: ReactNode; name?: string }) {
+  const [wide, setWide] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const exp = () => {
+    const t = box.current?.querySelector('table'); if (!t) return
+    const q = (v: string) => /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v
+    const csv = '﻿' + Array.from(t.querySelectorAll('tr')).map(tr => Array.from(tr.querySelectorAll('th,td')).map(c => q(((c as HTMLElement).innerText || '').replace(/\s*\n\s*/g, ' · ').trim())).join(',')).join('\r\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = name + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  }
+  return <><div className="tbtools"><div className="dsbar btngrp"><button type="button" className="btn sm" title="Tải bảng ra file Excel (.csv)" onClick={exp}><Ic n="download" /> Xuất</button></div>
+    <div className="btngrp tools"><button type="button" className={'btn sm' + (wide ? ' on' : '')} aria-pressed={wide} onClick={() => setWide(!wide)}><span aria-hidden="true">↔</span> {wide ? 'Thu gọn' : 'Mở rộng'}</button></div></div>
+    <div ref={box} className={'tblwrap' + (wide ? ' xscroll' : '')}>{children}</div></>
 }
 // Một dòng trong bảng Lọc của thanh công cụ (.fpanel .frow1)
 export function FRow({ label, children }: { label: string; children: ReactNode }) { return <label className="frow1"><span>{label}</span>{children}</label> }

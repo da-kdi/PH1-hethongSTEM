@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar, TblWrap } from '../ph1/mau/kit'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { ATTK, COMP, FBG, IKIND, LV, LVC, LVP, PAGE, SUBMIT, SUPK, SURVEY, addD, fmt1, goto, resPill, shortTitle, takeIntent, uid, vn, vnS, type Item, type K, type Plan, type Q } from './api'
 import { useP2, type P2 } from './use'
@@ -118,14 +118,14 @@ function DgAtt({ P, k, p }: { P: P2; k: K; p: Plan }) {
   const all = (sid: string) => { if (p.confirmed) return lock(); P.run(supabase.from('ph2_attendance').upsert(tr.map(t => ({ session_id: sid, teacher_id: t, mark: 'p' }))), '✓ Đã điểm danh có mặt tất cả') }
   return <>
     <div className="toolbar"><div className="legend">{Object.entries(ATTK).map(([x, [n]]) => <span key={x}><i className={'am ' + x}>{MARK[x]}</i>{n}</span>)}</div><small className="sub" style={{ marginLeft: 'auto' }}>Bấm ô để đổi trạng thái · buổi trực tuyến lấy điểm danh tự động từ lớp học ảo</small></div>
-    {past.length ? <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table className="atttbl"><thead><tr><th>Học viên</th>{past.map(s => <th key={s.id} className="c"><span>{vnS(s.date)}</span><small>{s.mode === 'on' && <Ic n="video" />}</small>
+    {past.length ? <div className="panel" style={{ padding: 0 }}><TblWrap><table className="atttbl"><thead><tr><th>Học viên</th>{past.map(s => <th key={s.id} className="c"><span>{vnS(s.date)}</span><small>{s.mode === 'on' && <Ic n="video" />}</small>
       {P.canManage && <button type="button" className="btn sm ghost" title="Có mặt tất cả" onClick={() => all(s.id)}>✓ tất cả</button>}</th>)}<th className="c">Số buổi có mặt</th><th className="c">Chuyên cần</th></tr></thead><tbody>
       {tr.map(t => { const T = k.teacher(t); const e = k.evalOf(p, t)
         return <tr key={t}><td><b>{T.full_name}</b><br /><small className="sub">{T.school}</small></td>{past.map(s => { const v = k.mark(s, t)
           return <td key={s.id} className="c"><button type="button" className={'am ' + (v ?? 'x')} disabled={!P.canManage} aria-label={v ? ATTK[v][0] : 'Chưa điểm danh'} onClick={() => set(s.id, t)}>{v ? MARK[v] : '·'}</button></td> })}
           <td className="c"><b title="Số buổi có mặt / tổng số buổi của đợt">{past.filter(s => ['p', 'l'].includes(k.mark(s, t) ?? '')).length}/{ss.length}</b></td>
           <td className="c"><b className={e.att != null && e.att < C.att ? 'badtxt' : ''}>{e.att ?? '—'}%</b></td></tr> })}</tbody>
-      <tfoot><tr><td>Có mặt</td>{past.map(s => <td key={s.id} className="c">{tr.filter(t => ['p', 'l'].includes(k.mark(s, t) ?? '')).length}/{tr.length}</td>)}<td className="c">{past.length}/{ss.length} buổi đã diễn ra</td><td /></tr></tfoot></table></div></div>
+      <tfoot><tr><td>Có mặt</td>{past.map(s => <td key={s.id} className="c">{tr.filter(t => ['p', 'l'].includes(k.mark(s, t) ?? '')).length}/{tr.length}</td>)}<td className="c">{past.length}/{ss.length} buổi đã diễn ra</td><td /></tr></tfoot></table></TblWrap></div>
       : <Empty>Chưa có buổi nào diễn ra.</Empty>}
     {ss.some(s => !k.sessEnd(s)) && <p className="note">{ss.filter(s => !k.sessEnd(s)).length} buổi sắp tới sẽ hiện thêm cột khi đến ngày.</p>}
   </>
@@ -163,8 +163,8 @@ function DgGrade({ P, k, p, item, setItem }: { P: P2; k: K; p: Plan; item: strin
       {i.task && <p className="prtask">{i.task}</p>}
       {!open ? <Empty>Đầu điểm mở sau buổi {vn(k.itemFrom(p, i))} — khi đó học viên {sub ? 'nộp bài và ' : ''}giảng viên chấm tại đây.</Empty> : <>
         <div className="gstat"><span><b>{gd}/{n}</b> đã chấm</span>{sub && <span><b>{sb}/{n}</b> đã nộp</span>}<span>Trung bình <b>{fmt1(avg(vals))}</b>/10</span><span>Dưới ngưỡng <b>{vals.filter(v => v < C.score).length}</b></span></div>
-        <div className="tblwrap"><table className="grtbl"><thead><tr><th>Học viên</th>{sub && <th>Bài nộp</th>}<th className={i.mode === 'score' ? 'c' : ''}>{i.mode === 'score' ? 'Điểm' : 'Mức theo tiêu chí'}</th><th className="c">Quy đổi /10</th><th>Nhận xét</th><th /></tr></thead>
-          <tbody>{tr.map(row)}</tbody></table></div></>}</section>
+        <TblWrap><table className="grtbl"><thead><tr><th>Học viên</th>{sub && <th>Bài nộp</th>}<th className={i.mode === 'score' ? 'c' : ''}>{i.mode === 'score' ? 'Điểm' : 'Mức theo tiêu chí'}</th><th className="c">Quy đổi /10</th><th>Nhận xét</th><th /></tr></thead>
+          <tbody>{tr.map(row)}</tbody></table></TblWrap></>}</section>
   </>
 }
 const slugName = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -195,7 +195,7 @@ function DgResult({ P, k, p, onCert, onHist, toAssess }: { P: P2; k: K; p: Plan;
           : <button type="button" className="btn sm primary" disabled={!ended} onClick={() => P.run(supabase.from('ph2_plans').update({ confirmed: { date: vn(k.T), by } }).eq('id', p.id), '✓ Đã kết thúc đợt và chốt kết quả')}><Ic n="check" /> Kết thúc đợt</button>)}</div>
       <div className={'s8 ' + (cf && !toIssue.length ? 'done' : cf ? 'cur' : '')}><span>3</span><div><b>Cấp chứng nhận / giao bổ sung</b><small>{ok.length} đạt · {notOk.length} chưa đạt</small></div>
         {cf && P.canManage && <button type="button" className="btn sm primary" disabled={!toIssue.length} onClick={() => issue(toIssue.map(r => r.t.id))}><Ic n="award" /> Cấp {toIssue.length} chứng nhận</button>}</div></div>
-    <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table className="sotbl"><thead><tr><th>Học viên</th><th className="c">Chuyên cần</th>{its.map(i => <th key={i.id} className="c" title={i.name}>{i.name.length > 22 ? i.name.slice(0, 20) + '…' : i.name}<small>{i.w}%</small></th>)}
+    <div className="panel" style={{ padding: 0 }}><TblWrap><table className="sotbl"><thead><tr><th>Học viên</th><th className="c">Chuyên cần</th>{its.map(i => <th key={i.id} className="c" title={i.name}>{i.name.length > 22 ? i.name.slice(0, 20) + '…' : i.name}<small>{i.w}%</small></th>)}
       <th className="c">Điểm tổng</th><th className="c">Kết quả</th><th>Hướng xử lý</th><th /></tr></thead><tbody>
       {rows.map(({ t, e }) => { const c = k.certOf(p, t.id); const sp = k.trainee(p.id, t.id)?.supp
         const action: ReactNode = e.result === 'Hoàn thành' ? (c ? <><span className="pill good plain">Đã cấp</span> <button type="button" className="btn sm ghost" onClick={() => onCert(t.id)}>{c.no}</button></>
@@ -211,7 +211,7 @@ function DgResult({ P, k, p, onCert, onHist, toAssess }: { P: P2; k: K; p: Plan;
           <td style={{ textAlign: 'right' }}><button type="button" className="btn sm ghost" aria-label="Hồ sơ" onClick={() => onHist(t.id)}><Ic n="history" /></button></td></tr> })}</tbody>
       <tfoot><tr><td>Trung bình lớp</td><td className="c">{(v => v.length ? Math.round(avg(v)!) + '%' : '—')(rows.map(r => r.e.att).filter((x): x is number => x != null))}</td>
         {its.map(i => <td key={i.id} className="c">{fmt1(avg(rows.map(r => k.itemScore(p, i, r.t.id)).filter((x): x is number => x != null)))}</td>)}
-        <td className="c">{fmt1(avg(rows.map(r => r.e.score).filter((x): x is number => x != null)))}</td><td className="c">{ok.length}/{rows.length}</td><td colSpan={2} /></tr></tfoot></table></div></div>
+        <td className="c">{fmt1(avg(rows.map(r => r.e.score).filter((x): x is number => x != null)))}</td><td className="c">{ok.length}/{rows.length}</td><td colSpan={2} /></tr></tfoot></table></TblWrap></div>
     <p className="note">* chưa đạt tiêu chí bắt buộc. Chưa đạt → giao bổ sung (học bù, làm lại bài, nộp lại sản phẩm); cập nhật điểm danh / chấm lại xong thì bấm “Đánh giá lại”.</p>
   </>
 }
@@ -226,9 +226,9 @@ function DgCert({ P, k, p, onCert }: { P: P2; k: K; p: Plan; onCert: (t: string)
       <div className="cf no"><span>{rows.length - ok.length}</span><b>Chưa đủ điều kiện</b><small>Giao bổ sung ở bước Kết quả</small></div></div>
     {!cf && <p className="note"><Ic n="lock" /> Kết thúc đợt & chốt kết quả ở bước <b>Kết quả</b> trước khi cấp chứng nhận.</p>}
     <div className="toolbar"><span className="sub">Học viên đủ điều kiện được cấp chứng nhận trực tiếp — không qua bước duyệt.</span>{P.canManage && <span style={{ marginLeft: 'auto' }}><button type="button" className="btn sm primary" disabled={!cf || !wait.length} onClick={() => issue(wait.map(r => r.t.id))}><Ic n="award" /> Cấp tất cả ({wait.length})</button></span>}</div>
-    {ok.length ? <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>Học viên</th><th className="c">Điểm tổng</th><th>Số chứng nhận</th><th>Ngày cấp</th><th /></tr></thead><tbody>
+    {ok.length ? <div className="panel" style={{ padding: 0 }}><TblWrap><table><thead><tr><th>Học viên</th><th className="c">Điểm tổng</th><th>Số chứng nhận</th><th>Ngày cấp</th><th /></tr></thead><tbody>
       {ok.map(({ t, e, c }) => <tr key={t.id}><td><b>{t.full_name}</b><br /><small className="sub">{t.school}</small></td><td className="c">{fmt1(e.score)}</td><td>{c ? <code>{c.no}</code> : '—'}</td><td>{c ? vn(c.issued_on) : <span className="pill warn plain">Chưa cấp</span>}</td>
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{c ? <button type="button" className="btn sm" onClick={() => onCert(t.id)}><Ic n="eye" /> Xem</button> : P.canManage && <button type="button" className="btn sm primary" disabled={!cf} onClick={() => issue([t.id])}><Ic n="award" /> Cấp</button>}</td></tr>)}</tbody></table></div></div>
+        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{c ? <button type="button" className="btn sm" onClick={() => onCert(t.id)}><Ic n="eye" /> Xem</button> : P.canManage && <button type="button" className="btn sm primary" disabled={!cf} onClick={() => issue([t.id])}><Ic n="award" /> Cấp</button>}</td></tr>)}</tbody></table></TblWrap></div>
       : <Empty>Chưa có học viên đủ điều kiện.</Empty>}
   </>
 }
@@ -257,7 +257,7 @@ function DgFeedback({ P, k, p, orgId }: { P: P2; k: K; p: Plan; orgId: string | 
       <div className="form3"><label className="fld"><span>Hạn trả lời</span><input type="date" value={due} disabled={!P.canManage} onChange={e => saveS({ due: e.target.value })} /></label>
         <div className="fld"><span>Hình thức</span><label className="chk"><input type="checkbox" checked={S.anon !== false} disabled={!P.canManage} onChange={e => saveS({ anon: e.target.checked })} /> Ẩn danh học viên</label>
           <label className="chk"><input type="checkbox" checked={!!S.req} disabled={!P.canManage} onChange={e => saveS({ req: e.target.checked })} /> Bắt buộc trả lời trước khi nhận chứng nhận</label></div></div>
-      <div className="tblwrap"><table className="fbtbl"><thead><tr><th>STT</th><th>Câu hỏi</th><th>Nhóm</th><th>Kiểu trả lời</th><th /></tr></thead><tbody>
+      <TblWrap><table className="fbtbl"><thead><tr><th>STT</th><th>Câu hỏi</th><th>Nhóm</th><th>Kiểu trả lời</th><th /></tr></thead><tbody>
         {qs.map((q, j) => { const up = (x: Partial<Q>) => setQs(qs.map(y => y.id === q.id ? { ...y, ...x } : y))
           return <tr key={q.id}><td className="n">{j + 1}</td><td><input defaultValue={q.q} key={q.id + q.q} aria-label="Câu hỏi" disabled={!P.canManage} onBlur={e => e.target.value.trim() && e.target.value !== q.q && up({ q: e.target.value.trim() })} /></td>
             <td><select value={q.g} aria-label="Nhóm" disabled={!P.canManage} onChange={e => up({ g: e.target.value })}>{FBG.map(g => <option key={g}>{g}</option>)}</select></td>
@@ -265,7 +265,7 @@ function DgFeedback({ P, k, p, orgId }: { P: P2; k: K; p: Plan; orgId: string | 
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{P.canManage && <><button type="button" className="btn sm ghost" aria-label="Lên" disabled={!j} onClick={() => { const a = [...qs]; [a[j - 1], a[j]] = [a[j], a[j - 1]]; setQs(a) }}>↑</button>
               <button type="button" className="btn sm ghost" aria-label="Xuống" disabled={j >= qs.length - 1} onClick={() => { const a = [...qs]; [a[j + 1], a[j]] = [a[j], a[j + 1]]; setQs(a) }}>↓</button>
               <button type="button" className="btn sm ghost" aria-label="Xoá câu" onClick={() => setQs(qs.filter(y => y.id !== q.id))}><Ic n="trash" /></button></>}</td></tr> })}
-        {!qs.length && <tr><td colSpan={5} className="sub">Chưa có câu hỏi.</td></tr>}</tbody></table></div>
+        {!qs.length && <tr><td colSpan={5} className="sub">Chưa có câu hỏi.</td></tr>}</tbody></table></TblWrap>
       {P.canManage && <div className="catadd"><Ic n="plus" /><input className="cin" value={nq.q} placeholder="Câu hỏi mới, VD: Thời lượng mỗi buổi hợp lý" onChange={e => setNq({ ...nq, q: e.target.value })} />
         <select className="cin" style={{ flex: 'none', width: 'auto' }} value={nq.g} onChange={e => setNq({ ...nq, g: e.target.value })}>{FBG.map(g => <option key={g}>{g}</option>)}</select>
         <select className="cin" style={{ flex: 'none', width: 'auto' }} value={nq.type} onChange={e => setNq({ ...nq, type: e.target.value as 'scale' | 'text' })}><option value="scale">Thang 1–5</option><option value="text">Trả lời tự do</option></select>
@@ -308,18 +308,18 @@ function DgHist({ P, k, onHist }: { P: P2; k: K; onHist: (t: string) => void }) 
     <div className="stats"><StatCard c="c-blue" icon="users" label="Lượt tham gia" value={lt} sub={tids.length + ' học viên'} /><StatCard c="c-green" icon="check" label="Tỉ lệ hoàn thành" value={(lt ? Math.round(ld / lt * 100) : 0) + '%'} sub={`${ld}/${lt} lượt`} />
       <StatCard c="c-violet" icon="award" label="Chứng nhận" value={issued.length} sub="đã cấp" /><StatCard c="c-amber" icon="target" label="Hài lòng TB" value={fbs.length ? <>{avg(fbs)!.toFixed(1)}<small>/5</small></> : '—'} sub="từ phiếu phản hồi khoá" /></div>
     <Panel icon="list" title="Kết quả từng đợt" act={<button type="button" className="btn sm" onClick={() => exportCsv(plansR.map(r => [r.p.title, r.pr.code ?? '', r.n, r.att ?? '', fmt1(r.sc), `${r.done}/${r.n}`, r.cn, r.fb == null ? '' : r.fb.toFixed(1)]))}><Ic n="file" /> Xuất báo cáo</button>}>
-      <div className="tblwrap"><table><thead><tr><th>Đợt đào tạo</th><th>Chương trình</th><th className="c">Học viên</th><th className="c">Chuyên cần TB</th><th className="c">Điểm TB</th><th>Tỉ lệ hoàn thành</th><th className="c">Chứng nhận</th><th className="c">Hài lòng</th></tr></thead><tbody>
+      <TblWrap><table><thead><tr><th>Đợt đào tạo</th><th>Chương trình</th><th className="c">Học viên</th><th className="c">Chuyên cần TB</th><th className="c">Điểm TB</th><th>Tỉ lệ hoàn thành</th><th className="c">Chứng nhận</th><th className="c">Hài lòng</th></tr></thead><tbody>
         {plansR.map(r => <tr key={r.p.id}><td><b>{r.p.title}</b><br /><small className="sub">{r.p.unit} · {k.planRange(r.p)}</small></td><td>{r.pr.code}</td><td className="c">{r.n}</td><td className="c">{r.att ?? '—'}%</td><td className="c">{fmt1(r.sc)}</td>
-          <td><div className="hbar"><i style={{ width: `${r.n ? r.done / r.n * 100 : 0}%` }} /></div><small className="sub">{r.done}/{r.n} · {r.n ? Math.round(r.done / r.n * 100) : 0}%</small></td><td className="c">{r.cn}</td><td className="c">{r.fb == null ? '—' : r.fb.toFixed(1) + '/5'}</td></tr>)}
-        {!plansR.length && <tr><td colSpan={8} className="sub">Chưa có đợt đã phát hành.</td></tr>}</tbody></table></div></Panel>
+          <td><small className="sub">{r.done}/{r.n} · {r.n ? Math.round(r.done / r.n * 100) : 0}%</small></td><td className="c">{r.cn}</td><td className="c">{r.fb == null ? '—' : r.fb.toFixed(1) + '/5'}</td></tr>)}
+        {!plansR.length && <tr><td colSpan={8} className="sub">Chưa có đợt đã phát hành.</td></tr>}</tbody></table></TblWrap></Panel>
     <Panel icon="target" title={<>Hồ sơ năng lực nhà giáo <small className="sub">mức cao nhất đạt được theo tiêu chí rubric đã chấm</small></>} act={<Sel label="Tất cả trường" value={school} onChange={setSchool} options={schoolsL.map(x => [x, x])} />}>
-      <div className="tblwrap"><table><thead><tr><th>Học viên</th>{compK.map(c => <th key={c} className="c">{COMP[c]}</th>)}<th className="c">Khoá</th><th className="c">Hoàn thành</th><th className="c">Chứng nhận</th><th /></tr></thead><tbody>
+      <TblWrap><table><thead><tr><th>Học viên</th>{compK.map(c => <th key={c} className="c">{COMP[c]}</th>)}<th className="c">Khoá</th><th className="c">Hoàn thành</th><th className="c">Chứng nhận</th><th /></tr></thead><tbody>
         {people.filter(t => !school || t.school === school).map(t => { const cur = pubs.filter(p => k.traineesOf(p.id).includes(t.id)); const cp = k.compOf(t.id)
           return <tr key={t.id}><td><b>{t.full_name}</b><br /><small className="sub">{t.school}{t.subj && ' · ' + k.SUBJ(t.subj)}</small></td>{compK.map(c => <td key={c} className="c">{compCell(cp[c])}</td>)}<td className="c">{cur.length}</td>
-            <td className="c">{cur.filter(p => k.evalOf(p, t.id).result === 'Hoàn thành').length}</td><td className="c">{cur.filter(p => k.certOf(p, t.id)).length}</td><td style={{ textAlign: 'right' }}><button type="button" className="btn sm ghost" onClick={() => onHist(t.id)}><Ic n="history" /> Hồ sơ</button></td></tr> })}</tbody></table></div></Panel>
-    <div className="ovgrid hgrid"><Panel icon="users" title="Theo dõi theo trường">{schools.map(x => <div key={x.s} className="sbar"><span>{x.s}</span><div className="hbar"><i style={{ width: `${x.n ? x.done / x.n * 100 : 0}%` }} /></div><b>{x.done}/{x.n}</b></div>)}<small className="sub">Số lượt học viên hoàn thành / lượt tham gia</small></Panel>
-      <Panel icon="award" title={<>Chứng nhận đã cấp <small className="sub">{issued.length}</small></>}><div className="tblwrap"><table><thead><tr><th>Số</th><th>Học viên</th><th>Chương trình</th><th>Ngày</th></tr></thead><tbody>
-        {issued.map(r => <tr key={r[0]}><td><code>{r[0]}</code></td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>)}{!issued.length && <tr><td colSpan={4} className="sub">Chưa có.</td></tr>}</tbody></table></div></Panel></div>
+            <td className="c">{cur.filter(p => k.evalOf(p, t.id).result === 'Hoàn thành').length}</td><td className="c">{cur.filter(p => k.certOf(p, t.id)).length}</td><td style={{ textAlign: 'right' }}><button type="button" className="btn sm ghost" onClick={() => onHist(t.id)}><Ic n="history" /> Hồ sơ</button></td></tr> })}</tbody></table></TblWrap></Panel>
+    <div className="ovgrid hgrid"><Panel icon="users" title="Theo dõi theo trường">{schools.map(x => <div key={x.s} className="sbar"><span>{x.s}</span><b>{x.done}/{x.n}</b></div>)}<small className="sub">Số lượt học viên hoàn thành / lượt tham gia</small></Panel>
+      <Panel icon="award" title={<>Chứng nhận đã cấp <small className="sub">{issued.length}</small></>}><TblWrap><table><thead><tr><th>Số</th><th>Học viên</th><th>Chương trình</th><th>Ngày</th></tr></thead><tbody>
+        {issued.map(r => <tr key={r[0]}><td><code>{r[0]}</code></td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>)}{!issued.length && <tr><td colSpan={4} className="sub">Chưa có.</td></tr>}</tbody></table></TblWrap></Panel></div>
   </>
 }
 function exportCsv(rows: (string | number)[][]) {

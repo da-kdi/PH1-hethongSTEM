@@ -14,6 +14,7 @@ export type Curriculum = {
   require_approval: boolean; source_curriculum_id: string | null; source_version_id: string | null; current_version_id: string | null
   archived_at: string | null; created_at: string; updated_at: string
   status: CStatus; outcomes_text: string | null   // 062: trạng thái ở chương trình; yêu cầu cần đạt (một ô text)
+  draft_version_id?: string | null; teacher_needs?: string | null; comps?: string[]   // 068: phiên bản đang soạn (khi đã phát hành); giáo viên cần có gì
 }
 // 062: chương trình không còn phiên bản / phê duyệt. current_version_id chỉ là chỗ chứa nội dung (không hiện ở giao diện).
 export type CStatus = 'draft' | 'published' | 'archived'

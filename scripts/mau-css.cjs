@@ -14,7 +14,10 @@ function pref(sel) {
   const r = s.match(/^:root((?:\[[^\]]*\])*)/)
   if (r) {
     const at = r[1]
-    if (/data-skin/.test(at) && !/data-skin="modern"/.test(at)) return null
+    // giao diện: “Hiện đại” là mặc định (mọi skin trừ classic); “Tiêu chuẩn” khi <html data-skin="classic">
+    if (/data-skin="modern"/.test(at)) base = ':root:not([data-skin="classic"]) .mau'
+    else if (/data-skin="classic"/.test(at)) base = ':root[data-skin="classic"] .mau'
+    else if (/data-skin/.test(at)) return null
     if (/data-cover/.test(at) && !/data-cover="icon"/.test(at)) return null
     s = s.slice(r[0].length).trimStart(); hit = true
   }

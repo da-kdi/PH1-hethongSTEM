@@ -5,10 +5,10 @@ import { supabase } from '../../../lib/supabase'
 import { errMsg } from '../ui'
 import { catName, type CatItem } from '../curriculum/api'
 import { Back, Confirm, Empty, Ic, Panel, StatusPill } from '../mau/kit'
-import { LV, fileToQText, qParse, qTemplate, type Lv, type PQ } from './qimport'
+import { LV, fileToQText, qParse, shortKeys, qTemplate, type Lv, type PQ } from './qimport'
 
 type BQ = { id: string; subject: string; grade: number | null; topic: string | null; level: Lv; kind: string; stem: string; options: string[]; answer: number[]; status: string }
-export type Exam = { id: string; org_id: string; title: string; subject: string | null; grade: number | null; mode: string; question_ids: string[]; criteria: { count?: number; topics?: string[]; levels?: Partial<Record<Lv, number>> } | null; status: string; closes_at?: string | null; updated_at?: string }
+export type Exam = { id: string; org_id: string; title: string; subject: string | null; grade: number | null; mode: string; question_ids: string[]; criteria: { count?: number; topics?: string[]; levels?: Partial<Record<Lv, number>> } | null; status: string; closes_at?: string | null; updated_at?: string; duration_min?: number | null }
 const LVS = Object.keys(LV) as Lv[]
 
 export function QEditor({ orgId, subject, grade, subjects, onClose, onSaved }: { orgId: string; subject: string; grade: number | null; subjects: [string, string][]
@@ -17,7 +17,7 @@ export function QEditor({ orgId, subject, grade, subjects, onClose, onSaved }: {
   const [meta, setMeta] = useState({ subject, grade: grade ? String(grade) : '', topic: '', lv: 'thong_hieu' as Lv })
   const [text, setText] = useState('')
   const [added, setAdded] = useState<PQ[]>([])
-  const [f, setF] = useState({ type: 'single' as PQ['type'], text: '', opts: ['', '', '', ''], ans: [] as number[], expl: '', lv: 'thong_hieu' as Lv })
+  const [f, setF] = useState({ type: 'single' as PQ['type'], text: '', opts: ['', '', '', ''], ans: [] as number[], expl: '', lv: 'thong_hieu' as Lv, key: '' })
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
@@ -25,18 +25,19 @@ export function QEditor({ orgId, subject, grade, subjects, onClose, onSaved }: {
   const ok = parsed.filter(q => !q.err)
   async function load(fl: File) { try { const t = await fileToQText(fl); setText(x => (x.trim() ? x.trim() + '\n\n' : '') + t); setMode('paste'); setMsg(`Đã đọc file “${fl.name}” — kiểm tra phần xem trước rồi lưu.`) } catch (e) { setMsg((e as Error).message) } }
   function addForm() {
-    const opts = f.type === 'truefalse' ? ['Đúng', 'Sai'] : f.opts.map(o => o.trim()).filter(Boolean)
-    const q: PQ = { text: f.text.trim(), opts, ans: f.ans.filter(i => i < opts.length), key: '', expl: f.expl.trim(), lv: f.lv, type: f.type === 'single' && f.ans.length > 1 ? 'multi' : f.type, err: '' }
-    q.err = !q.text ? 'Thiếu nội dung câu hỏi' : opts.length < 2 ? 'Cần ít nhất 2 phương án' : !q.ans.length ? 'Chọn đáp án đúng' : ''
+    const open = f.type === 'short' || f.type === 'essay'
+    const opts = open ? [] : f.type === 'truefalse' ? ['Đúng', 'Sai'] : f.opts.map(o => o.trim()).filter(Boolean)
+    const q: PQ = { text: f.text.trim(), opts, ans: open ? [] : f.ans.filter(i => i < opts.length), key: f.type === 'short' ? f.key.trim() : '', expl: f.expl.trim(), lv: f.lv, type: f.type === 'single' && f.ans.length > 1 ? 'multi' : f.type, err: '' }
+    q.err = !q.text ? 'Thiếu nội dung câu hỏi' : f.type === 'short' ? (shortKeys(q.key).length ? '' : 'Nhập đáp án chấp nhận') : f.type === 'essay' ? '' : opts.length < 2 ? 'Cần ít nhất 2 phương án' : !q.ans.length ? 'Chọn đáp án đúng' : ''
     if (q.err) return setMsg(q.err)
-    setAdded(a => [...a, q]); setF({ ...f, text: '', opts: ['', '', '', ''], ans: [], expl: '' }); setMsg('Đã thêm câu vào danh sách bên dưới.')
+    setAdded(a => [...a, q]); setF({ ...f, text: '', opts: ['', '', '', ''], ans: [], expl: '', key: '' }); setMsg('Đã thêm câu vào danh sách bên dưới.')
   }
   async function save() {
     if (!ok.length) return setMsg('Chưa có câu hợp lệ để lưu.')
     if (!meta.subject.trim()) return setMsg('Chọn môn học cho câu hỏi.')
     const g = Number(meta.grade); setBusy(true)
     const { data, error } = await supabase.from('question_bank').insert(ok.map(q => ({ org_id: orgId, subject: meta.subject, grade: g >= 1 && g <= 12 ? g : null, topic: meta.topic.trim() || null, level: q.lv,
-      kind: q.type, stem: q.text, options: q.opts, answer: q.ans, explain: q.expl || null, source: added.includes(q) ? 'manual' : 'import', status: 'ready' }))).select('id')
+      kind: q.type, stem: q.text, options: q.type === 'short' || q.type === 'essay' ? [] : q.opts, answer: q.type === 'short' ? shortKeys(q.key) : q.type === 'essay' ? [] : q.ans, explain: q.expl || null, source: added.includes(q) ? 'manual' : 'import', status: 'ready' }))).select('id')
     setBusy(false)
     if (error) return setMsg(errMsg(error.message))
     onSaved(((data as { id: string }[]) ?? []).map(x => x.id))
@@ -54,16 +55,18 @@ export function QEditor({ orgId, subject, grade, subjects, onClose, onSaved }: {
     {mode === 'paste' ? <div className="qein">
       <div className="toolbar"><button type="button" className="btn sm primary" onClick={() => file.current?.click()}><Ic n="upload" /> Nhập file Word / Excel</button>
         <input ref={file} type="file" hidden accept=".docx,.xlsx,.csv,.txt" onChange={e => { const fl = e.target.files?.[0]; if (fl) load(fl); e.target.value = '' }} />
-        <small className="sub">Mỗi câu bắt đầu “Câu 1:”, phương án A. B. C. D., đáp án đúng đánh * phía trước (Word: gạch chân hoặc tô đỏ) hoặc dòng “Đáp án: B”.</small></div>
+        <small className="sub">Mỗi câu bắt đầu “Câu 1:”, phương án A. B. C. D., đáp án đúng đánh * phía trước (Word: gạch chân hoặc tô đỏ) hoặc dòng “Đáp án: B”. Không có phương án: “Đáp án: …” là điền khuyết, không ghi đáp án là tự luận.</small></div>
       <textarea className="qetext" value={text} onChange={e => setText(e.target.value)} placeholder={'Câu 1: Nước sôi ở bao nhiêu độ C?\nA. 90\n*B. 100\nC. 110\nMức độ: Nhận biết'} aria-label="Nội dung câu hỏi" />
     </div> : <div className="qein form">
-      <label className="fld"><span>Loại câu</span><select value={f.type} onChange={e => setF({ ...f, type: e.target.value as PQ['type'], ans: [] })}><option value="single">Một đáp án</option><option value="multi">Nhiều đáp án</option><option value="truefalse">Đúng / Sai</option></select></label>
+      <label className="fld"><span>Loại câu</span><select value={f.type} onChange={e => setF({ ...f, type: e.target.value as PQ['type'], ans: [] })}><option value="single">Một đáp án</option><option value="multi">Nhiều đáp án</option><option value="truefalse">Đúng / Sai</option><option value="short">Điền khuyết</option><option value="essay">Tự luận</option></select></label>
       <label className="fld"><span>Mức độ</span><select value={f.lv} onChange={e => setF({ ...f, lv: e.target.value as Lv })}>{LVS.map(l => <option key={l} value={l}>{LV[l]}</option>)}</select></label>
       <label className="fld wide"><span>Nội dung câu hỏi</span><textarea value={f.text} onChange={e => setF({ ...f, text: e.target.value })} /></label>
-      {(f.type === 'truefalse' ? ['Đúng', 'Sai'] : f.opts).map((o, i) => <label key={i} className="fld qeopt"><span>{String.fromCharCode(65 + i)}</span>
+      {f.type === 'short' && <label className="fld wide"><span>Đáp án chấp nhận <small className="sub">nhiều đáp án ngăn bằng /</small></span><input value={f.key} onChange={e => setF({ ...f, key: e.target.value })} placeholder="VD: 100 / một trăm" /></label>}
+      {f.type === 'essay' && <p className="note">Câu tự luận không tự chấm — ghi gợi ý chấm ở ô Giải thích; giáo viên chấm tay.</p>}
+      {f.type !== 'short' && f.type !== 'essay' && (f.type === 'truefalse' ? ['Đúng', 'Sai'] : f.opts).map((o, i) => <label key={i} className="fld qeopt"><span>{String.fromCharCode(65 + i)}</span>
         <input type={f.type === 'multi' ? 'checkbox' : 'radio'} name="qeans" checked={f.ans.includes(i)} aria-label="Đáp án đúng" onChange={() => setF({ ...f, ans: f.type === 'multi' ? (f.ans.includes(i) ? f.ans.filter(x => x !== i) : [...f.ans, i]) : [i] })} />
         {f.type === 'truefalse' ? <b>{o}</b> : <input value={o} onChange={e => setF({ ...f, opts: f.opts.map((x, k) => k === i ? e.target.value : x) })} placeholder={'Phương án ' + String.fromCharCode(65 + i)} />}</label>)}
-      {f.type !== 'truefalse' && f.opts.length < 8 && <button type="button" className="btn sm ghost" onClick={() => setF({ ...f, opts: [...f.opts, ''] })}><Ic n="plus" /> Phương án</button>}
+      {f.type !== 'truefalse' && f.type !== 'short' && f.type !== 'essay' && f.opts.length < 8 && <button type="button" className="btn sm ghost" onClick={() => setF({ ...f, opts: [...f.opts, ''] })}><Ic n="plus" /> Phương án</button>}
       <label className="fld wide"><span>Giải thích</span><input value={f.expl} onChange={e => setF({ ...f, expl: e.target.value })} /></label>
       <div className="formact"><button type="button" className="btn" onClick={addForm}><Ic n="plus" /> Thêm câu</button></div>
     </div>}
@@ -72,6 +75,7 @@ export function QEditor({ orgId, subject, grade, subjects, onClose, onSaved }: {
       <button type="button" className="btn sm primary" style={{ marginLeft: 'auto' }} disabled={busy || !ok.length} onClick={save}><Ic n="check" /> Lưu {ok.length} câu vào ngân hàng</button></div>
       {!parsed.length ? <Empty>Dán nội dung, nhập file hoặc soạn từng câu — câu hỏi hiện ở đây.</Empty>
         : <ol className="qelist">{parsed.map((q, i) => <li key={i} className={q.err ? 'bad' : ''}><b>{q.text}</b> <span className="pill plain">{LV[q.lv]}</span>
+          {q.type === 'short' && <small className="sub">Điền khuyết · đáp án: {shortKeys(q.key).join(' / ')}</small>}{q.type === 'essay' && <small className="sub">Tự luận — giáo viên chấm</small>}
           {q.opts.length > 0 && <ul>{q.opts.map((o, k) => <li key={k} className={q.ans.includes(k) ? 'ok' : ''}>{String.fromCharCode(65 + k)}. {o}</li>)}</ul>}
           {q.err && <small className="qeerr"><Ic n="alert" /> {q.err}</small>}
           {added.includes(q) && <button type="button" className="btn sm ghost" onClick={() => setAdded(a => a.filter(x => x !== q))}>Bỏ</button>}</li>)}</ol>}
@@ -97,7 +101,7 @@ export function ExamDetail({ e, orgId, cat, canEdit, subjects, onBack, reload }:
   const setIds = async (ids: string[], note: string) => { const { error } = await supabase.from('practice_exams').update({ question_ids: ids }).eq('id', e.id); if (error) return setMsg(errMsg(error.message)); setMsg(note); await reload() }
   const tog = (k: string) => setShut(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
   const qRow = (q: BQ, i: number, act?: React.ReactNode) => <li key={q.id}><span className="qno">{i + 1}</span><div><b>{q.stem}</b>
-    <small className="sub">{q.options.map((o, k) => (q.answer.includes(k) ? '✓ ' : '') + String.fromCharCode(65 + k) + '. ' + o).join('   ')}</small></div>{act}</li>
+    <small className="sub">{q.kind === 'essay' ? 'Tự luận — giáo viên chấm' : q.kind === 'short' ? 'Điền khuyết · đáp án: ' + (q.answer as unknown as string[]).join(' / ') : q.options.map((o, k) => (q.answer.includes(k) ? '✓ ' : '') + String.fromCharCode(65 + k) + '. ' + o).join('   ')}</small></div>{act}</li>
   const setStatus = async (status: string) => { const { error } = await supabase.from('practice_exams').update({ status }).eq('id', e.id); if (error) return setMsg(errMsg(error.message)); setMsg(status === 'published' ? 'Đã phát hành đề.' : 'Đã đóng đề.'); await reload() }
   return <>
     <Back onClick={onBack} title={e.title}>Tất cả đề luyện</Back>
@@ -107,6 +111,9 @@ export function ExamDetail({ e, orgId, cat, canEdit, subjects, onBack, reload }:
         <button type="button" className="btn" onClick={() => setEditing(true)}><Ic n="plus" /> Câu hỏi mới / nhập file</button></div>}</div>
     {ask && <Confirm text="Đóng đề? Học sinh không làm tiếp được." yes="Đóng đề" onNo={() => setAsk(false)} onYes={() => { setAsk(false); setStatus('closed') }} />}
     {msg && <p className="okmsg" role="status">{msg}</p>}
+    <div className="ctbar"><div /><div className="ctstats"><span><b>{inExam.length}</b>câu</span>
+      <span>Thời gian {canEdit ? <input type="number" min={1} max={300} className="cin" style={{ width: 70 }} defaultValue={e.duration_min ?? ''} placeholder="—" aria-label="Thời gian làm bài (phút)" onBlur={async x => { const v = Math.round(+x.target.value) || null; if (v === (e.duration_min ?? null)) return; const { error } = await supabase.from('practice_exams').update({ duration_min: v }).eq('id', e.id); if (error) return setMsg(errMsg(error.message)); setMsg('Đã lưu thời gian làm bài.'); await reload() }} /> : <b>{e.duration_min ?? '—'}</b>} phút</span>
+      <span>Hạn làm {canEdit ? <input type="date" className="cin" defaultValue={e.closes_at ? e.closes_at.slice(0, 10) : ''} aria-label="Hạn làm" onBlur={async x => { const v = x.target.value ? x.target.value + 'T23:59:00' : null; const { error } = await supabase.from('practice_exams').update({ closes_at: v }).eq('id', e.id); if (error) return setMsg(errMsg(error.message)); setMsg('Đã lưu hạn làm.'); await reload() }} /> : <b>{e.closes_at ? new Date(e.closes_at).toLocaleDateString('vi-VN') : 'Không hạn'}</b>}</span></div></div>
     {editing && <QEditor orgId={orgId} subject={e.subject ?? ''} grade={e.grade} subjects={subjects} onClose={() => setEditing(false)}
       onSaved={async ids => { setEditing(false); await loadBank(); if (fixed) await setIds([...e.question_ids, ...ids], `Đã lưu ${ids.length} câu vào ngân hàng và thêm vào đề.`); else setMsg(`Đã lưu ${ids.length} câu vào ngân hàng — đề ngẫu nhiên tự lấy theo nội dung đã thiết lập.`) }} />}
     <Panel icon="list" title={<>Câu hỏi trong đề <small className="sub">{inExam.length} câu</small></>} act={!fixed && <small className="sub">Đề ngẫu nhiên: mỗi lượt làm lấy {e.criteria?.count ?? '?'} câu từ các câu dưới đây{topics.length ? ` (chủ đề: ${topics.join(', ')})` : ''}</small>}>

@@ -105,12 +105,15 @@ function TakeExam({ paper, onDone, onExit }: { paper: Paper; onDone: (r: Result)
       {err && <p className="msg">{err}</p>}
       <ol className="paper">{paper.questions.map((q, i) => <li key={q.id} id={'q' + i}>
         <p className="stem">{q.stem}{q.kind === 'multi' && <small> (chọn tất cả đáp án đúng)</small>}</p>
-        <div className="choices">{q.options.map((o, k) => {
+        {/* 068: điền khuyết — ô chữ; tự luận — ô nhiều dòng (giáo viên chấm) */}
+        {q.kind === 'short' ? <input className="shortans" value={String((ans[q.id] as unknown[] | undefined)?.[0] ?? '')} placeholder="Nhập câu trả lời" aria-label="Câu trả lời" onChange={e => setAns(a => ({ ...a, [q.id]: (e.target.value ? [e.target.value] : []) as unknown as number[] }))} />
+        : q.kind === 'essay' ? <textarea className="essayans" rows={5} value={String((ans[q.id] as unknown[] | undefined)?.[0] ?? '')} placeholder="Bài làm tự luận — giáo viên chấm" aria-label="Bài làm tự luận" onChange={e => setAns(a => ({ ...a, [q.id]: (e.target.value ? [e.target.value] : []) as unknown as number[] }))} />
+        : <div className="choices">{q.options.map((o, k) => {
           const on = ans[q.id]?.includes(k)
           return <label key={k} className={on ? 'on' : ''}>
             <input type={q.kind === 'multi' ? 'checkbox' : 'radio'} name={q.id} checked={!!on} onChange={() => setAns(a => ({ ...a, [q.id]: q.kind === 'multi' ? (on ? a[q.id].filter(x => x !== k) : [...(a[q.id] ?? []), k]) : [k] }))} />
             <b>{letter(k)}</b><span>{o}</span></label>
-        })}</div>
+        })}</div>}
       </li>)}</ol>
       <div className="formactions"><button className="primary" onClick={() => submit()} disabled={busy}>{busy ? 'Đang nộp…' : 'Nộp bài'}</button></div>
       <p className="sub">Bài làm tự lưu trên máy; tạm rời rồi vào lại vẫn làm tiếp được{paper.deadline ? ' (đồng hồ vẫn chạy)' : ''}.</p>
@@ -126,11 +129,13 @@ function ResultView({ r, onBack }: { r: Result; onBack: () => void }) {
       <p>Đúng <b>{r.correct}</b>/{r.total} câu.{!r.revealed && ' Thầy cô chưa cho xem đáp án của đề này.'}</p>
       <ol className="paper">{r.questions.map(q => {
         const mine = r.answers?.[q.id] ?? [], right = q.answer ?? []
-        const ok = r.revealed && mine.length === right.length && mine.every(x => right.includes(x))
-        return <li key={q.id} className={r.revealed ? (ok ? 'qok' : 'qbad') : ''}>
-          <p className="stem">{r.revealed && <span className={'pill ' + (ok ? 'active' : 'inactive')}>{ok ? 'Đúng' : 'Chưa đúng'}</span>} {q.stem}</p>
-          <div className="choices">{q.options.map((o, k) => <label key={k} className={(mine.includes(k) ? 'on ' : '') + (r.revealed && right.includes(k) ? 'right' : '')}>
-            <input type={q.kind === 'multi' ? 'checkbox' : 'radio'} checked={mine.includes(k)} readOnly disabled /><b>{letter(k)}</b><span>{o}</span></label>)}</div>
+        const open = q.kind === 'short' || q.kind === 'essay'; const txt = String((mine as unknown[])[0] ?? '')
+        const nm = (x: unknown) => String(x).trim().toLowerCase().replace(/\s+/g, ' ')
+        const ok = r.revealed && (q.kind === 'short' ? (right as unknown[]).some(x => nm(x) === nm(txt)) && !!txt : !open && mine.length === right.length && mine.every(x => right.includes(x)))
+        return <li key={q.id} className={r.revealed && q.kind !== 'essay' ? (ok ? 'qok' : 'qbad') : ''}>
+          <p className="stem">{r.revealed && q.kind !== 'essay' && <span className={'pill ' + (ok ? 'active' : 'inactive')}>{ok ? 'Đúng' : 'Chưa đúng'}</span>} {q.stem}</p>
+          {open ? <p className="sub">Bài làm: <b>{txt || '—'}</b>{q.kind === 'essay' ? ' · chờ giáo viên chấm' : r.revealed ? ' · đáp án: ' + (right as unknown[]).join(' / ') : ''}</p> : <div className="choices">{q.options.map((o, k) => <label key={k} className={(mine.includes(k) ? 'on ' : '') + (r.revealed && right.includes(k) ? 'right' : '')}>
+            <input type={q.kind === 'multi' ? 'checkbox' : 'radio'} checked={mine.includes(k)} readOnly disabled /><b>{letter(k)}</b><span>{o}</span></label>)}</div>}
           {r.revealed && q.explain && <p className="sub">💡 {q.explain}</p>}
         </li>
       })}</ol>

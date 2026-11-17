@@ -1,3 +1,4 @@
+import { UiMenu } from './components/UiMenu'
 import { useEffect, useState, Suspense, type ComponentType } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
@@ -260,6 +261,7 @@ function Shell({ session }: { session: Session }) {
             onSection={() => { const g = groups.find(x => x.section === curGroup.section); if (g) show(role, g.items[0]) }}
             onGroup={() => show(role, curGroup.items[0])} onPage={() => show(role, page)} />}
           <div className="user">
+            <UiMenu />
             <Bell open={openFrom} portals={views} orgId={access.profile.org_id} />
             <UserMenu name={access.profile.full_name} email={email}
               roleLabel={access.roles.map(r => r.name).join(', ') || ROLE_LABEL[role]}

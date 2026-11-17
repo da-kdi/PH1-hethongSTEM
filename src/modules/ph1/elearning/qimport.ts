@@ -5,7 +5,9 @@ import { readRows, norm as nrm, downloadXlsx } from '../../../lib/sheet'
 
 export type Lv = 'nhan_biet' | 'thong_hieu' | 'van_dung' | 'van_dung_cao'
 export const LV: Record<Lv, string> = { nhan_biet: 'Nhận biết', thong_hieu: 'Thông hiểu', van_dung: 'Vận dụng', van_dung_cao: 'Vận dụng cao' }
-export type PQ = { text: string; opts: string[]; ans: number[]; key: string; expl: string; lv: Lv; type: 'single' | 'multi' | 'truefalse' | 'short'; err: string }
+export type PQ = { text: string; opts: string[]; ans: number[]; key: string; expl: string; lv: Lv; type: 'single' | 'multi' | 'truefalse' | 'short' | 'essay'; err: string }
+// Đáp án điền khuyết (068): dòng “Đáp án: …”, nhiều đáp án chấp nhận ngăn bằng / hoặc ;
+export const shortKeys = (k: string) => k.split(/\s*[\/;|]\s*/).map(x => x.trim()).filter(Boolean)
 
 const lvKey = (s: string): Lv | null => { const n = nrm(s)
   return /^(vdc|van dung cao)$/.test(n) ? 'van_dung_cao' : /^(vd|van dung)$/.test(n) ? 'van_dung' : /^(th|thong hieu)$/.test(n) ? 'thong_hieu' : /^(nb|nhan biet)$/.test(n) ? 'nhan_biet' : null }
@@ -36,13 +38,13 @@ function qBlock(b: string[], defLv: Lv): PQ {
   const tf = q.opts.length === 2 && /^đúng$/i.test(q.opts[0].trim()) && /^sai$/i.test(q.opts[1].trim())
   if (q.opts.length >= 2) q.type = tf ? 'truefalse' : q.ans.length > 1 ? 'multi' : 'single'
   else if (/^(đúng|sai|đ|s)$/i.test(q.key)) { q.type = 'truefalse'; q.ans = [/^(đúng|đ)$/i.test(q.key) ? 0 : 1]; q.opts = ['Đúng', 'Sai']; q.key = '' }
-  else q.type = 'short'
-  q.err = !q.text ? 'Thiếu nội dung câu hỏi' : q.opts.length === 1 ? 'Cần ít nhất 2 phương án A, B…' : q.type === 'short' ? 'Câu tự luận / điền khuyết — ngân hàng câu hỏi chưa hỗ trợ (TODO)'
+  else q.type = q.key.trim() ? 'short' : 'essay'   // có “Đáp án: …” bằng chữ → điền khuyết; không có → tự luận
+  q.err = !q.text ? 'Thiếu nội dung câu hỏi' : q.opts.length === 1 ? 'Cần ít nhất 2 phương án A, B…' : q.type === 'short' || q.type === 'essay' ? ''
     : !q.ans.length ? 'Chưa đánh dấu đáp án đúng (thêm * trước phương án đúng)' : q.opts.some(o => !o.trim()) ? 'Có phương án để trống' : q.opts.length > 8 ? 'Tối đa 8 phương án' : ''
   return q
 }
 export const qSer = (qs: PQ[]) => qs.map((q, i) => [`Câu ${i + 1}: ${q.text}`, ...(q.type !== 'truefalse' ? q.opts.map((o, k) => `${q.ans.includes(k) ? '*' : ''}${String.fromCharCode(65 + k)}. ${o}`) : []),
-  q.type === 'truefalse' ? `Đáp án: ${q.ans[0] === 1 ? 'Sai' : 'Đúng'}` : '', `Mức độ: ${LV[q.lv]}`, q.expl ? `Giải thích: ${q.expl}` : ''].filter(Boolean).join('\n')).join('\n\n')
+  q.type === 'truefalse' ? `Đáp án: ${q.ans[0] === 1 ? 'Sai' : 'Đúng'}` : q.type === 'short' ? `Đáp án: ${q.key}` : '', `Mức độ: ${LV[q.lv]}`, q.expl ? `Giải thích: ${q.expl}` : ''].filter(Boolean).join('\n')).join('\n\n')
 
 // ----- Excel / CSV → văn bản câu hỏi -----
 export function sheetToQText(rows: string[][]) {

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { catOf } from '../ph1/curriculum/api'
-import { AsideWrap, CtHead, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { AsideWrap, CtHead, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar, TblWrap } from '../ph1/mau/kit'
 import { DataTable } from '../ph1/mau/DataTable'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { COMP, CXN, IKIND, LV, LVLS, LVP, PAGE, TFORMAT, fmtM, goto, lines, sessOf, slug, takeIntent, uid, vn, type Crit, type Format, type Item, type K, type Prog } from './api'
 import { useP2, type P2 } from './use'
+import { DEF_FRAME, TpCatalog, type Frame } from './TpCatalog'
 
 // 2.1a Chương trình đào tạo — dựng theo bản mẫu giao diện: Danh mục (nhóm, học phần, hình thức, đơn vị, giảng viên) › Chương trình (học phần › chuyên đề; không chia cấp, khối, lớp)
 // Chi tiết: Tổng quan · Thiết lập · Khung đánh giá (đầu điểm, rubric, điều kiện hoàn thành & chứng nhận — mọi đợt đào tạo kế thừa).
@@ -87,82 +88,6 @@ function TpList({ P, k, progs, orgId, onOpen }: { P: P2; orgId: string | null; k
 }
 const relNext = (k: K, p: Prog) => [{ no: (p.releases[0]?.no ?? 0) + 1, date: vn(k.T), by: 'KDI Education', note: p.releases.length ? 'Phát hành lại' : 'Bản đầu tiên', mods: k.allMods(p).length }, ...p.releases]
 
-// ---------- Danh mục ----------
-type CK = 'group' | 'subject' | 'format' | 'unit' | 'trainer'
-function TpCatalog({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
-  const db = P.db!
-  const [kind, setKind] = useState<CK>('group')
-  const [edit, setEdit] = useState<string | null>(null)
-  const [ask, setAsk] = useState<string | null>(null)
-  const [nw, setNw] = useState<Record<string, string>>({ color: '#e08a0b' })
-  const [ev, setEv] = useState<Record<string, string>>({})
-  const progsOf = (f: (p: Prog) => boolean) => db.progs.filter(f).length
-  const inp = (n: string, val: string, set: (v: string) => void, ph = '', type = 'text') => <input className="cin" type={type} value={val} placeholder={ph} aria-label={ph || n} onChange={e => set(e.target.value)} />
-  const rowsOf = (kd: 'group' | 'unit' | 'trainer') => db.cat.filter(c => c.kind === kd)
-  const startEdit = (id: string, v: Record<string, string>) => { setEdit(id); setEv(v) }
-  const act = (id: string, sys?: boolean, onSave?: () => void) => sys ? <span className="pill draft plain">Hệ thống</span> : edit === id
-    ? <><button type="button" className="btn sm primary" onClick={onSave}><Ic n="check" /> Lưu</button><button type="button" className="btn sm ghost" onClick={() => setEdit(null)}>Huỷ</button></>
-    : <><button type="button" className="btn sm ghost" aria-label="Sửa" onClick={() => { const c = db.cat.find(x => x.id === id); const s = catOf(P.cat, 'subject').find(x => x.id === id)
-      startEdit(id, c ? { name: c.name, color: c.color ?? '', type: c.info.type ?? '', org: c.info.org ?? '', field: c.info.field ?? '' } : { name: s?.name ?? '' }) }}><Ic n="edit" /></button>
-      <button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => { if (kind === 'subject') { const s = catOf(P.cat, 'subject').find(x => x.id === id); const n = db.progs.filter(p => k.subjectsOf(p).includes(s?.code ?? '')).length
-        if (n) return P.setMsg(`Học phần đang dùng trong ${n} chương trình — gỡ khỏi chương trình trước khi xoá`); if (!s?.owner_org_id) return P.setMsg('Học phần trong danh mục chung của hệ thống — không xoá ở đây') } setAsk(id) }}><Ic n="trash" /></button></>
-  type Row = { key: string; cells: ReactNode[]; act: ReactNode }
-  const R = (key: string, cells: ReactNode[], a: ReactNode): Row => ({ key, cells, act: a })
-  let head: string[] = [], rows: Row[] = [], add: ReactNode = null
-  if (kind === 'group') { head = ['Mã', 'Tên nhóm', 'Màu', 'Đang dùng']
-    rows = [...rowsOf('group').map(g => { const ed = edit === g.id
-      return R(g.id, [<code>{g.code}</code>, ed ? inp('name', ev.name, v => setEv({ ...ev, name: v })) : <><span className="dotc" style={cssVar(g.color)} /><b>{g.name}</b></>, ed ? inp('color', ev.color, v => setEv({ ...ev, color: v }), '', 'color') : <code>{g.color}</code>,
-        `${progsOf(p => p.group_code === g.code)} chương trình`], act(g.id, false, () => P.run(supabase.from('ph2_catalog').update({ name: ev.name, color: ev.color }).eq('id', g.id), '✓ Đã lưu').then(() => setEdit(null)))) }),
-      R('CXN', [<code>CXN</code>, <><span className="dotc" style={cssVar(CXN.color)} /><b>{CXN.name}</b></>, <code>{CXN.color}</code>, `${progsOf(p => !p.group_code || !k.groups().some(g => g.code === p.group_code))} chương trình`], act('CXN', true))]
-    add = <>{inp('code', nw.code ?? '', v => setNw({ ...nw, code: v }), 'Mã, VD: STEM-AI')}{inp('name', nw.name ?? '', v => setNw({ ...nw, name: v }), 'Tên nhóm chương trình')}{inp('color', nw.color ?? '#e08a0b', v => setNw({ ...nw, color: v }), '', 'color')}</> }
-  if (kind === 'subject') { head = ['Mã', 'Học phần', 'Chương trình đào tạo', 'Học viên theo học phần']
-    rows = catOf(P.cat, 'subject').map(s => { const ed = edit === s.id
-      return R(s.id, [<code>{s.code}</code>, ed ? inp('name', ev.name, v => setEv({ ...ev, name: v })) : <><span className="sglyph"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[s.code] ?? SGLYPH.khtn }} /></span><b>{s.name}</b></>,
-        `${progsOf(p => k.subjectsOf(p).includes(s.code))}`, `${db.teachers.filter(t => t.subj === s.code).length}`],
-        s.owner_org_id ? act(s.id, false, () => P.run(supabase.from('curriculum_catalog').update({ name: ev.name }).eq('id', s.id), '✓ Đã lưu').then(() => { setEdit(null); P.reloadCat() })) : <span className="pill draft plain">Dùng chung</span>) })
-    add = <>{inp('code', nw.code ?? '', v => setNw({ ...nw, code: v }), 'Mã, VD: my_thuat')}{inp('name', nw.name ?? '', v => setNw({ ...nw, name: v }), 'Tên học phần')}</> }
-  if (kind === 'format') { head = ['Mã', 'Hình thức', 'Ghi chú', 'Đang dùng']
-    rows = (Object.entries(TFORMAT) as [Format, string][]).map(([c, n]) => R(c, [<code>{c}</code>, <b>{n}</b>, { off: 'Học tại hội trường, điểm danh tại chỗ', on: 'Qua lớp học ảo, điểm danh tự động', mix: 'Xen kẽ trực tiếp và trực tuyến' }[c], `${progsOf(p => p.format === c)} chương trình`], act(c, true))) }
-  if (kind === 'unit') { head = ['', 'Đơn vị', 'Loại', 'Đang dùng']
-    rows = rowsOf('unit').map((u, i) => { const ed = edit === u.id; const n = progsOf(p => p.issuer === u.name) + db.plans.filter(x => x.unit === u.name).length
-      return R(u.id, [i + 1, ed ? inp('name', ev.name, v => setEv({ ...ev, name: v })) : <b>{u.name}</b>, ed ? inp('type', ev.type, v => setEv({ ...ev, type: v })) : u.info.type, `${n} chương trình/kế hoạch`],
-        act(u.id, false, () => P.run(supabase.from('ph2_catalog').update({ name: ev.name, info: { type: ev.type } }).eq('id', u.id), '✓ Đã lưu').then(() => setEdit(null)))) })
-    add = <>{inp('name', nw.name ?? '', v => setNw({ ...nw, name: v }), 'Tên đơn vị')}{inp('type', nw.type ?? '', v => setNw({ ...nw, type: v }), 'Loại, VD: Trường THCS')}</> }
-  if (kind === 'trainer') { head = ['', 'Giảng viên', 'Đơn vị', 'Chuyên môn', 'Buổi phụ trách']
-    rows = rowsOf('trainer').map((r, i) => { const ed = edit === r.id; const n = db.sess.filter(s => s.trainer === r.name).length
-      return R(r.id, [i + 1, ed ? inp('name', ev.name, v => setEv({ ...ev, name: v })) : <b>{r.name}</b>, ed ? inp('org', ev.org, v => setEv({ ...ev, org: v })) : r.info.org, ed ? inp('field', ev.field, v => setEv({ ...ev, field: v })) : r.info.field, `${n}`],
-        act(r.id, false, () => P.run(supabase.from('ph2_catalog').update({ name: ev.name, info: { org: ev.org, field: ev.field } }).eq('id', r.id), '✓ Đã lưu').then(() => setEdit(null)))) })
-    add = <>{inp('name', nw.name ?? '', v => setNw({ ...nw, name: v }), 'Họ tên, học hàm/học vị')}{inp('org', nw.org ?? '', v => setNw({ ...nw, org: v }), 'Đơn vị công tác')}{inp('field', nw.field ?? '', v => setNw({ ...nw, field: v }), 'Chuyên môn')}</> }
-  async function doAdd() {
-    const nm = (nw.name ?? '').trim(); if (!nm) return P.setMsg('Nhập tên'); if (!orgId) return
-    if (kind === 'group') { const code = (nw.code ?? '').trim().toUpperCase(); if (!code || code === 'CXN' || k.groups().some(g => g.code === code)) return P.setMsg('Mã trống hoặc đã có')
-      await P.run(supabase.from('ph2_catalog').insert({ owner_org_id: orgId, kind: 'group', code, name: nm, color: nw.color, sort: k.groups().length + 1 }), '✓ Đã thêm vào danh mục') }
-    if (kind === 'subject') { const code = slug(nw.code || nm); if (!code || catOf(P.cat, 'subject').some(s => s.code === code)) return P.setMsg('Mã trống hoặc đã có')
-      if (await P.run(supabase.from('curriculum_catalog').insert({ owner_org_id: orgId, kind: 'subject', code, name: nm, sort: 900 }), '✓ Đã thêm vào danh mục')) P.reloadCat() }
-    if (kind === 'unit') await P.run(supabase.from('ph2_catalog').insert({ owner_org_id: orgId, kind: 'unit', name: nm, info: { type: nw.type || 'Đơn vị' } }), '✓ Đã thêm vào danh mục')
-    if (kind === 'trainer') await P.run(supabase.from('ph2_catalog').insert({ owner_org_id: orgId, kind: 'trainer', name: nm, info: { org: nw.org ?? '', field: nw.field ?? '' } }), '✓ Đã thêm vào danh mục')
-    setNw({ color: '#e08a0b' })
-  }
-  async function doDel(id: string) {
-    if (kind === 'subject') { if (await P.run(supabase.from('curriculum_catalog').delete().eq('id', id), '✓ Đã xoá')) P.reloadCat() }
-    else { const c = db.cat.find(x => x.id === id); if (kind === 'group' && c) await supabase.from('ph2_programs').update({ group_code: null }).eq('group_code', c.code!)
-      await P.run(supabase.from('ph2_catalog').delete().eq('id', id), '✓ Đã xoá') }
-    setAsk(null)
-  }
-  const askText = ask ? (kind === 'group' ? `Xoá nhóm “${db.cat.find(x => x.id === ask)?.name}”? ${progsOf(p => p.group_code === db.cat.find(x => x.id === ask)?.code)} chương trình sẽ chuyển về “Chưa xếp nhóm”.`
-    : kind === 'subject' ? `Xoá học phần “${catOf(P.cat, 'subject').find(x => x.id === ask)?.name}”?` : kind === 'unit' ? 'Xoá đơn vị này?' : 'Xoá giảng viên này? Các buổi đã phân công vẫn giữ tên.') : ''
-  return <>
-    <div className="toolbar"><Seg label="Loại danh mục" items={[['group', 'Nhóm chương trình'], ['subject', 'Học phần'], ['format', 'Hình thức'], ['unit', 'Đơn vị đào tạo'], ['trainer', 'Giảng viên']]} value={kind} onChange={v => { setKind(v); setEdit(null); setAsk(null); setNw({ color: '#e08a0b' }) }} />
-      <span className="sub">Danh mục dùng chung cho chương trình, kế hoạch đào tạo và đánh giá.</span></div>
-    {ask && <Confirm danger text={askText} yes="Xoá" onYes={() => doDel(ask)} onNo={() => setAsk(null)} />}
-    <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table className="cattbl"><thead><tr>{head.map(h => <th key={h}>{h}</th>)}<th /></tr></thead><tbody>
-      {rows.map(r => <tr key={r.key} className={edit === r.key ? 'editing' : ''}>{r.cells.map((c, i) => <td key={i} className={i === 0 ? 'n' : ''}>{c}</td>)}
-        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{P.canManage ? r.act : null}</td></tr>)}</tbody></table></div>
-      {add && P.canManage ? <div className="catadd"><Ic n="plus" />{add}<button type="button" className="btn sm primary" onClick={doAdd}>Thêm</button></div>
-        : kind === 'format' ? <p className="note" style={{ margin: 12 }}>Hình thức là danh mục hệ thống, gắn với cách điểm danh và lớp học ảo — chỉ đổi được khi nâng cấp hệ thống.</p> : null}</div>
-  </>
-}
-
 // ---------- Chi tiết ----------
 // Bản mẫu v315 · C6: thanh tab Chương trình | Khung đánh giá | Kế hoạch đào tạo + dòng số liệu; học phần bên trái, bảng chuyên đề (STT đánh lại theo học phần), khung Thông tin chung bên phải kéo rộng/thu gọn
 type TpTab = 'overview' | 'setup' | 'assess' | 'plans'
@@ -179,6 +104,10 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
   const all = (cur === 'all' ? subj : [cur]).flatMap(s => k.subjMods(p, s))
   const stt = new Map(all.map((m, i) => [m.id, i + 1] as [string, number]))
   const rows = all.filter(m => !mq || norm(m.title).includes(norm(mq)))
+  // CT giáo dục liên quan: chọn tay (p.edu) hoặc tự khớp theo năng lực (curricula.comps)
+  const [curs, setCurs] = useState<{ id: string; code: string | null; name: string; comps: string[] | null }[]>([])
+  useEffect(() => { supabase.from('curricula').select('id, code, name, comps').then(({ data }) => setCurs((data as typeof curs) ?? [])) }, [])
+  const eduCodes = (p.edu?.length ? curs.filter(c => p.edu!.includes(c.id)) : curs.filter(c => (c.comps ?? []).some(x => (p.comps ?? []).includes(x)))).map(c => (c.code ?? c.name) + (p.edu?.length ? '' : ' (tự khớp)'))
   const sb = (key: string, name: string, n: number, h: number) => <button type="button" key={key} className={'ctsb' + (cur === key ? ' on' : '')} onClick={() => setSub(key)}><b>{name}</b><small>{n} chuyên đề · {h} giờ</small></button>
   return <>
     <Back onClick={onBack} title={p.name}>Danh sách chương trình</Back>
@@ -216,6 +145,8 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
             <div><dt>Nhóm</dt><dd>{g.code === 'CXN' ? 'Chưa xếp nhóm' : g.name}</dd></div><div><dt>Hình thức</dt><dd>{TFORMAT[p.format]}</dd></div>
             <div><dt>Thời lượng</dt><dd>{k.progH(p)} giờ · {fmtM(p.mpp)}/buổi</dd></div>
             <div><dt>Đối tượng</dt><dd>{p.audience?.levels?.map(l => LVLS.find(x => x[0] === l)?.[1] ?? l).join(', ') || '—'}{p.audience?.note && <><br /><small className="sub">{p.audience.note}</small></>}</dd></div>
+            <div><dt>Năng lực</dt><dd className="clamp">{(p.comps ?? []).map(c => COMP[c] ?? P.db!.cat.find(x => x.kind === 'comp' && x.code === c)?.name ?? c).join(', ') || '—'}</dd></div>
+            <div><dt>CT giáo dục</dt><dd>{eduCodes.length ? eduCodes.join(', ') : 'Độc lập'}</dd></div>
             <div><dt>Đơn vị</dt><dd>{p.issuer || '—'}</dd></div>
             {p.goal && <div><dt>Mục tiêu</dt><dd className="clamp" data-tip={p.goal}>{p.goal}</dd></div>}</dl></Panel>
         <Panel title="Học viên làm được gì">{p.outcomes ? <ul className="ctul">{lines(p.outcomes).map((x, i) => <li key={i}>{x}</li>)}</ul> : <span className="sub">Chưa nhập — bấm Sửa thông tin</span>}</Panel>
@@ -249,15 +180,20 @@ export function MatPill({ k, m }: { k: K; m: Parameters<K['matSt']>[0] }) {
 
 // ---------- Thiết lập (tạo mới / sửa) ----------
 type MV = { id?: string; title: string; hours: number }
-type V = { name: string; code: string; group: string; subj: string[]; mods: Record<string, MV[]>; hours: Record<string, number>; format: Format; mpp: number; summary: string; outcomes: string; goal: string; levels: string[]; aud: string; issuer: string }
+type V = { name: string; code: string; group: string; subj: string[]; mods: Record<string, MV[]>; hours: Record<string, number>; format: Format; mpp: number; summary: string; outcomes: string; goal: string; levels: string[]; aud: string; issuer: string; comps: string[]; edu: string[] }
 function TpForm({ P, k, p, orgId, onDone }: { P: P2; k: K; p: Prog | null; orgId: string | null; onDone: (id?: string) => void }) {
   const [v, setV] = useState<V>(() => p ? { name: p.name, code: p.code ?? '', group: p.group_code ?? 'CXN', subj: k.subjectsOf(p), mods: Object.fromEntries(k.subjectsOf(p).map(s => [s, k.subjMods(p, s).map(m => ({ id: m.id, title: m.title, hours: Number(m.hours) }))])),
-    hours: Object.fromEntries(k.subjectsOf(p).map(s => [s, k.subjH(p, s)])), format: p.format, mpp: p.mpp, summary: p.summary ?? '', outcomes: p.outcomes ?? '', goal: p.goal ?? '', levels: [...(p.audience?.levels ?? [])], aud: p.audience?.note ?? '', issuer: p.issuer ?? '' }
-    : { name: '', code: '', group: 'CXN', subj: [], mods: {}, hours: {}, format: 'off', mpp: 180, summary: '', outcomes: '', goal: '', levels: [], aud: '', issuer: k.orgName(orgId) || 'KDI Education' })
+    hours: Object.fromEntries(k.subjectsOf(p).map(s => [s, k.subjH(p, s)])), format: p.format, mpp: p.mpp, summary: p.summary ?? '', outcomes: p.outcomes ?? '', goal: p.goal ?? '', levels: [...(p.audience?.levels ?? [])], aud: p.audience?.note ?? '', comps: [...(p.comps ?? [])], edu: [...(p.edu ?? [])], issuer: p.issuer ?? '' }
+    : { name: '', code: '', group: 'CXN', subj: [], mods: {}, hours: {}, format: 'off', mpp: 180, summary: '', outcomes: '', goal: '', levels: [], aud: '', issuer: k.orgName(orgId) || 'KDI Education', comps: [], edu: [] })
   const [mdOpen, setMdOpen] = useState<Set<string>>(new Set())
   const [sq, setSq] = useState(''); const [sdd, setSdd] = useState(false)
   const [nm, setNm] = useState<Record<string, { t: string; h: number }>>({})
   const [busy, setBusy] = useState(false)
+  const [curs, setCurs] = useState<{ id: string; code: string | null; name: string; comps: string[] | null }[]>([])
+  const [frame, setFrame] = useState<Frame>(DEF_FRAME)
+  useEffect(() => { supabase.from('curricula').select('id, code, name, comps').order('code').then(({ data }) => setCurs((data as typeof curs) ?? []))
+    if (orgId) supabase.from('ph2_settings').select('frame').eq('org_id', orgId).then(({ data }) => { const fr = ((data as { frame: Frame | null }[]) ?? [])[0]?.frame; if (fr) setFrame(fr) }) }, [orgId])
+  const compList: [string, string][] = [...Object.entries(COMP), ...P.db!.cat.filter(c => c.kind === 'comp').map(c => [c.code ?? c.id, c.name] as [string, string])]
   const sqRef = useRef<HTMLInputElement>(null)
   const set = (x: Partial<V>) => setV({ ...v, ...x })
   const groups = k.groups(); const units = P.db!.cat.filter(c => c.kind === 'unit')
@@ -278,10 +214,10 @@ function TpForm({ P, k, p, orgId, onDone }: { P: P2; k: K; p: Prog | null; orgId
     if (!v.name.trim()) return P.setMsg('Nhập tên chương trình'); if (!v.subj.length) return P.setMsg('Chọn ít nhất một học phần'); if (!orgId) return
     setBusy(true)
     const row = { name: v.name.trim(), code: v.code || null, group_code: v.group === 'CXN' ? null : v.group, format: v.format, mpp: v.mpp || 180, issuer: v.issuer, summary: v.summary, outcomes: v.outcomes, goal: v.goal,
-      audience: { levels: v.levels, note: v.aud }, subjects: v.subj, subj_hours: Object.fromEntries(v.subj.map(s => [s, +v.hours[s] || 0])) }
+      audience: { levels: v.levels, note: v.aud }, comps: v.comps, edu: v.edu, subjects: v.subj, subj_hours: Object.fromEntries(v.subj.map(s => [s, +v.hours[s] || 0])) }
     let pid = p?.id
     if (p) { const { error } = await supabase.from('ph2_programs').update(row).eq('id', p.id); if (error) { setBusy(false); return P.setMsg(error.message) } }
-    else { const { data, error } = await supabase.from('ph2_programs').insert({ ...row, owner_org_id: orgId, status: 'draft', cert: `Chứng nhận hoàn thành “${v.name.trim()}”` }).select('id').single()
+    else { const { data, error } = await supabase.from('ph2_programs').insert({ ...row, owner_org_id: orgId, status: 'draft', cert: `Chứng nhận hoàn thành “${v.name.trim()}”`, criteria: { att: frame.att, score: frame.score, req: frame.crit.some(c => c.req) } }).select('id').single()
       if (error) { setBusy(false); return P.setMsg(error.message) } pid = (data as { id: string }).id }
     // Chuyên đề: giữ theo id, thêm mới, bỏ chuyên đề đã xoá
     const keep = new Set<string>(); const ins: object[] = []
@@ -329,6 +265,10 @@ function TpForm({ P, k, p, orgId, onDone }: { P: P2; k: K; p: Prog | null; orgId
                 <label className="unit"><input type="number" min={0.5} step={0.5} value={nn.h} aria-label="Số giờ" onChange={e => setNm({ ...nm, [s]: { ...nn, h: +e.target.value || 0 } })} /><em>giờ</em></label><button type="button" className="btn sm" onClick={addMod}>Thêm</button></div></div>}</div> })}
         <div className="slf"><span>{v.subj.length} học phần</span><b>Tổng {tot} giờ ÷ {fmtM(v.mpp)} = {sessOf(tot, v.mpp)} buổi</b></div></div>
         : <Empty>Chưa có học phần nào — tìm và thêm học phần ở ô phía trên.</Empty>}</>)}
+    {sec('award', 'Năng lực & chương trình giáo dục liên quan', 'Năng lực hướng tới — hệ thống tự khớp với chương trình giáo dục yêu cầu cùng năng lực', <>
+      <div className="chips">{compList.map(([c, n]) => <button type="button" key={c} className={'chip' + (v.comps.includes(c) ? ' k on' : '')} aria-pressed={v.comps.includes(c)} onClick={() => set({ comps: v.comps.includes(c) ? v.comps.filter(x => x !== c) : [...v.comps, c] })}>{v.comps.includes(c) && '✓ '}{n}</button>)}</div>
+      <label className="fld"><span>Chương trình giáo dục liên quan <small className="sub">để trống: tự khớp theo năng lực</small></span>
+        <select multiple value={v.edu} onChange={e => set({ edu: Array.from(e.target.selectedOptions).map(o => o.value) })} style={{ minHeight: 96 }}>{curs.map(c => <option key={c.id} value={c.id}>{c.code ? c.code + ' · ' : ''}{c.name}</option>)}</select></label></>)}
     {sec('target', 'Mục tiêu, đối tượng & yêu cầu cần đạt', 'Hiện ở trang Tổng quan · khung đánh giá thiết lập ở tab Khung đánh giá', <>
       <label className="fld"><span>Mục tiêu</span><textarea rows={2} value={v.goal} onChange={e => set({ goal: e.target.value })} placeholder="Giáo viên thiết kế và tổ chức được…" /></label>
       <div className="fld"><span>Đối tượng</span><div className="mpick">{LVLS.map(([kk, n]) => <button type="button" key={kk} className={'chipbtn' + (v.levels.includes(kk) ? ' on' : '')} onClick={() => set({ levels: v.levels.includes(kk) ? v.levels.filter(x => x !== kk) : [...v.levels, kk] })}>{n}</button>)}</div>
@@ -360,7 +300,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
     <p className="note"><Ic n="info" /> Khung đánh giá định nghĩa một lần cho chương trình; mọi đợt đào tạo tự kế thừa. Giảng viên chấm ở <b>Đánh giá kết quả › Chấm bài</b>.</p>
     {used.length > 0 && <p className="note warnnote"><Ic n="alert" /> {used.length} đợt đã có điểm theo khung này ({used.map(x => x.title.split('–').pop()!.trim()).join(', ')}). Thêm tiêu chí hoặc đầu điểm mới sẽ cần chấm bổ sung cho các đợt đó.</p>}
     <Panel icon="list" title="1. Đầu điểm đánh giá" act={<small className={tw === 100 ? 'sub' : 'badtxt'}>Tổng trọng số <b>{tw}%</b>{tw === 100 ? '' : ' — cần bằng 100%'}</small>}>
-      <div className="tblwrap"><table className="ittbl"><thead><tr><th>STT</th><th>Đầu điểm</th><th>Loại</th><th>Gắn với chuyên đề</th><th>Cách chấm</th><th className="c">Trọng số</th><th /></tr></thead><tbody>
+      <TblWrap><table className="ittbl"><thead><tr><th>STT</th><th>Đầu điểm</th><th>Loại</th><th>Gắn với chuyên đề</th><th>Cách chấm</th><th className="c">Trọng số</th><th /></tr></thead><tbody>
         {its.map((i, n) => <tr key={i.id} className={it?.id === i.id ? 'cur' : ''}><td className="n">{n + 1}</td>
           <td><input defaultValue={i.name} key={i.name} disabled={ro} aria-label="Tên đầu điểm" onBlur={e => e.target.value !== i.name && patch(i.id, { name: e.target.value })} /></td>
           <td><select value={i.kind} disabled={ro} aria-label="Loại đầu điểm" onChange={e => patch(i.id, { kind: e.target.value, ...(e.target.value === 'demo' ? { mode: 'rubric' as const } : {}) })}>{Object.entries(IKIND).map(([kk, [n2]]) => <option key={kk} value={kk}>{n2}</option>)}</select></td>
@@ -370,7 +310,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
           <td className="c"><label className="unit"><input type="number" min={0} max={100} defaultValue={i.w} key={i.w} disabled={ro} aria-label="Trọng số" onBlur={e => +e.target.value !== i.w && patch(i.id, { w: Math.max(0, +e.target.value || 0) })} /><em>%</em></label></td>
           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button type="button" className={'btn sm' + (it?.id === i.id ? ' primary' : '')} onClick={() => setSel(i.id)}>{i.mode === 'rubric' ? `Rubric · ${i.rubric.length} tiêu chí` : 'Chi tiết'}</button>
             {!ro && <button type="button" className="btn sm ghost" aria-label="Xoá đầu điểm" onClick={() => { saveItems(its.filter(x => x.id !== i.id)); P.setMsg('✓ Đã xoá đầu điểm') }}><Ic n="trash" /></button>}</td></tr>)}
-        {!its.length && <tr><td colSpan={7} className="sub">Chưa có đầu điểm — thêm ở dòng dưới.</td></tr>}</tbody></table></div>
+        {!its.length && <tr><td colSpan={7} className="sub">Chưa có đầu điểm — thêm ở dòng dưới.</td></tr>}</tbody></table></TblWrap>
       {!ro && <div className="catadd"><Ic n="plus" /><input className="cin" value={nn} onChange={e => setNn(e.target.value)} placeholder="Tên đầu điểm, VD: Kiểm tra cuối khoá" />
         <select className="cin" style={{ flex: 'none', width: 'auto' }} value={nk} onChange={e => setNk(e.target.value)} aria-label="Loại đầu điểm">{Object.entries(IKIND).map(([kk, [n2]]) => <option key={kk} value={kk}>{n2}</option>)}</select>
         <button type="button" className="btn sm primary" onClick={() => { if (!nn.trim()) return P.setMsg('Nhập tên đầu điểm'); const mode = nk === 'quiz' || nk === 'essay' ? 'score' : 'rubric'
@@ -379,7 +319,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
       <label className="fld"><span>Đề bài / yêu cầu cho học viên</span><textarea rows={2} defaultValue={it.task} key={it.id + 't'} disabled={ro} placeholder="Học viên cần làm gì, nộp gì, hạn nộp…" onBlur={e => e.target.value !== it.task && patch(it.id, { task: e.target.value })} /></label>
       {it.mode === 'score' ? <div className="fld"><span>Thang điểm</span><label className="unit"><input type="number" min={1} defaultValue={it.max} key={it.id + 'm'} disabled={ro} aria-label="Thang điểm" onBlur={e => patch(it.id, { max: Math.max(1, +e.target.value || 10) })} /><em>điểm</em></label><small className="sub">Quy về thang 10 khi tính điểm tổng.</small></div>
         : <><div className="rbhead"><b>Rubric chấm</b><small className="sub">{it.rubric.length} tiêu chí · {it.rubric.reduce((a, c) => a + (+c.pts || 0), 0)} điểm · Điểm đầu điểm = Σ điểm theo mức ÷ {it.rubric.reduce((a, c) => a + (+c.pts || 0), 0) || '…'} × 10</small></div>
-          <div className="tblwrap"><table className="rbtbl"><thead><tr><th>Tiêu chí</th>{LV.map((l, kk) => <th key={l} className={'lv' + kk}>{l}<small>{LVP[kk] * 100}% điểm</small></th>)}<th /></tr></thead><tbody>
+          <TblWrap><table className="rbtbl"><thead><tr><th>Tiêu chí</th>{LV.map((l, kk) => <th key={l} className={'lv' + kk}>{l}<small>{LVP[kk] * 100}% điểm</small></th>)}<th /></tr></thead><tbody>
             {it.rubric.map(c => <tr key={c.id}><td className="rbc"><input defaultValue={c.name} key={c.name} disabled={ro} aria-label="Tên tiêu chí" onBlur={e => e.target.value !== c.name && patchC(c.id, { name: e.target.value })} />
               <div className="rbmeta"><label className="unit"><input type="number" min={1} defaultValue={c.pts} key={c.pts} disabled={ro} aria-label="Điểm tối đa" onBlur={e => patchC(c.id, { pts: Math.max(1, +e.target.value || 1) })} /><em>điểm</em></label>
                 <select value={c.comp} disabled={ro} aria-label="Năng lực" onChange={e => patchC(c.id, { comp: e.target.value })}>{Object.entries(COMP).map(([kk, n2]) => <option key={kk} value={kk}>{n2}</option>)}</select>
@@ -387,7 +327,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
               {LV.map((l, kk) => <td key={l} className={'lv' + kk}><textarea rows={3} defaultValue={c.desc[kk] ?? ''} key={c.id + kk + (c.desc[kk] ?? '')} disabled={ro} aria-label={`Mô tả mức ${l}`} placeholder={`Mô tả mức ${l.toLowerCase()}…`}
                 onBlur={e => e.target.value !== (c.desc[kk] ?? '') && patchC(c.id, { desc: c.desc.map((d, j) => j === kk ? e.target.value : d) })} /><small>{+(c.pts * LVP[kk]).toFixed(2)} điểm</small></td>)}
               <td>{!ro && <button type="button" className="btn sm ghost" aria-label="Xoá tiêu chí" onClick={() => patch(it.id, { rubric: it.rubric.filter(x => x.id !== c.id) })}><Ic n="trash" /></button>}</td></tr>)}
-            {!it.rubric.length && <tr><td colSpan={6} className="sub">Chưa có tiêu chí.</td></tr>}</tbody></table></div>
+            {!it.rubric.length && <tr><td colSpan={6} className="sub">Chưa có tiêu chí.</td></tr>}</tbody></table></TblWrap>
           <div className="formact" style={{ justifyContent: 'flex-start' }}>{!ro && <button type="button" className="btn sm" onClick={() => patch(it.id, { rubric: [...it.rubric, newC('Tiêu chí mới', 3)] })}><Ic n="plus" /> Thêm tiêu chí</button>}
             <small className="sub">Tiêu chí “Bắt buộc đạt” ở mức Chưa đạt → học viên chưa hoàn thành chương trình. Mỗi tiêu chí gắn một năng lực để cập nhật hồ sơ năng lực nhà giáo.</small></div></>}</Panel>}
     <Panel icon="award" title="3. Điều kiện hoàn thành & chứng nhận"><div className="crgrid">

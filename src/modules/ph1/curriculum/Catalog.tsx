@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { CAT_KIND, MAIN_KINDS, errText, type CatItem, type CatKind, type Org } from './api'
-import { Confirm, Ic, Panel, cssVar } from '../mau/kit'
+import { Confirm, HNote, Ic, Panel, cssVar } from '../mau/kit'
+import { DataTable } from '../mau/DataTable'
 
 // Danh mục dùng chung của 1.1: Cấp học › Khối › Lớp (nối bằng parent_code), Nhóm chương trình, Môn học; các loại khác là danh mục phụ.
 // Nguồn mục: mục hệ thống (KDI quản lý) + mục của cấp trên được kế thừa + mục riêng của đơn vị.
 // Đơn vị thêm / sửa / xoá mục riêng; ẩn mục kế thừa không dùng (ẩn cho cả đơn vị trực thuộc).
-export function CatalogPanel({ orgId, all, hidden, orgs, below, canManage, isPlatform, onChange }: {
+export function CatalogPanel({ orgId, all, hidden, orgs, below, canManage, isPlatform, onChange, addSignal = 0 }: {
   orgId: string; all: CatItem[]; hidden: { org_id: string; item_id: string }[]; orgs: Org[]; below: Set<string>
   canManage: boolean; isPlatform: boolean; onChange: () => void
+  /** bấm “Thêm mục” trên thanh bước (bản mẫu v315) */ addSignal?: number
 }) {
   const [kind, setKind] = useState<CatKind>('level')
   const [form, setForm] = useState<Partial<CatItem> | null>(null)
@@ -21,6 +23,7 @@ export function CatalogPanel({ orgId, all, hidden, orgs, below, canManage, isPla
   const myHidden = new Set(hidden.filter(h => h.org_id === orgId).map(h => h.item_id))
   const upHidden = new Set(hidden.filter(h => h.org_id !== orgId && !below.has(h.org_id)).map(h => h.item_id))
   const ownerName = (id: string | null) => (id === null ? 'Hệ thống' : id === orgId ? 'Đơn vị mình' : orgs.find(o => o.id === id)?.name ?? 'Cấp trên')
+  useEffect(() => { if (addSignal) setForm({ owner_org_id: orgId, sort: items.length + 1 }) }, [addSignal])
   const editable = (i: Pick<CatItem, 'owner_org_id'>) => canManage && (i.owner_org_id === orgId || (i.owner_org_id === null && isPlatform))
 
   async function save(e: React.FormEvent) {
@@ -48,14 +51,9 @@ export function CatalogPanel({ orgId, all, hidden, orgs, below, canManage, isPla
   return (<>
     <div className="toolbar">
       <div className="seg" role="group" aria-label="Loại danh mục">{MAIN_KINDS.map(k => <button type="button" key={k} className={kind === k ? 'on' : ''} onClick={() => { setKind(k); setForm(null) }}>{CAT_KIND[k][0]}</button>)}</div>
-      <select aria-label="Danh mục khác" value={MAIN_KINDS.includes(kind) ? '' : kind} onChange={e => { if (e.target.value) { setKind(e.target.value as CatKind); setForm(null) } }}>
-        <option value="">Danh mục khác (chờ xem lại)…</option>
-        {(Object.keys(CAT_KIND) as CatKind[]).filter(k => !MAIN_KINDS.includes(k)).map(k => <option key={k} value={k}>{CAT_KIND[k][0]}</option>)}</select>
-      {canManage && <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="btn primary" onClick={() => setForm({ owner_org_id: orgId, sort: items.length + 1 })}><Ic n="plus" /> Thêm mục riêng</button>
-        {isPlatform && <button type="button" className="btn" onClick={() => setForm({ owner_org_id: null, sort: items.length + 1 })}><Ic n="plus" /> Thêm mục hệ thống</button>}</span>}
+      <HNote tip={(CAT_KIND[kind][1] ? CAT_KIND[kind][1] + '. ' : '') + 'Mục hệ thống và của cấp trên được kế thừa; đơn vị thêm mục riêng hoặc ẩn mục không dùng (ẩn cho cả đơn vị trực thuộc). Mã đã gán cho chương trình không đổi khi đổi tên.'} />
+      {isPlatform && canManage && <button type="button" className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setForm({ owner_org_id: null, sort: items.length + 1 })}><Ic n="plus" /> Thêm mục hệ thống</button>}
     </div>
-    <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>{CAT_KIND[kind][1] ? CAT_KIND[kind][1] + '. ' : ''}Mục hệ thống và của cấp trên được kế thừa; đơn vị thêm mục riêng hoặc ẩn mục không dùng (ẩn cho cả đơn vị trực thuộc). Mã đã gán cho chương trình không đổi khi đổi tên.</span>
     {msg && <p className="msg">{msg}</p>}
     {ask && <Confirm danger text={`Xoá “${ask.name}” khỏi danh mục? Chương trình đang dùng mã ${ask.code} vẫn giữ mã này.`} yes="Xoá" onNo={() => setAsk(null)} onYes={() => { remove(ask); setAsk(null) }} />}
     {form && <Panel icon={form.id ? 'edit' : 'plus'} title={form.id ? `Sửa ${CAT_KIND[kind][0].toLowerCase()}` : `Thêm ${CAT_KIND[kind][0].toLowerCase()}${form.owner_org_id === null ? ' (hệ thống)' : ''}`}>
@@ -71,19 +69,15 @@ export function CatalogPanel({ orgId, all, hidden, orgs, below, canManage, isPla
         </div>
         <div className="formact"><button className="btn primary" type="submit"><Ic n="check" /> Lưu</button><button className="btn" type="button" onClick={() => setForm(null)}>Huỷ</button></div>
       </form></Panel>}
-    <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table>
-      <thead><tr><th>Mã</th><th>Tên</th>{parentKind && <th>Thuộc {CAT_KIND[parentKind][0].toLowerCase()}</th>}<th>Nguồn</th><th>Trạng thái</th><th></th></tr></thead>
-      <tbody>{items.map(i => { const off = myHidden.has(i.id) || upHidden.has(i.id)
-        return <tr key={i.id} style={off ? { opacity: .55 } : undefined}>
-          <td><code>{i.code}</code></td>
-          <td>{i.color && <span className="dotc" style={cssVar(i.color)} />}<b>{i.name}</b>{i.description && <><br /><small style={{ color: 'var(--muted)' }}>{i.description}</small></>}</td>
-          {parentKind && <td>{parentName(i.parent_code)}</td>}
-          <td>{i.owner_org_id === null ? <span className="pill draft plain">Hệ thống</span> : ownerName(i.owner_org_id)}</td>
-          <td>{upHidden.has(i.id) ? <span className="pill warn plain">Cấp trên đã ẩn</span> : myHidden.has(i.id) ? <span className="pill warn plain">Đã ẩn</span> : <span className="pill good plain">Đang dùng</span>}</td>
-          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {editable(i) && <><button type="button" className="btn sm ghost" title="Sửa" aria-label="Sửa" onClick={() => setForm(i)}><Ic n="edit" /></button><button type="button" className="btn sm ghost" title="Xoá" aria-label="Xoá" onClick={() => setAsk(i)}><Ic n="trash" /></button></>}
-            {canManage && i.owner_org_id !== orgId && !upHidden.has(i.id) && <button type="button" className="btn sm" onClick={() => toggleHide(i)}>{myHidden.has(i.id) ? 'Dùng lại' : 'Ẩn'}</button>}
-          </td></tr> })}
-        {items.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--muted)' }}>Chưa có mục nào.</td></tr>}</tbody></table></div></div>
+    <DataTable id={'cat-' + kind} plain rows={items} rowKey={i => i.id} noun="mục" onOpen={i => editable(i) ? setForm(i) : undefined} empty={<p className="sub">Chưa có mục nào.</p>}
+      cols={[
+        { key: 'code', label: 'Mã', width: '120px', sort: i => i.code, cell: i => i.code },
+        { key: 'name', label: 'Tên', name: true, sort: i => i.name, cell: i => <>{i.color && <span className="dotc" style={cssVar(i.color)} />}<b style={myHidden.has(i.id) || upHidden.has(i.id) ? { opacity: .55 } : undefined}>{i.name}</b></> },
+        { key: 'parent', label: 'Thuộc', sort: i => parentName(i.parent_code), cell: i => parentKind ? parentName(i.parent_code) : '—' },
+        { key: 'note', label: 'Ghi chú', sort: i => i.description ?? null, cell: i => <>{i.description || (i.owner_org_id === null ? '' : ownerName(i.owner_org_id))}{upHidden.has(i.id) ? ' · cấp trên đã ẩn' : myHidden.has(i.id) ? ' · đã ẩn' : ''}</> },
+        { key: 'act', label: '', width: '120px', raw: true, sum: false, cell: i => <span style={{ whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+          {editable(i) && <><button type="button" className="btn sm ghost" title="Sửa" aria-label="Sửa" onClick={() => setForm(i)}><Ic n="edit" /></button><button type="button" className="btn sm ghost" title="Xoá" aria-label="Xoá" onClick={() => setAsk(i)}><Ic n="trash" /></button></>}
+          {canManage && i.owner_org_id !== orgId && !upHidden.has(i.id) && <button type="button" className="btn sm ghost" onClick={() => toggleHide(i)}>{myHidden.has(i.id) ? 'Dùng lại' : 'Ẩn'}</button>}</span> },
+      ]} />
   </>)
 }

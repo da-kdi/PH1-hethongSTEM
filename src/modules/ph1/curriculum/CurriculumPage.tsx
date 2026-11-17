@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { CatalogPanel } from './Catalog'
 import { norm } from '../ui'
+import { COMP } from '../../ph2/api'
 import {
   OPEN_LESSON_KEY, SCOPE, catName, catOf, effectiveCatalog, errText, gradeLabel, gradesOfLevel, inUseOf, loadContent, useCatalog, useOrgs,
   type CatItem, type Content, type Curriculum, type Lesson, type MVer, type Scope, type Unit,
@@ -32,6 +33,7 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
   const [top, setTop] = useState<Top>('programs')
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [catAdd, setCatAdd] = useState(0)
   const [catKey, setCatKey] = useState(0)
   const [q, setQ] = useState('')
   const [f, setF] = useState({ level: '', grade: '', subject: '', status: '' })
@@ -135,11 +137,12 @@ export function CurriculumPage({ orgId, go }: { orgId: string | null; go?: (p: s
   return <Mau>
     <PageHead icon="book" title="Chương trình giáo dục" sub="Khung chương trình STEM theo cấp học, khối, môn và bài học">
       {top === 'programs' && canManage && <button type="button" className="btn primary" onClick={() => { setCreating(true); setMsg('') }}><Ic n="plus" /> Chương trình mới</button>}
+      {top === 'catalog' && canManage && <button type="button" className="btn primary" onClick={() => setCatAdd(x => x + 1)}><Ic n="plus" /> Thêm mục</button>}
     </PageHead>
     <Flow steps={[['catalog', 'Danh mục', 'Cấp học, khối, lớp, nhóm, môn'], ['programs', 'Chương trình', `${list.length} chương trình · bài học & phát hành`]] as [Top, string, string][]}
       value={top} onChange={t => { setTop(t); setCreating(false) }} />
     {msg && <p className="msg">{msg}</p>}
-    {top === 'catalog' ? <CatalogPanel orgId={orgId} all={all} hidden={hidden} orgs={orgs} below={below} canManage={canManage} isPlatform={isPlatform} onChange={() => setCatKey(k => k + 1)} /> : <>
+    {top === 'catalog' ? <CatalogPanel orgId={orgId} all={all} hidden={hidden} orgs={orgs} below={below} canManage={canManage} isPlatform={isPlatform} onChange={() => setCatKey(k => k + 1)} addSignal={catAdd} /> : <>
       {creating && <ProgramForm cat={cat} orgs={orgs} below={below} me={me} isPlatform={isPlatform} onCancel={() => setCreating(false)}
         suggestCode={`CT${Math.max(0, ...list.map(c => Number((c.code ?? '').match(/^CT(\d+)$/)?.[1] ?? 0))) + 1}`}
         onSave={async v => {
@@ -267,7 +270,7 @@ function ProgramForm({ cur, cat, orgs, below, me, isPlatform, targets, onSave, o
 
 // ===== Chi tiết chương trình: Tổng quan · Thiết lập =====
 type DTab = 'overview' | 'deploy' | 'setup'
-type Ask = { text: string; yes: string; act: 'draft' | 'archive' | 'delete' }
+type Ask = { text: string; yes: string; act: 'draft' | 'archive' | 'delete' | 'release' | 'discard' }
 function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, mats, sourceName, back, reload, go, onClone }: {
   cur: Curriculum; orgId: string; cat: CatItem[]; canManage: boolean; orgs: Org[]; below: Set<string>; isPlatform: boolean; mats: Map<string, Mat>; sourceName: string | null
   back: () => void; reload: () => void; go?: (p: string) => void; onClone: (c: Curriculum) => void
@@ -280,12 +283,20 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
   const isOwner = cur.owner_org_id === orgId
   const editable = isOwner && canManage
   const me = orgs.find(o => o.id === orgId) ?? null
-  const vid = cur.current_version_id
+  // 068 · phiên bản: đã phát hành thì chỉ xem; “Tạo phiên bản mới” → sửa trên bản nháp (draft_version_id), bản đang dùng giữ nguyên đến khi phát hành bản mới
+  const dv = cur.draft_version_id ?? null
+  const vid = dv ?? cur.current_version_id
+  const canEdit = editable && !(cur.status === 'published' && !dv)
   const grp = groupOfCur(cat, cur)
+  // Năng lực dùng chung với PH2 (070): mã cố định + năng lực thêm ở danh mục PH2
+  const [extraComps, setExtraComps] = useState<[string, string][]>([])
+  useEffect(() => { supabase.from('ph2_catalog').select('code, name').eq('kind', 'comp').then(({ data }) => setExtraComps(((data as { code: string; name: string }[]) ?? []).map(x => [x.code, x.name]))) }, [])
+  const comps: [string, string][] = [...Object.entries(COMP), ...extraComps]
+  const compName = (c: string) => comps.find(x => x[0] === c)?.[1] ?? c
   const color = cur.color ?? grp?.color ?? '#64748b'
   const loadC = async () => { if (vid) setContent(await loadContent(vid)) }
+  useEffect(() => { loadC() }, [vid])
   useEffect(() => {
-    loadC()
     supabase.from('curriculum_targets').select('org_id').eq('curriculum_id', cur.id).then(({ data }) => setTargets(((data as { org_id: string }[]) ?? []).map(x => x.org_id)))
   }, [cur.id])
 
@@ -308,6 +319,12 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
     if (error) return setMsg(errText(error.message))
     setMsg(''); setNote(status === 'published' ? 'Đã phát hành.' : status === 'archived' ? 'Đã ngừng dùng — không còn được gợi ý khi phân phối.' : 'Đã chuyển về nháp.'); reload()
   }
+  async function revision(act: 'start' | 'release' | 'discard') {
+    if (act === 'release' && !content?.lessons.length) return setMsg('Phiên bản mới chưa có bài học.')
+    const { error } = await supabase.rpc('curriculum_' + act + '_revision', { p_curriculum: cur.id })
+    if (error) return setMsg(errText(error.message))
+    setMsg(''); setNote(act === 'start' ? 'Đã tạo phiên bản mới (nháp) — sửa bài học ở tab Thiết lập; bản đang dùng vẫn áp dụng đến khi phát hành.' : act === 'release' ? 'Đã phát hành phiên bản mới — học liệu, phân phối chuyển sang bài cùng tên ở bản mới.' : 'Đã bỏ phiên bản nháp.'); reload()
+  }
   async function removeProgram() {
     const { data, error } = await supabase.from('curricula').delete().eq('id', cur.id).select('id')
     if (error) return setMsg(errText(error.message))
@@ -321,47 +338,57 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
   return <>
     <div className="crumb"><Back onClick={back} title={cur.name}>Quay lại</Back></div>
     <CtHead code={cur.code ?? '—'} color={color} title={cur.name}
-      pills={<><StatusPill s={cur.status} />{!editable ? <HNote lock tip="Chỉ xem — chương trình của đơn vị khác hoặc bạn chưa có quyền sửa." /> : cur.status === 'published' && <HNote lock tip="Đã phát hành — chỉ xem. Muốn sửa, chuyển về nháp (chưa có phiên bản chương trình)." />}</>}
+      pills={<><StatusPill s={cur.status} />{!editable ? <HNote lock tip="Chỉ xem — chương trình của đơn vị khác hoặc bạn chưa có quyền sửa." /> : cur.status === 'published' && !dv && <HNote lock tip="Đã phát hành — chỉ xem. Muốn sửa, bấm “Tạo phiên bản mới”." />}{dv && <span className="pill warn plain">Phiên bản mới đang soạn</span>}</>}
       sub={<>{gradesText(cat, cur.grades)}{sourceName && <> · Kế thừa từ <b>{sourceName}</b></>}</>}
       act={<>
         {editable && cur.status === 'draft' && <button type="button" className="btn primary" onClick={() => setStatus('published')}><Ic n="send" /> Phát hành</button>}
-        {editable && cur.status === 'published' && <button type="button" className="btn" disabled data-tip="TODO: CSDL chưa có phiên bản chương trình (quyết định 23/10 bỏ phiên bản) — tạm dùng “Chuyển về nháp” để sửa"><Ic n="copy" /> Tạo phiên bản mới</button>}
-        {editable && cur.status === 'published' && <><button type="button" className="btn" onClick={() => setAsk({ text: 'Chuyển về nháp? Đơn vị khác sẽ không còn thấy chương trình.', yes: 'Chuyển về nháp', act: 'draft' })}>Chuyển về nháp</button>
-          <button type="button" className="btn" onClick={() => setAsk({ text: 'Ngừng dùng? Chương trình không còn được gợi ý khi phân phối.', yes: 'Ngừng dùng', act: 'archive' })}><Ic n="archive" /> Ngừng dùng</button></>}
+        {editable && cur.status === 'published' && !dv && <button type="button" className="btn" onClick={() => revision('start')}><Ic n="copy" /> Tạo phiên bản mới</button>}
+        {editable && dv && <><button type="button" className="btn primary" onClick={() => setAsk({ text: 'Phát hành phiên bản mới? Bản đang dùng hết hiệu lực; học liệu, phân phối, bài giảng chuyển sang bài cùng tên ở bản mới.', yes: 'Phát hành', act: 'release' })}><Ic n="send" /> Phát hành phiên bản mới</button>
+          <button type="button" className="btn" onClick={() => setAsk({ text: 'Bỏ phiên bản đang soạn? Các thay đổi trong bản nháp sẽ mất.', yes: 'Bỏ bản nháp', act: 'discard' })}>Bỏ bản nháp</button></>}
+        {editable && cur.status === 'published' && <button type="button" className="btn" onClick={() => setAsk({ text: 'Ngừng dùng? Chương trình không còn được gợi ý khi phân phối.', yes: 'Ngừng dùng', act: 'archive' })}><Ic n="archive" /> Ngừng dùng</button>}
         {editable && cur.status === 'published' && <button type="button" className="btn" onClick={() => setTab('deploy')}><Ic n="pinmap" /> Gán cho trường</button>}
         {editable && cur.status === 'archived' && <button type="button" className="btn" onClick={() => setStatus('published')}>Dùng lại</button>}
         {!isOwner && canManage && <button type="button" className="btn" onClick={() => onClone(cur)}><Ic n="copy" /> Kế thừa để điều chỉnh</button>}
         {editable && <button type="button" className="btn danger" aria-label="Xoá chương trình" data-tip="Xoá chương trình" onClick={() => setAsk({ text: `Xoá chương trình “${cur.name}” cùng mọi môn, bài học? Học liệu, phân phối gắn chương trình được giữ lại nhưng bỏ liên kết.`, yes: 'Xoá', act: 'delete' })}><Ic n="trash" /></button>}
       </>} />
-    {ask && <Confirm text={ask.text} yes={ask.yes} danger={ask.act === 'delete'} onNo={() => setAsk(null)} onYes={() => { const a = ask.act; setAsk(null); a === 'delete' ? removeProgram() : setStatus(a === 'archive' ? 'archived' : 'draft') }} />}
+    {ask && <Confirm text={ask.text} yes={ask.yes} danger={ask.act === 'delete'} onNo={() => setAsk(null)} onYes={() => { const a = ask.act; setAsk(null); a === 'delete' ? removeProgram() : a === 'release' || a === 'discard' ? revision(a) : setStatus(a === 'archive' ? 'archived' : 'draft') }} />}
     {msg && <p className="msg">{msg}</p>}
     {note && <p className="okmsg">{note}</p>}
+    {dv && <div className="editbar"><Ic n="edit" /><b>Đang soạn phiên bản mới (nháp)</b><small className="sub">Bản đang dùng vẫn áp dụng cho phân phối, học liệu đến khi phát hành bản mới</small></div>}
+    {!dv && editable && cur.status === 'published' && <div className="ctlock"><Ic n="lock" /> Đã phát hành — chỉ xem. Muốn sửa, bấm “Tạo phiên bản mới”.</div>}
     <div className="ctbar"><div className="seg" role="tablist">
       <button type="button" role="tab" className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>Chương trình</button>
       <button type="button" role="tab" className={tab === 'deploy' ? 'on' : ''} onClick={() => setTab('deploy')}>Phân phối & trường áp dụng</button>
-      {editable && <button type="button" role="tab" className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>Thiết lập</button>}</div>
+      {canEdit && <button type="button" role="tab" className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>Thiết lập</button>}</div>
       <div className="ctstats"><span><b>{subjects.length}</b>môn</span><span><b>{ls.length}</b>bài học</span><span><b>{ls.reduce((a, l) => a + l.periods, 0)}</b>tiết · {Number((cur as any).periods_per_week ?? 2)} tiết/tuần</span>
         <span><b>{Number((cur as any).periods_per_week ?? 2) ? Math.ceil(ls.reduce((a, l) => a + l.periods, 0) / Number((cur as any).periods_per_week ?? 2)) : 0}</b>tuần</span><span><b>{ls.filter(l => mats.get(l.id) === 'ok').length}/{ls.length}</b>bài đủ học liệu</span></div></div>
     {!vid ? <Empty>Chương trình chưa có nội dung.</Empty> : !content ? <p className="sub">Đang tải…</p> : tab === 'deploy' ? <DeployTab cur={cur} orgs={orgs} below={below} isPlatform={isPlatform} editable={editable} targets={targets} onSaved={t => { setTargets(t); setNote('Đã lưu trường áp dụng.'); reload() }} setMsg={setMsg} go={go} />
       : tab === 'overview' ? <>
       <AsideWrap aside={<>
-        <Panel title="Thông tin chung" act={editable && <button type="button" className="btn sm ghost" onClick={() => setTab('setup')}><Ic n="edit" /> Sửa</button>}>,          <dl className="ctkv">,            <div><dt>Nhóm</dt><dd>{grp ? grp.name : 'Chưa xếp nhóm'}</dd></div>,            <div><dt>Cấp học</dt><dd>{catOf(cat, 'level').filter(l => gradesOfLevel(cat, l.code).some(g => cur.grades.includes(g))).map(l => l.name).join(', ') || '—'}</dd></div>,            <div><dt>Khối</dt><dd>{cur.grades.length ? cur.grades.map(gradeLabel).join(', ') : '—'}</dd></div>,            <div><dt>Thời lượng</dt><dd>{Number((cur as any).periods_per_week ?? 2)} tiết/tuần · {(cur as any).minutes_per_period ?? 35} phút/tiết</dd></div>,            <div><dt>Đơn vị</dt><dd>{cur.issuer ?? cur.owner_name ?? '—'}</dd></div><div><dt>Áp dụng</dt><dd>{SCOPE[cur.scope]}</dd></div>,            {cur.summary && <div><dt>Mô tả</dt><dd className="clamp" data-tip={cur.summary}>{cur.summary}</dd></div>},          </dl></Panel>,        <Panel title="Học sinh làm được gì">{cur.outcomes_text ? <ul className="ctul">{cur.outcomes_text.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map((x, i) => <li key={i}>{x}</li>)}</ul> : <span className="sub">{editable ? 'Chưa nhập — bấm Sửa ở Thông tin chung.' : 'Chưa nhập.'}</span>}</Panel>,        {/* TODO(C1): “Giáo viên cần có gì” — CSDL chưa có trường này */},        <Panel title="Phiên bản"><div className="ctver"><b>Bản hiện hành</b><small className="sub">{cur.status === 'published' ? 'đang áp dụng' : cur.status === 'draft' ? 'nháp' : 'ngừng dùng'}</small>{cur.status === 'published' && <span className="pill good plain">Đang dùng</span>}</div></Panel></>}>
+        <Panel title="Thông tin chung" act={canEdit && <button type="button" className="btn sm ghost" onClick={() => setTab('setup')}><Ic n="edit" /> Sửa</button>}>,          <dl className="ctkv">,            <div><dt>Nhóm</dt><dd>{grp ? grp.name : 'Chưa xếp nhóm'}</dd></div>,            <div><dt>Cấp học</dt><dd>{catOf(cat, 'level').filter(l => gradesOfLevel(cat, l.code).some(g => cur.grades.includes(g))).map(l => l.name).join(', ') || '—'}</dd></div>,            <div><dt>Khối</dt><dd>{cur.grades.length ? cur.grades.map(gradeLabel).join(', ') : '—'}</dd></div>,            <div><dt>Thời lượng</dt><dd>{Number((cur as any).periods_per_week ?? 2)} tiết/tuần · {(cur as any).minutes_per_period ?? 35} phút/tiết</dd></div>,            <div><dt>Năng lực GV</dt><dd className="clamp">{(cur.comps ?? []).map(c => compName(c)).join(', ') || '—'}</dd></div>
+            <div><dt>Đơn vị</dt><dd>{cur.issuer ?? cur.owner_name ?? '—'}</dd></div><div><dt>Áp dụng</dt><dd>{SCOPE[cur.scope]}</dd></div>,            {cur.summary && <div><dt>Mô tả</dt><dd className="clamp" data-tip={cur.summary}>{cur.summary}</dd></div>},          </dl></Panel>,        <Panel title="Học sinh làm được gì">{cur.outcomes_text ? <ul className="ctul">{cur.outcomes_text.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map((x, i) => <li key={i}>{x}</li>)}</ul> : <span className="sub">{editable ? 'Chưa nhập — bấm Sửa ở Thông tin chung.' : 'Chưa nhập.'}</span>}</Panel>,        <Panel title="Giáo viên cần có gì">{cur.teacher_needs ? <ul className="ctul">{cur.teacher_needs.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map((x, i) => <li key={i}>{x}</li>)}</ul> : <span className="sub">{canEdit ? 'Chưa nhập — thêm ở tab Thiết lập.' : 'Chưa nhập.'}</span>}</Panel>,        <Panel title="Phiên bản"><div className="ctver"><b>Bản hiện hành</b><small className="sub">{cur.status === 'published' ? 'đang áp dụng' : cur.status === 'draft' ? 'nháp' : 'ngừng dùng'}</small>{cur.status === 'published' && <span className="pill good plain">Đang dùng</span>}</div></Panel></>}>
         <ProgLessons content={content} cat={cat} mats={mats} onOpenMaterial={go ? openMaterial : undefined} />
       </AsideWrap>
     </> : <>
-      <ProgramForm cur={cur} cat={cat} orgs={orgs} below={below} me={me} isPlatform={isPlatform} targets={targets} readOnly={!editable} onSave={saveInfo} />
-      <SubjectsPanel content={content} cat={cat} mats={mats} editable={editable} versionId={vid} grade={cur.grades[0] ?? null} reload={loadC} setMsg={setMsg} onOpenMaterial={go ? openMaterial : undefined} />
-      <Outcomes cur={cur} editable={editable} onSaved={() => { setNote('Đã lưu yêu cầu cần đạt.'); reload() }} setMsg={setMsg} />
+      <ProgramForm cur={cur} cat={cat} orgs={orgs} below={below} me={me} isPlatform={isPlatform} targets={targets} readOnly={!canEdit} onSave={saveInfo} />
+      <SubjectsPanel content={content} cat={cat} mats={mats} editable={canEdit} versionId={vid} grade={cur.grades[0] ?? null} reload={loadC} setMsg={setMsg} onOpenMaterial={go ? openMaterial : undefined} />
+      <Outcomes cur={cur} editable={canEdit} onSaved={() => { setNote('Đã lưu yêu cầu cần đạt.'); reload() }} setMsg={setMsg} />
+      <Panel icon="award" title="Năng lực giáo viên cần có" act={<small className="sub">Khớp với chương trình đào tạo (PH2) phát triển cùng năng lực</small>}>
+        <div className="chips">{comps.map(([c, n]) => { const on = (cur.comps ?? []).includes(c); return <button type="button" key={c} className={'chip' + (on ? ' k on' : '')} aria-pressed={on} disabled={!canEdit}
+          onClick={async () => { const v = on ? (cur.comps ?? []).filter(x => x !== c) : [...(cur.comps ?? []), c]; const { error } = await supabase.from('curricula').update({ comps: v }).eq('id', cur.id); if (error) return setMsg(errText(error.message)); reload() }}>{on && '✓ '}{n}</button> })}</div></Panel>
+      <Outcomes cur={cur} field="teacher_needs" editable={canEdit} onSaved={() => { setNote('Đã lưu “Giáo viên cần có gì”.'); reload() }} setMsg={setMsg} />
     </>}
   </>
 }
 
-function Outcomes({ cur, editable, onSaved, setMsg }: { cur: Curriculum; editable: boolean; onSaved: () => void; setMsg: (m: string) => void }) {
-  const [t, setT] = useState(cur.outcomes_text ?? '')
-  return <Panel icon="target" title="Yêu cầu cần đạt">
-    {editable ? <><textarea className="outcomes-edit" value={t} onChange={e => setT(e.target.value)} placeholder="Học sinh đạt được… (mỗi ý một dòng)" aria-label="Yêu cầu cần đạt" />
-      <div className="formact"><button type="button" className="btn primary" onClick={async () => { const { error } = await supabase.from('curricula').update({ outcomes_text: t.trim() || null }).eq('id', cur.id); if (error) setMsg(errText(error.message)); else onSaved() }}><Ic n="check" /> Lưu yêu cầu cần đạt</button></div></>
-      : cur.outcomes_text ? <p className="outcomes">{cur.outcomes_text}</p> : <Empty>Chưa nhập yêu cầu cần đạt.</Empty>}
+// Ô chữ nhiều dòng của chương trình: Học sinh làm được gì (outcomes_text) · Giáo viên cần có gì (teacher_needs, 068)
+function Outcomes({ cur, editable, onSaved, setMsg, field = 'outcomes_text' }: { cur: Curriculum; editable: boolean; onSaved: () => void; setMsg: (m: string) => void; field?: 'outcomes_text' | 'teacher_needs' }) {
+  const [t, setT] = useState(cur[field] ?? '')
+  const T = field === 'teacher_needs' ? { title: 'Giáo viên cần có gì', ph: 'Kiến thức, kỹ năng, thiết bị giáo viên cần chuẩn bị… (mỗi ý một dòng)' } : { title: 'Học sinh làm được gì', ph: 'Học sinh đạt được… (mỗi ý một dòng)' }
+  return <Panel icon={field === 'teacher_needs' ? 'users' : 'target'} title={T.title}>
+    {editable ? <><textarea className="outcomes-edit" value={t} onChange={e => setT(e.target.value)} placeholder={T.ph} aria-label={T.title} />
+      <div className="formact"><button type="button" className="btn primary" onClick={async () => { const { error } = await supabase.from('curricula').update({ [field]: t.trim() || null }).eq('id', cur.id); if (error) setMsg(errText(error.message)); else onSaved() }}><Ic n="check" /> Lưu</button></div></>
+      : cur[field] ? <p className="outcomes">{cur[field]}</p> : <Empty>Chưa nhập.</Empty>}
   </Panel>
 }
 

@@ -8,19 +8,15 @@ const SECTION = '1. Chương trình & học liệu'
 // 5 mục của 1.1 theo thứ tự luồng (cùng mã trang ở mọi cổng). "Theo dõi chương trình CT1–CT5 (Môn học)" nằm thành tab trong Phân phối.
 const CORE = ['Chương trình giáo dục', 'Phân phối chương trình', 'Học liệu', 'Soạn bài giảng & kho hoạt động', 'E-learning & luyện thi']
 
+// Bản mẫu v315: menu mọi cổng theo bản mẫu — phân hệ “1. Chương trình & học liệu” › nhóm “1.1.” gồm đúng 5 mục.
+// Các mục cũ ngoài bản mẫu (Ngân hàng câu hỏi → tab trong E-learning; Gói STEM, Đề xuất mua gói, Kho học liệu dùng chung, Phát hành học liệu,
+// Chương trình CT1–CT5, Theo dõi Môn học STEM, Soạn bài giảng, Kho hoạt động & Bài giảng, Thư viện STEM, Gói STEM (KDI)) chỉ ẩn khỏi menu — trang vẫn còn trong PH1_PAGES.
+const G1: NavGroup = { section: SECTION, title: '1.1. Chương trình giáo dục & học liệu', items: [...CORE] }
 export const PH1_NAV: Record<RoleKey, NavGroup[]> = {
-  platform: [
-    { section: SECTION, title: '1.1. Chương trình giáo dục & học liệu', items: [...CORE, 'Gói STEM (KDI)'] },
-  ],
-  school_admin: [
-    { title: 'Chương trình & học liệu', items: [...CORE, 'Ngân hàng câu hỏi', 'Gói STEM', 'Đề xuất mua gói', 'Kho học liệu dùng chung', 'Phát hành học liệu'] },
-  ],
-  department: [
-    { title: 'Chương trình & học liệu', items: [...CORE, 'Ngân hàng câu hỏi', 'Chương trình CT1–CT5', 'Theo dõi Môn học STEM', 'Phát hành học liệu', 'Kho học liệu dùng chung'] },
-  ],
-  teacher: [
-    { title: 'Soạn giảng', items: ['Chương trình giáo dục', 'Phân phối chương trình', 'Học liệu', 'Soạn bài giảng & kho hoạt động', 'Soạn bài giảng', 'Kho hoạt động & Bài giảng', 'Thư viện STEM', 'Ngân hàng câu hỏi', 'E-learning & luyện thi'] },
-  ],
+  platform: [G1],
+  school_admin: [G1],
+  department: [G1],
+  teacher: [G1],
   student: [
     { title: 'Học tập', items: ['Chủ đề', 'E-learning & luyện thi'] },
   ],
