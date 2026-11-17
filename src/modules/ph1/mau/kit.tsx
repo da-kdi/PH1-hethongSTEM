@@ -1,8 +1,9 @@
-import { Fragment, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { Fragment, createContext, useContext, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { I, SGLYPH } from './icons'
 import './mau.css'
 import './app.css'
 import './v315.css'
+import { createPortal } from 'react-dom'
 import { useDetailCrumb } from '../../../lib/crumb'
 
 // Bộ thành phần dựng theo bản mẫu giao diện PH1 (ph1-chuong-trinh-mau.html): cùng tên lớp CSS với bản mẫu, đặt trong khung .mau
@@ -11,17 +12,24 @@ export function Ic({ n, cls = 'i' }: { n: string; cls?: string }) {
   return <svg className={cls} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: I[n] ?? '' }} />
 }
 // Khung gốc: biến màu, phông chữ, kiểu bìa thẻ của bản mẫu
-export function Mau({ children }: { children: ReactNode }) { return <div className="mau mau-wrap" data-cover="icon">{children}</div> }
-export function PageHead({ icon, title, sub, children }: { icon: string; title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
-  return <div className="pagehead"><div className="tile"><Ic n={icon} /></div><div className="grow"><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{children}</div>
+// Bản mẫu v315: đầu trang chỉ còn tiêu đề; nút hành động của trang nằm bên phải thanh bước (.flowsec .tabact) — PageHead chuyển nút sang đó khi trang có Flow
+const HeadSlot = createContext<{ slot: HTMLElement | null; setSlot: (e: HTMLElement | null) => void }>({ slot: null, setSlot: () => {} })
+export function Mau({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null)
+  return <HeadSlot.Provider value={{ slot, setSlot }}><div className="mau mau-wrap" data-cover="icon">{children}</div></HeadSlot.Provider>
 }
+export function PageHead({ title, sub, children }: { icon?: string; title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+  const { slot } = useContext(HeadSlot)
+  return <><div className="pagehead"><div className="grow"><h1 title={typeof sub === 'string' ? sub : undefined}>{title}</h1></div>{!slot && children}</div>{slot && children ? createPortal(children, slot) : null}</>
+}
+function FlowAct() { const { setSlot } = useContext(HeadSlot); return <div className="tabact" ref={setSlot} /> }
 // Chuỗi bước của một mục (thay thanh tab)
 export function Flow<T extends string>({ steps, value, onChange }: { steps: [T, string, ReactNode?][]; value: T | ''; onChange: (v: T) => void }) {
   const ci = steps.findIndex(s => s[0] === value)
   return <nav className="flowsec" aria-label="Các bước">{steps.map(([k, l, d], i) => <Fragment key={k}>
     {i > 0 && <i aria-hidden="true"><Ic n="chev" /></i>}
     <button type="button" className={k === value ? 'on' : ci >= 0 && i < ci ? 'past' : ''} aria-current={k === value ? 'step' : 'false'} onClick={() => onChange(k)}>
-      <b>{i + 1}</b><span>{l}{d != null && <small>{d}</small>}</span></button></Fragment>)}</nav>
+      <b>{i + 1}</b><span>{l}{d != null && <small>{d}</small>}</span></button></Fragment>)}<FlowAct /></nav>
 }
 export type Tone = 'c-blue' | 'c-green' | 'c-violet' | 'c-amber' | 'c-red'
 export function StatCard({ c, icon, label, value, sub }: { c: Tone; icon: string; label: string; value: ReactNode; sub?: ReactNode }) {
@@ -39,6 +47,8 @@ export function Cover({ subject, label, code }: { subject?: string | null; label
 }
 export function Empty({ children }: { children: ReactNode }) { return <div className="empty">{children}</div> }
 export function Group({ title, n }: { title: ReactNode; n?: number }) { return <div className="group">{title}{n != null && <small>{n}</small>}</div> }
+// Một dòng trong bảng Lọc của thanh công cụ (.fpanel .frow1)
+export function FRow({ label, children }: { label: string; children: ReactNode }) { return <label className="frow1"><span>{label}</span>{children}</label> }
 export function Seg<T extends string>({ items, value, onChange, label }: { items: [T, string][]; value: T; onChange: (v: T) => void; label?: string }) {
   return <div className="seg" role="group" aria-label={label}>{items.map(([k, n]) => <button type="button" key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{n}</button>)}</div>
 }

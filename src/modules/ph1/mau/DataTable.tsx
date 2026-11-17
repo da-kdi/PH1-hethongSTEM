@@ -5,7 +5,7 @@
 //   B5 dòng tổng ngay dưới tiêu đề (không cộng Điểm, Trọng số, Tuần, Tiết PPCT)          B6 cột ngày: khai báo col.date
 //   B7 chọn cột (ẩn/hiện + kéo thả đổi thứ tự) và lưu bộ lọc                            B8 cột tên ≥ 26–30%, nút Mở rộng, kéo ngang khi ≥ 9 cột
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Ic } from './kit'
+import { Ic, cssVar } from './kit'
 
 export type Col<T> = {
   key: string
@@ -43,7 +43,7 @@ export function sortVal(t: string | number | null | undefined): string | number 
 }
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString('vi-VN')
 
-export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty }: {
+export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty, search, filterBox, fcount, onClearFilters, dataTools, view, grid, fold, subBy }: {
   /** khoá lưu cấu hình cột / bộ lọc (vd 'ct', 'pp') */
   id: string
   rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string
@@ -53,14 +53,27 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   bulk?: BulkAct<T>[]
   onDelete?: (rows: T[]) => void | Promise<void>
   onArchive?: (rows: T[]) => void | Promise<void>
-  /** gom nhóm: trả [khoá, nhãn] */
-  groupBy?: (r: T) => [string, ReactNode]
+  /** gom nhóm: trả [khoá, nhãn, màu?] */
+  groupBy?: (r: T) => [string, ReactNode, (string | null)?]
+  /** Bản mẫu v315 (.gscroll): mỗi nhóm là một khối thu gọn được (summary.phead), nút Thu gọn tất cả trên thanh công cụ */
+  fold?: boolean
+  /** dải phụ trong nhóm (vd Môn): trả [khoá, nhãn] */
+  subBy?: (r: T) => [string, ReactNode]
   /** nút riêng trên thanh công cụ của bảng (bên trái) */
   tools?: ReactNode
   /** bộ lọc hiện tại để Lưu bộ lọc (B7) */
   filters?: Record<string, string>; onFilters?: (f: Record<string, string>) => void
   empty?: ReactNode
+  /** Bản mẫu v315 · thanh công cụ của bảng (.toolbar.tbc): ô tìm, bảng Lọc (các ô chọn), nút dữ liệu (Nhập / File mẫu), kiểu xem (Danh sách | Thẻ) */
+  search?: { value: string; onChange: (v: string) => void; placeholder: string }
+  filterBox?: ReactNode; fcount?: number; onClearFilters?: () => void
+  dataTools?: ReactNode; view?: ReactNode
+  /** Kiểu xem Thẻ: hiện nội dung này thay bảng (giữ thanh công cụ) */
+  grid?: ReactNode
 }) {
+  const [fOpen, setFOpen] = useState(false)
+  const [shut, setShut] = useState<Set<string>>(() => new Set(load<string[]>('stem-fold:' + id, [])))
+  const putShut = (n: Set<string>) => { setShut(n); save('stem-fold:' + id, n.size ? [...n] : null) }
   const box = useRef<HTMLDivElement>(null)
   // ----- cột: thứ tự + ẩn/hiện (B7) -----
   const allKeys = cols.map(c => c.key)
@@ -101,8 +114,8 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
 
   // Nhóm + sắp xếp trong từng nhóm
   const groups = useMemo(() => {
-    const gs: { k: string; label: ReactNode; rows: T[] }[] = []
-    rows.forEach(r => { const [k, label] = groupBy ? groupBy(r) : ['', '']; let g = gs.find(x => x.k === k); if (!g) gs.push(g = { k, label, rows: [] }); g.rows.push(r) })
+    const gs: { k: string; label: ReactNode; c?: string | null; rows: T[] }[] = []
+    rows.forEach(r => { const [k, label, c] = groupBy ? groupBy(r) : ['', '', null]; let g = gs.find(x => x.k === k); if (!g) gs.push(g = { k, label, c, rows: [] }); g.rows.push(r) })
     const c = srt && cols.find(x => x.key === srt.k)
     if (c) gs.forEach(g => { g.rows = [...g.rows].sort((a, b) => { const x = valOf(a, c), y = valOf(b, c); if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1; return vnCmp(x, y) * (srt!.d === 'desc' ? -1 : 1) }) })
     return gs
@@ -129,11 +142,11 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   const chosen = rows.filter(r => sel.has(rowKey(r)))
   const allOn = rows.length > 0 && chosen.length === rows.length
   const toggleAll = () => setSel(allOn ? new Set() : new Set(keys))
-  const exportCsv = () => {
+  const exportCsv = (list: T[] = chosen, tag = 'da-chon') => {
     const q = (v: string) => /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v
-    const csv = '﻿' + [vis.map(c => q(c.label)).join(','), ...chosen.map(r => vis.map(c => q(textOf(r, c))).join(','))].join('\r\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `${id}-da-chon-${chosen.length}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
-    setMsg(`Đã xuất ${chosen.length} ${noun} ra file .csv`)
+    const csv = '﻿' + [vis.map(c => q(c.label)).join(','), ...list.map(r => vis.map(c => q(textOf(r, c))).join(','))].join('\r\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `${id}-${tag}-${list.length}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+    setMsg(`Đã xuất ${list.length} ${noun} ra file .csv`)
   }
   const printList = () => {
     const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!))
@@ -151,30 +164,56 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   const hasF = !!filters && Object.values(filters).some(Boolean)
 
   const n = vis.length
+  const rowsOf = (rs: T[]) => <>{rs.map((r, ri) => { const k = rowKey(r), on = sel.has(k); const sb = subBy ? subBy(r) : null; const sb0 = subBy && ri > 0 ? subBy(rs[ri - 1])[0] : null
+            return <Fragment key={k}>{sb && sb[0] !== sb0 && <tr className="band"><td colSpan={n + 1}>{sb[1]}</td></tr>}<tr data-k={k} className={on ? 'rsel' : ''} onClick={onOpen ? () => onOpen(r) : undefined} style={onOpen ? { cursor: 'pointer' } : undefined}>
+              <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>
+              {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}</td>)}
+            </tr></Fragment> })}</>
+  const colg = !wide && <colgroup><col style={{ width: 44 }} />{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>
+  const thead = <thead>
+          <tr><th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>
+            {vis.map(c => { const on = srt?.k === c.key ? srt.d : ''
+              return <th key={c.key} className={'sortable' + (on ? ' sorted' : '')} aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}
+                title={on === 'asc' ? 'Đang xếp tăng dần — bấm để xếp giảm dần' : on === 'desc' ? 'Đang xếp giảm dần — bấm để bỏ sắp xếp' : 'Bấm để sắp xếp'}
+                onClick={() => setSrt(!on ? { k: c.key, d: 'asc' } : on === 'asc' ? { k: c.key, d: 'desc' } : null)}>
+                {c.label}<span className={'srt ' + on} aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path className="sd" d="M5 3v10M2.5 10.5 5 13l2.5-2.5" /><path className="su" d="M11 13V3M8.5 5.5 11 3l2.5 2.5" /></svg></span></th> })}</tr>
+          <tr className="sumrow"><th className="chkc" />{sums.map((s, i) => <th key={vis[i].key}>{s}</th>)}</tr>
+        </thead>
   // B8 · cột ngắn luôn đủ chỗ cho tên cột: bảng có độ rộng tối thiểu, hẹp hơn thì kéo ngang
   const minW = 44 + vis.reduce((a, c) => a + (c.name ? 240 : c.width && /px$/.test(c.width) ? parseInt(c.width) : 120), 0)
   const x = n >= 9 || wide
   return <div className={'dtable' + (wide ? ' wide' : '')} ref={box}>
-    <div className="dtbar">
-      {tools}
+    <div className="toolbar tbc tbtight">
+      {search && <label className="search"><Ic n="search" /><input type="search" value={search.value} onChange={e => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} /></label>}
+      <span className="tbcount">{rows.length} {noun}</span>
       {onFilters && saved.length > 0 && <span className="savedf">{saved.map((s, i) => <span key={i} className="chip sf"><button type="button" onClick={() => onFilters(s.f)} data-tip="Áp dụng bộ lọc đã lưu">{s.n}</button>
         <button type="button" className="sfx" aria-label={'Xoá bộ lọc ' + s.n} onClick={() => { const v = saved.filter((_, j) => j !== i); setSaved(v); save('stem-flt:' + id, v.length ? v : null) }}>✕</button></span>)}</span>}
-      <span className="dtgrow" />
+      <div className="btngrp tools">
+        {filterBox && <div className="fwrap"><button type="button" className={'btn sm fbtn' + (fcount ? ' on' : '')} aria-expanded={fOpen} title="Bộ lọc" onClick={() => setFOpen(!fOpen)}><Ic n="filter" /> Lọc{fcount ? <em>{fcount}</em> : null}</button>
+          <div className="fpanel" hidden={!fOpen} role="group" aria-label="Bộ lọc">{filterBox}
+            <div className="fpfoot"><button type="button" className="btn sm ghost" disabled={!fcount} onClick={() => onClearFilters?.()}>Xoá bộ lọc</button><button type="button" className="btn sm" onClick={() => setFOpen(false)}>Xong</button></div></div></div>}
+        {!grid && <span className="colpkw fwrap">
+          <button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} title="Chọn cột hiện trên bảng"><Ic n="sliders" /> Cột</button>
+          {pick && <ColPicker cols={cols} order={order} hide={hide} lockKey={lockKey} onClose={() => setPick(false)}
+            onSave={(o, h) => { putCfg({ order: o, hide: h }); setPick(false) }} onReset={() => { putCfg({}); setPick(false) }} />}
+        </span>}
+        {!grid && <button type="button" className={'btn sm' + (wide ? ' on' : '')} aria-pressed={wide} onClick={() => { setWide(!wide); save('stem-tblwide:' + id, !wide || null) }}
+          title={wide ? 'Thu cột vừa khung' : 'Hiện đủ mọi cột'}><span aria-hidden="true">↔</span> {wide ? 'Thu gọn' : 'Mở rộng'}</button>}
+        {!grid && fold && groupBy && groups.length > 1 && <button type="button" className="btn sm" onClick={() => putShut(groups.every(g => shut.has(g.k)) ? new Set() : new Set(groups.map(g => g.k)))}>{groups.every(g => shut.has(g.k)) ? 'Mở tất cả' : 'Thu gọn tất cả'}</button>}
+      </div>
       {onFilters && (naming == null
-        ? <button type="button" className="btn sm" disabled={!hasF} data-tip={hasF ? 'Lưu bộ lọc đang chọn để dùng lại' : 'Chọn bộ lọc trước rồi lưu'} onClick={() => setNaming('')}><Ic n="pin" /> Lưu bộ lọc</button>
+        ? <button type="button" className="btn sm svfbtn" disabled={!hasF} title={hasF ? 'Lưu bộ lọc đang chọn để dùng lại' : 'Chọn điều kiện lọc hoặc gõ từ khoá trước'} onClick={() => setNaming('')}>Lưu bộ lọc</button>
         : <form className="sfname" onSubmit={e => { e.preventDefault(); const nm = naming.trim(); if (!nm) return; const v = [...saved.filter(s => s.n !== nm), { n: nm, f: filters ?? {} }]; setSaved(v); save('stem-flt:' + id, v); setNaming(null) }}>
           <input autoFocus value={naming} onChange={e => setNaming(e.target.value)} placeholder="Tên bộ lọc" aria-label="Tên bộ lọc" /><button type="submit" className="btn sm primary">Lưu</button><button type="button" className="btn sm ghost" onClick={() => setNaming(null)}>Huỷ</button></form>)}
-      <span className="colpkw">
-        <button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} data-tip="Ẩn/hiện và đổi thứ tự cột"><Ic n="sliders" /> Chọn cột</button>
-        {pick && <ColPicker cols={cols} order={order} hide={hide} lockKey={lockKey} onClose={() => setPick(false)}
-          onSave={(o, h) => { putCfg({ order: o, hide: h }); setPick(false) }} onReset={() => { putCfg({}); setPick(false) }} />}
-      </span>
-      <button type="button" className={'btn sm' + (wide ? ' on' : '')} aria-pressed={wide} onClick={() => { setWide(!wide); save('stem-tblwide:' + id, !wide || null) }}
-        data-tip={wide ? 'Thu cột vừa khung' : 'Cột giãn theo nội dung, hiện đủ chữ (kéo ngang khi cần)'}><Ic n="external" /> {wide ? 'Thu gọn' : 'Mở rộng'}</button>
+      <div className="dsbar btngrp" role="group" aria-label="Dữ liệu">
+        {!grid && <button type="button" className="btn sm" disabled={!rows.length} title="Tải toàn bộ danh sách ra file Excel (.csv)" onClick={() => exportCsv(rows, 'tat-ca')}><Ic n="download" /> Xuất</button>}
+        {dataTools}</div>
+      {tools}
+      {view}
     </div>
     {chosen.length > 0 && <div className="bulkbar" role="toolbar" aria-label="Thao tác với các dòng đã chọn">
       <label className="bkall"><input type="checkbox" checked={allOn} onChange={toggleAll} /> Đã chọn <b>{chosen.length}</b> {noun}</label>
-      <button type="button" className="bkb" onClick={exportCsv}><Ic n="upload" /> Xuất file</button>
+      <button type="button" className="bkb" onClick={() => exportCsv()}><Ic n="download" /> Xuất file</button>
       {bulk.map(b => <button type="button" key={b.label} className="bkb" onClick={() => run(() => b.run(chosen), `${b.label}: ${chosen.length} ${noun}`)}>{b.label}</button>)}
       <span className="bkmore"><button type="button" className="btn sm" aria-expanded={more} onClick={() => setMore(!more)}>Thao tác khác <span aria-hidden="true">▾</span></button>
         {more && <div className="bkmenu" onMouseLeave={() => setMore(false)}>
@@ -189,27 +228,22 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
     {askDel && onDelete && <div className="confirm"><Ic n="info" /><span>Xoá {chosen.length} {noun} đã chọn? Không hoàn tác được.</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
       <button type="button" className="btn sm danger" onClick={() => { setAskDel(false); run(() => onDelete(chosen), `Đã xoá ${chosen.length} ${noun}`) }}>Xoá</button><button type="button" className="btn sm ghost" onClick={() => setAskDel(false)}>Thôi</button></span></div>}
     {msg && <p className="okmsg" role="status">{msg}</p>}
-    {!rows.length ? (empty ?? null) : <div className={'tblwrap' + (x ? ' xscroll' : '')} style={{ ['--tmin' as string]: (x && !wide ? Math.max(minW, n * 130) : minW) + 'px' }}>
-      <table className="dt" style={wide ? undefined : { minWidth: 'var(--tmin)' }}>
-        {!wide && <colgroup><col style={{ width: 44 }} />{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>}
-        <thead>
-          <tr><th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>
-            {vis.map(c => { const on = srt?.k === c.key ? srt.d : ''
-              return <th key={c.key} className={'sortable' + (on ? ' sorted' : '')} aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}
-                title={on === 'asc' ? 'Đang xếp tăng dần — bấm để xếp giảm dần' : on === 'desc' ? 'Đang xếp giảm dần — bấm để bỏ sắp xếp' : 'Bấm để sắp xếp'}
-                onClick={() => setSrt(!on ? { k: c.key, d: 'asc' } : on === 'asc' ? { k: c.key, d: 'desc' } : null)}>
-                {c.label}<span className={'srt ' + on} aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path className="sd" d="M5 3v10M2.5 10.5 5 13l2.5-2.5" /><path className="su" d="M11 13V3M8.5 5.5 11 3l2.5 2.5" /></svg></span></th> })}</tr>
-          <tr className="sumrow"><th className="chkc" />{sums.map((s, i) => <th key={vis[i].key}>{s}</th>)}</tr>
-        </thead>
+    {grid ? grid : !rows.length ? (empty ?? null) : fold && groupBy
+      ? <div className="panel" style={{ padding: 0 }}><div className="gscroll">
+        <div className="ghead"><table className="gtbl dt">{colg}{thead}</table></div>
+        {groups.map(g => <details key={g.k} open={!shut.has(g.k)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; if (o === !shut.has(g.k)) return; const nx = new Set(shut); o ? nx.delete(g.k) : nx.add(g.k); putShut(nx) }}>
+          <summary className="phead" style={cssVar(g.c)}><span className="chev"><Ic n="chev" /></span>{g.label}</summary>
+          <table className="gtbl dt">{colg}<tbody>{rowsOf(g.rows)}</tbody></table></details>)}
+      </div></div>
+      : <div className="panel" style={{ padding: 0 }}><div className={'tblwrap' + (x ? ' xscroll' : '')} style={{ ['--tmin' as string]: (x && !wide ? Math.max(minW, n * 130) : minW) + 'px' }}>
+      <table className="dt" style={x && !wide ? { minWidth: 'var(--tmin)' } : undefined}>
+        {colg}
+        {thead}
         <tbody>{groups.map(g => <Fragment key={g.k}>
           {groupBy && <tr className="band"><td colSpan={n + 1}>{g.label} <small>{g.rows.length}</small></td></tr>}
-          {g.rows.map(r => { const k = rowKey(r), on = sel.has(k)
-            return <tr key={k} data-k={k} className={on ? 'rsel' : ''} onClick={onOpen ? () => onOpen(r) : undefined} style={onOpen ? { cursor: 'pointer' } : undefined}>
-              <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>
-              {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}</td>)}
-            </tr> })}
+          {rowsOf(g.rows)}
         </Fragment>)}</tbody>
-      </table></div>}
+      </table></div></div>}
   </div>
 }
 

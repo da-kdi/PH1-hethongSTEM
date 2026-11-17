@@ -1077,3 +1077,16 @@ a.btnlink{display:inline-block;padding:8px 14px;border-radius:10px;text-decorati
 /* A7 · Tooltip dùng chung (data-tip) */
 .ctip{position:fixed;z-index:200;width:max-content;max-width:300px;background:#14213d;color:#fff;border-radius:6px;padding:9px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 8px 24px -8px rgba(20,33,61,.4);pointer-events:none;white-space:pre-line}
 .ctip[hidden]{display:none}
+
+/* Bản mẫu v315 · giao diện "modern" (mặc định của bản mẫu) cho khung: thanh trên mờ kính, menu nền chuyển màu, mục đang mở là thẻ trắng */
+.top{background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(12px);border-bottom:1px solid rgba(229,233,241,.8);height:62px}
+.topsearch{border-radius:999px;background:#eef2f8;border-color:transparent;transition:background .15s,box-shadow .15s}
+.topsearch:focus-within{background:#fff;box-shadow:0 0 0 3px rgba(20,99,216,.15);border-color:#1463d8}
+.bellbtn,.userbtn{border-color:transparent;background:#eef2f8;transition:background .15s}
+.bellbtn:hover,.userbtn:hover{background:#e3e9f4}
+.userbtn .avatar{background:linear-gradient(135deg,#1463d8,#4f8ff7)}
+.side{background:linear-gradient(180deg,#0f2350 0%,#132c63 60%,#16336f 100%);padding:16px 12px}
+.side button{border-radius:10px;transition:background .15s,color .15s}
+.side button:hover{background:rgba(255,255,255,.08)}
+.side .navsub button.on,.side .navgroup>div>button.on{background:#fff;color:#0f2350;font-weight:600;box-shadow:0 4px 14px -4px rgba(0,0,0,.35)}
+.side .navsub{border-left-color:rgba(255,255,255,.1)}

@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { SCHOOL_YEAR, errMsg, norm, useRpcBool } from '../ui'
 import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradesOfLevel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
 import { DataTable } from '../mau/DataTable'
-import { LevelTree, type TreeLevel, Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { LevelTree, type TreeLevel, Back, HNote, Confirm, Empty, Flow, FRow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.3 Phân phối chương trình — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html):
 //   Bước 1 · Năm học & lịch nghỉ: dùng chung cho mọi bản phân phối (ngày bắt đầu, số tuần HK I/II, lịch nghỉ toàn tỉnh + riêng từng trường, khoá tuần).
@@ -330,14 +330,13 @@ function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canMana
     {canManage && <button type="button" className="btn primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</PageHead>
   const years = Array.from(new Set([SCHOOL_YEAR, ...docs.map(d => d.school_year)])).sort()
   const subjOpts = Array.from(new Set(docs.flatMap(d => subsOf(d).map(i => i.subject)).filter(Boolean))).map(s => [s, sn(s)] as [string, string])
-  const tb = <div className="toolbar"><Search value={f.q} onChange={q => setF({ ...f, q })} placeholder="Tìm bản phân phối…" />
-    <Sel label="Tất cả trường" value={f.school} onChange={v => setF({ ...f, school: v })} options={[['_all', 'Tất cả các trường (bản chung)'], ...schools.map(s => [s.id, s.name] as [string, string])]} />
-    <Sel label="Mọi năm học" value={f.year} onChange={v => setF({ ...f, year: v })} options={years.map(y => [y, y])} />
-    <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={progs.map(p => [p.id, `${p.code ?? ''} · ${p.name}`])} />
-    <Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={subjOpts} />
-    <Sel label="Mọi trạng thái" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['draft', 'Nháp'], ['published', 'Đã phát hành'], ['archived', 'Ngừng dùng']]} />
-    <Sel label="Mọi kết quả kiểm tra" value={f.chk} onChange={v => setF({ ...f, chk: v })} options={[['err', 'Có lỗi'], ['warn', 'Có cảnh báo'], ['ok', 'Hợp lệ']]} />
-    {(filtered || level || grade != null) && <button type="button" className="btn sm ghost" onClick={() => { setF(EMPTY_F); setLevel(null); setGrade(null) }}>Xoá lọc</button>}</div>
+  // Bản mẫu v315: các ô chọn nằm trong bảng Lọc của thanh công cụ bảng
+  const fbox = <><FRow label="Trường"><Sel label="Tất cả trường" value={f.school} onChange={v => setF({ ...f, school: v })} options={[['_all', 'Tất cả các trường (bản chung)'], ...schools.map(s => [s.id, s.name] as [string, string])]} /></FRow>
+    <FRow label="Năm học"><Sel label="Mọi năm học" value={f.year} onChange={v => setF({ ...f, year: v })} options={years.map(y => [y, y])} /></FRow>
+    <FRow label="Chương trình"><Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={progs.map(p => [p.id, `${p.code ?? ''} · ${p.name}`])} /></FRow>
+    <FRow label="Môn học"><Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={subjOpts} /></FRow>
+    <FRow label="Trạng thái"><Sel label="Mọi trạng thái" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['draft', 'Nháp'], ['published', 'Đã phát hành'], ['archived', 'Ngừng dùng']]} /></FRow>
+    <FRow label="Kiểm tra"><Sel label="Mọi kết quả kiểm tra" value={f.chk} onChange={v => setF({ ...f, chk: v })} options={[['err', 'Có lỗi'], ['warn', 'Có cảnh báo'], ['ok', 'Hợp lệ']]} /></FRow></>
   // Cây Cấp học › Khối bên trái (bản mẫu v315 · TREECFG.pp)
   const treeLv: TreeLevel[] = levels.map(l => { const gs = gradesOfLevel(cat, l.code)
     return { code: l.code, name: l.name, n: docs.filter(d => gs.includes(d.grade)).length, grades: gs.map(g => ({ g, label: 'Khối ' + g, n: docs.filter(d => d.grade === g).length })) } })
@@ -348,13 +347,14 @@ function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canMana
   return <>{head}{flow}
     <LevelTree id="pp" levels={treeLv} total={docs.length} level={level ?? ''} grade={grade == null ? '' : String(grade)} unit="bản phân phối"
       onPick={(l, g) => { setLevel(l || null); setGrade(g ? Number(g) : null) }}>
-      {tb}
       {assign && <div className="confirm"><Ic n="pinmap" /><span>Gán {assign.length} bản phân phối cho trường (tạo bản riêng của trường, giữ bản gốc):</span>
         <select value={to} onChange={e => setTo(e.target.value)} aria-label="Trường"><option value="">Chọn trường…</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button type="button" className="btn sm primary" disabled={!to} onClick={async () => { await onAssign(assign, to); setAssign(null); setTo('') }}>Gán</button>
           <button type="button" className="btn sm ghost" onClick={() => setAssign(null)}>Huỷ</button></span></div>}
       <DataTable id="pp" rows={ds} rowKey={d => d.id} noun="bản phân phối" onOpen={d => onOpen(d.id)} groupBy={d => ['k' + String(d.grade).padStart(2, '0'), 'Khối ' + d.grade]}
         filters={f} onFilters={v => setF({ ...EMPTY_F, ...v })}
+        search={{ value: f.q, onChange: q => setF({ ...f, q }), placeholder: 'Tìm bản phân phối…' }} filterBox={fbox}
+        fcount={Object.entries(f).filter(([k, v]) => k !== 'q' && v).length} onClearFilters={() => setF({ ...EMPTY_F, q: f.q })}
         bulk={canManage ? [{ label: 'Phát hành', run: onBulkPublish }, { label: 'Gán cho trường', run: rs => { setAssign(rs) } }] : []}
         onDelete={canManage ? onBulkDelete : undefined}
         empty={<Empty>{grade != null ? `Khối ${grade} chưa có bản phân phối.` : filtered ? 'Không có bản phân phối phù hợp bộ lọc.' : 'Chưa có bản phân phối.'} {canManage && <button type="button" className="btn sm primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</Empty>}
