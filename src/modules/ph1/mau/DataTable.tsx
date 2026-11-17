@@ -6,6 +6,7 @@
 //   B7 chọn cột (ẩn/hiện + kéo thả đổi thứ tự) và lưu bộ lọc                            B8 cột tên ≥ 26–30%, nút Mở rộng, kéo ngang khi ≥ 9 cột
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Ic, InTree, cssVar } from './kit'
+import { supabase } from '../../../lib/supabase'
 
 export type Col<T> = {
   key: string
@@ -43,7 +44,7 @@ export function sortVal(t: string | number | null | undefined): string | number 
 }
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString('vi-VN')
 
-export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty, search, filterBox, fcount, onClearFilters, dataTools, view, grid, fold, subBy, plain }: {
+export function DataTable<T>({ id, rows: rows0, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty, search, filterBox, fcount, onClearFilters, dataTools, view, grid, fold, subBy, plain }: {
   /** khoá lưu cấu hình cột / bộ lọc (vd 'ct', 'pp') */
   id: string
   rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string
@@ -74,6 +75,15 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   grid?: ReactNode
 }) {
   const [fOpen, setFOpen] = useState(false)
+  // Thẻ (tag) dùng chung — bảng item_tags (068), theo khoá danh sách = id của bảng; chưa có bảng thì bỏ qua
+  const [tags, setTags] = useState<{ item_id: string; tag: string }[]>([])
+  const [tagF, setTagF] = useState('')
+  const [tagIn, setTagIn] = useState<string | null>(null)
+  const loadTags = () => { supabase.from('item_tags').select('item_id, tag').eq('entity', id).then(({ data, error }) => { if (!error) setTags((data as { item_id: string; tag: string }[]) ?? []) }) }
+  useEffect(loadTags, [id])
+  const tagsOf = (k: string) => tags.filter(t => t.item_id === k).map(t => t.tag)
+  const allTags = [...new Set(tags.map(t => t.tag))].sort((a, b) => a.localeCompare(b, 'vi'))
+  const rows = tagF ? rows0.filter(r => tagsOf(rowKey(r)).includes(tagF)) : rows0
   const inTree = useContext(InTree)
   const [shut, setShut] = useState<Set<string>>(() => new Set(load<string[]>('stem-fold:' + id, [])))
   const putShut = (n: Set<string>) => { setShut(n); save('stem-fold:' + id, n.size ? [...n] : null) }
@@ -170,7 +180,7 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   const rowsOf = (rs: T[]) => <>{rs.map((r, ri) => { const k = rowKey(r), on = sel.has(k); const sb = subBy ? subBy(r) : null; const sb0 = subBy && ri > 0 ? subBy(rs[ri - 1])[0] : null
             return <Fragment key={k}>{sb && sb[0] !== sb0 && <tr className="band"><td colSpan={n + (plain ? 0 : 1)}>{sb[1]}</td></tr>}<tr data-k={k} className={on ? 'rsel' : ''} onClick={onOpen ? () => onOpen(r) : undefined} style={onOpen ? { cursor: 'pointer' } : undefined}>
               {!plain && <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>}
-              {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}</td>)}
+              {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}{c.key === lockKey && tagsOf(k).length > 0 && <span className="tagchips">{tagsOf(k).map(t => <span key={t} className="chip tagchip">{t}<button type="button" aria-label={'Bỏ thẻ ' + t} onClick={async e => { e.stopPropagation(); await supabase.from('item_tags').delete().eq('entity', id).eq('item_id', k).eq('tag', t); loadTags() }}>✕</button></span>)}</span>}</td>)}
             </tr></Fragment> })}</>
   const colg = !wide && <colgroup>{!plain && <col style={{ width: 44 }} />}{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>
   const thead = <thead>
@@ -199,8 +209,10 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
       {onFilters && saved.length > 0 && <span className="savedf">{saved.map((s, i) => <span key={i} className="chip sf"><button type="button" onClick={() => onFilters(s.f)} data-tip="Áp dụng bộ lọc đã lưu">{s.n}</button>
         <button type="button" className="sfx" aria-label={'Xoá bộ lọc ' + s.n} onClick={() => { const v = saved.filter((_, j) => j !== i); setSaved(v); save('stem-flt:' + id, v.length ? v : null) }}>✕</button></span>)}</span>}
       <div className="btngrp tools">
-        {filterBox && <div className="fwrap"><button type="button" className={'btn sm fbtn' + (fcount ? ' on' : '')} aria-expanded={fOpen} title="Bộ lọc" onClick={() => setFOpen(!fOpen)}><Ic n="filter" /> Lọc{fcount ? <em>{fcount}</em> : null}</button>
+        {!filterBox && allTags.length > 0 && <select className="btn sm" value={tagF} onChange={e => setTagF(e.target.value)} aria-label="Lọc theo thẻ"><option value="">Mọi thẻ</option>{allTags.map(t => <option key={t} value={t}>{t}</option>)}</select>}
+        {filterBox && <div className="fwrap"><button type="button" className={'btn sm fbtn' + ((fcount || tagF) ? ' on' : '')} aria-expanded={fOpen} title="Bộ lọc" onClick={() => setFOpen(!fOpen)}><Ic n="filter" /> Lọc{fcount ? <em>{fcount}</em> : null}</button>
           <div className="fpanel" hidden={!fOpen} role="group" aria-label="Bộ lọc">{filterBox}
+            {allTags.length > 0 && <label className="frow1"><span>Thẻ</span><select value={tagF} onChange={e => setTagF(e.target.value)} aria-label="Thẻ"><option value="">Mọi thẻ</option>{allTags.map(t => <option key={t} value={t}>{t}</option>)}</select></label>}
             <div className="fpfoot"><button type="button" className="btn sm ghost" disabled={!fcount} onClick={() => onClearFilters?.()}>Xoá bộ lọc</button><button type="button" className="btn sm" onClick={() => setFOpen(false)}>Xong</button></div></div></div>}
         {!grid && <span className="colpkw fwrap">
           <button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} title="Chọn cột hiện trên bảng"><Ic n="cols" /> Cột{cols.filter(c => hide.has(c.key) && c.key !== lockKey).length ? <em>{cols.filter(c => hide.has(c.key) && c.key !== lockKey).length} ẩn</em> : null}</button>
@@ -229,10 +241,15 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
         {more && <div className="bkmenu" onMouseLeave={() => setMore(false)}>
           <button type="button" onClick={() => { setMore(false); printList() }}>In danh sách</button>
           {/* TODO(B1): chưa có bảng thẻ (tag) dùng chung trong CSDL — không tự tạo bảng */}
-          <button type="button" disabled data-tip="Chưa có dữ liệu thẻ (TODO)">Thêm thẻ (tag)</button>
+          <button type="button" onClick={() => { setMore(false); setTagIn('') }}>Thêm thẻ (tag)</button>
           <button type="button" disabled={!onArchive} data-tip={onArchive ? undefined : 'Mục này chưa có trạng thái lưu trữ (TODO)'} onClick={() => onArchive && run(() => onArchive(chosen), `Đã lưu trữ ${chosen.length} ${noun}`)}>Lưu trữ</button>
           <button type="button" className="danger" disabled={!onDelete} data-tip={onDelete ? undefined : 'Mục này không xoá hàng loạt (TODO)'} onClick={() => { setMore(false); setAskDel(true) }}>Xoá</button>
         </div>}</span>
+      {tagIn != null && <form className="sfname" onSubmit={async e => { e.preventDefault(); const t = tagIn.trim(); if (!t) return
+        const { error } = await supabase.from('item_tags').upsert(chosen.map(r => ({ entity: id, item_id: rowKey(r), tag: t })), { onConflict: 'org_id,entity,item_id,tag', ignoreDuplicates: true })
+        setTagIn(null); if (error) return setMsg('Không gắn được thẻ: ' + error.message); loadTags(); setMsg(`Đã gắn thẻ “${t}” cho ${chosen.length} ${noun}`) }}>
+        <input autoFocus list={'tags-' + id} value={tagIn} onChange={e => setTagIn(e.target.value)} placeholder="Tên thẻ" aria-label="Tên thẻ" /><datalist id={'tags-' + id}>{allTags.map(t => <option key={t} value={t} />)}</datalist>
+        <button type="submit" className="btn sm primary">Gắn thẻ</button><button type="button" className="btn sm ghost" onClick={() => setTagIn(null)}>Huỷ</button></form>}
       <button type="button" className="bkx" onClick={() => setSel(new Set())}>Bỏ chọn</button>
     </div>}
     {askDel && onDelete && <div className="confirm"><Ic n="info" /><span>Xoá {chosen.length} {noun} đã chọn? Không hoàn tác được.</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { IKIND, PAGE, SUBMIT, TFORMAT, resPill, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type Item, type K, type Plan, type Prog, type Sess } from './api'
@@ -276,7 +276,7 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
   onSess: (id: string) => void; onBack: () => void; toEval: (tab: string) => void }) {
   const pr = k.prog(p.program_id)!; const ss = k.sessOfPlan(p.id); const done = ss.filter(k.sessEnd).length
   const [sub, setSub] = useState<'sched' | 'people' | 'asg'>('sched'); const [view, setView] = useState<'table' | 'cal'>('table')
-  const [addS, setAddS] = useState(false); const [pubAsk, setPubAsk] = useState(false); const [hv, setHv] = useState(true); const [bgh, setBgh] = useState(true)
+  const [addS, setAddS] = useState(false); const [pubAsk, setPubAsk] = useState(false); const [cancelAsk, setCancelAsk] = useState(false); const [hv, setHv] = useState(true); const [bgh, setBgh] = useState(true)
   const can = P.canManage; const trs = k.traineesOf(p.id); const mods = k.allMods(pr)
   const trainers = P.db!.cat.filter(c => c.kind === 'trainer')
   const [ns, setNs] = useState({ date: addD(ss[ss.length - 1]?.date ?? k.T, 7), from: ss[0]?.start_t ?? '08:00', to: ss[0]?.end_t ?? '11:00', mod: mods[0]?.m.id ?? '', mode: 'off', place: ss[0]?.place ?? '', tr: ss[0]?.trainer ?? '' })
@@ -309,11 +309,15 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
   return <>
     <Back onClick={onBack} title={p.title}>Danh sách kế hoạch</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)} · {p.schools?.length ? p.schools.length + ' trường tham gia' : 'mở cho mọi trường'}</span></div><StatusPill s={p.status} />
-      <div className="act">{can && (p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => setPubAsk(true)}><Ic n="send" /> Phát hành kế hoạch</button>
+      <div className="act">{can && p.status !== 'cancelled' && (p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => setPubAsk(true)}><Ic n="send" /> Phát hành kế hoạch</button>
         : !ss.some(s => !k.sessEnd(s)) && !p.confirmed ? <button type="button" className="btn primary" onClick={() => toEval('result')}><Ic n="check" /> Kết thúc đợt & chốt kết quả</button>
         : reg[2] === 'open' ? <button type="button" className="btn" onClick={() => { const n = k.eligibleOf(p).filter(t => !trs.includes(t.id)).length; P.run(supabase.from('ph2_plans').update({ notice: { ...(p.notice ?? { bgh: false }), date: vn(k.T), n } }).eq('id', p.id), `✓ Đã gửi nhắc đăng ký tới ${n} học viên chưa đăng ký`) }}><Ic n="send" /> Gửi thông báo nhắc</button> : null)}
-        {can && p.status === 'published' && !p.confirmed && <button type="button" className="btn" disabled data-tip="TODO: CSDL chưa có trạng thái “Đã huỷ” cho đợt (ph2_plans.status chỉ nhận draft/published) — cần bổ sung migration">Huỷ đợt</button>}
+        {can && p.status === 'published' && !p.confirmed && <button type="button" className="btn" onClick={() => setCancelAsk(true)}>Huỷ đợt</button>}
+        {can && p.status === 'cancelled' && <button type="button" className="btn" onClick={() => P.run(supabase.from('ph2_plans').update({ status: 'published', cancelled: null }).eq('id', p.id), '✓ Đã khôi phục đợt')}>Khôi phục đợt</button>}
         <button type="button" className="btn" onClick={() => toEval('att')}><Ic n="award" /> Đánh giá kết quả</button></div></div>
+    {cancelAsk && <Confirm danger text={`Huỷ đợt “${p.title}”? ${trs.length} học viên đã đăng ký sẽ nhận thông báo huỷ; có thể khôi phục lại.`} yes="Huỷ đợt" onNo={() => setCancelAsk(false)}
+      onYes={async () => { setCancelAsk(false); await P.run(supabase.from('ph2_plans').update({ status: 'cancelled', cancelled: { date: vn(k.T), by: 'KDI Education' } }).eq('id', p.id), '✓ Đã huỷ đợt') }} />}
+    {p.status === 'cancelled' && <div className="ctlock"><Ic n="alert" /> Đợt đã huỷ{p.cancelled?.date ? ' ngày ' + p.cancelled.date : ''} — học viên không học tiếp. Bấm “Khôi phục đợt” nếu huỷ nhầm.</div>}
     {pubAsk && <Panel className="pubask" icon="send" title="Phát hành & gửi thông báo">
       <label className="chk"><input type="checkbox" checked={hv} onChange={e => setHv(e.target.checked)} /> Gửi thông báo mở đăng ký tới <b>{k.eligibleOf(p).length} học viên</b> đủ điều kiện (ứng dụng + email)</label>
       <label className="chk"><input type="checkbox" checked={bgh} onChange={e => setBgh(e.target.checked)} /> Gửi tới Ban giám hiệu {p.schools?.length ? p.schools.length + ' trường được mời' : 'tất cả các trường'}</label>

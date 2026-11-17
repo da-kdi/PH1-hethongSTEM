@@ -7,6 +7,7 @@ import { gradesText } from '../curriculum/CurriculumPage'
 import { Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Seg, StatusPill, cssVar } from '../mau/kit'
 import { DataTable } from '../mau/DataTable'
 import { ExamDetail, QEditor, type Exam } from './QEditor'
+import { BankTab, ReviewTab, type BQ } from './ElTabs'
 import { SGLYPH } from '../mau/icons'
 
 const ElearningManage = lazy(() => import('../../../pages/elearning/Manage'))
@@ -18,9 +19,11 @@ type Course = { id: string; org_id: string; title: string; status: string; curri
 type Att = { exam_id: string; score: number | null; status: string }
 type Prog = { id: string; lessons: number; ok: number }
 
-export function ElearningMau(props: { orgId: string | null; teacherId?: string | null }) {
+export function ElearningMau(props: { orgId: string | null; teacherId?: string | null; initTab?: 'course' | 'test' | 'review' | 'bank' }) {
   const { orgId } = props
-  const [tab, setTab] = useState<'course' | 'test'>('test')
+  const [tab, setTab] = useState<'course' | 'test' | 'review' | 'bank'>(props.initTab ?? 'test')
+  const [bank, setBank] = useState<BQ[]>([])
+  const [rvNew, setRvNew] = useState(false)
   const [eq, setEq] = useState('')
   const [manage, setManage] = useState(false)
   const [progs, setProgs] = useState<Curriculum[]>([])
@@ -43,10 +46,11 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
     const [c, co, e, a, pr] = await Promise.all([
       supabase.from('curricula').select('*').eq('status', 'published').order('code'),
       supabase.from('courses').select('id, org_id, title, status, curriculum_id, course_lessons(id)').order('created_at'),
-      supabase.from('practice_exams').select('id, org_id, title, subject, grade, mode, question_ids, criteria, status, closes_at, updated_at').order('title'),
+      supabase.from('practice_exams').select('id, org_id, title, subject, grade, mode, question_ids, criteria, status, closes_at, updated_at, duration_min').order('title'),
       supabase.from('exam_attempts').select('exam_id, score, status'),
       supabase.from('course_progress').select('lesson_id, student_id'),
     ])
+    supabase.from('question_bank').select('id, org_id, subject, grade, topic, level, kind, stem, status, created_at').order('created_at').limit(5000).then(({ data }) => setBank((data as BQ[]) ?? []))
     if (c.error) return setMsg(errMsg(c.error.message))
     const ps = (c.data as Curriculum[]) ?? []; setProgs(ps); setCourses((co.data as Course[]) ?? []); setExams((e.data as Exam[]) ?? []); setAtts((a.data as Att[]) ?? [])
     setProg((pr.data as { lesson_id: string; student_id: string }[]) ?? [])
@@ -101,11 +105,15 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
   return <Mau>
     {msg && <p className="msg" role="status" onClick={() => setMsg('')}>{msg}</p>}
     <PageHead icon="cap" title="E-learning & luyện thi" sub="Khoá tự học và đề luyện dựng từ bài học, học liệu đã phát hành của chương trình">
-      {tab === 'test' ? orgId && <button type="button" className="btn primary" onClick={() => setQe(true)}><Ic n="plus" /> Câu hỏi mới / nhập file</button>
+      {tab === 'test' ? orgId && <button type="button" className="btn primary" onClick={() => setManage(true)} title="Tạo đề ở Quản lý chi tiết"><Ic n="plus" /> Đề luyện</button>
+        : tab === 'review' ? orgId && <button type="button" className="btn primary" onClick={() => setRvNew(true)}><Ic n="plus" /> Nội dung ôn</button>
+        : tab === 'bank' ? orgId && <button type="button" className="btn primary" onClick={() => setQe(true)}><Ic n="plus" /> Thêm câu hỏi</button>
         : <button type="button" className="btn primary" onClick={() => noCourse[0] ? create(noCourse[0]) : setManage(true)} title={noCourse[0] ? `Tạo khoá tự học cho ${noCourse[0].code}` : 'Mở quản lý khoá học'}><Ic n="plus" /> Khoá học</button>}</PageHead>
-    <Flow steps={[['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`], ['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`]]} value={tab} onChange={setTab} />
-    {qe && orgId && <QEditor orgId={orgId} subject="" grade={null} subjects={subjects} onClose={() => setQe(false)} onSaved={ids => { setQe(false); setMsg(`Đã lưu ${ids.length} câu vào ngân hàng câu hỏi — mở một đề để thêm câu vào đề.`) }} />}
-    {tab === 'course' ? <>
+    <Flow steps={[['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`], ['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`], ['review', 'Nội dung cần ôn', 'theo bài học'], ['bank', 'Ngân hàng câu hỏi', `${bank.length} câu · ${bank.filter(b => b.status === 'draft').length} chờ duyệt`]]} value={tab} onChange={setTab} />
+    {qe && orgId && <QEditor orgId={orgId} subject="" grade={null} subjects={subjects} onClose={() => setQe(false)} onSaved={ids => { setQe(false); load(); setMsg(`Đã lưu ${ids.length} câu vào ngân hàng câu hỏi — mở một đề để thêm câu vào đề.`) }} />}
+    {tab === 'review' ? <ReviewTab orgId={orgId} cat={cat} progs={progs} bank={bank} creating={rvNew} onCreated={() => setRvNew(false)} />
+      : tab === 'bank' ? <BankTab cat={cat} bank={bank} reload={load} onNew={() => setQe(true)} />
+      : tab === 'course' ? <>
       {askC && <Confirm text={`Tạo khoá tự học cho chương trình “${askC.name}”?`} yes="Tạo khoá học" onNo={() => setAskC(null)} onYes={() => { const p = askC; setAskC(null); create(p) }} />}
       {!progs.length ? <Empty>Chưa có chương trình đã phát hành.</Empty>
         : <DataTable id="el-course" rows={crows}
@@ -136,7 +144,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
           { key: 'title', label: 'Đề luyện', name: true, sort: e => e.title, cell: e => <b>{e.title}</b> },
           { key: 'subj', label: 'Môn', sort: e => catName(cat, 'subject', e.subject) || e.subject, cell: e => catName(cat, 'subject', e.subject) || e.subject || '—' },
           { key: 'kind', label: 'Loại', sort: e => e.mode, cell: e => e.mode === 'fixed' ? 'Đề cố định' : 'Đề ngẫu nhiên' },
-          { key: 'q', label: 'Số câu · thời gian', sort: e => qOf(e), cell: e => `${qOf(e)} câu` }, // TODO: practice_exams chưa có thời gian làm bài
+          { key: 'q', label: 'Số câu · thời gian', sort: e => qOf(e), cell: e => `${qOf(e)} câu${e.duration_min ? ' · ' + e.duration_min + '′' : ''}` },
           { key: 'att', label: 'Lượt làm', sum: 'sum', sort: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length, cell: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length },
           { key: 'avg', label: 'Điểm TB', sum: false, sort: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? sc.reduce((x, a) => x + Number(a.score), 0) / sc.length : null },
             cell: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? (sc.reduce((x, a) => x + Number(a.score), 0) / sc.length).toFixed(1) : '—' } },

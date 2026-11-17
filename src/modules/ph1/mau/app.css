@@ -37,3 +37,6 @@
 .mau .opts{margin:0}
 .mau .dtable .tblwrap:not(.xscroll){overflow-x:hidden}
 :root .mau.mau-wrap{background:transparent;font-family:var(--ui-font,var(--font))}
+.mau .tagchips{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:6px;vertical-align:middle}
+.mau .chip.tagchip{font-size:11px;padding:1px 4px 1px 8px;background:color-mix(in srgb,var(--primary) 9%,var(--surface));color:var(--primary);border-color:transparent;display:inline-flex;align-items:center;gap:2px}
+.mau .chip.tagchip button{border:0;background:none;color:inherit;cursor:pointer;font-size:10px;padding:0 3px;opacity:.6}.mau .chip.tagchip button:hover{opacity:1}

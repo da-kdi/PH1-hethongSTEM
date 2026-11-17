@@ -17,7 +17,7 @@ export type MatContent = { desc: string; outcomes: string[]; product: string[]; 
   norms: { name: string; unit: string; qty: number; basis: string; cat: string }[] }
 export type Mat = { id: string; module_id: string; version_no: number; status: string; groups: Record<string, string>; content: MatContent; published_at: string | null; updated_at: string }
 export type Plan = { id: string; org_id: string; program_id: string; title: string; unit: string | null; status: string; subjs: string[]; cap: number; reg_due: string | null; schools: string[]
-  subj_only: boolean; prereq: string | null; cond: string | null; assist: string[]; notice: { date: string; n: number; bgh: boolean } | null; confirmed: { date: string; by: string } | null
+  subj_only: boolean; prereq: string | null; cond: string | null; assist: string[]; notice: { date: string; n: number; bgh: boolean } | null; confirmed: { date: string; by: string } | null; cancelled?: { date: string; by: string } | null
   survey: { form?: Q[]; sent?: string | null; due?: string; anon?: boolean; req?: boolean }; created_at: string }
 export type Sess = { id: string; plan_id: string; date: string; start_t: string; end_t: string; module_id: string | null; subject: string | null; mode: 'off' | 'on'; place: string | null; link: string | null; rec: string | null; trainer: string | null }
 export type Trainee = { plan_id: string; teacher_id: string; reg_at: string; supp: { kind: string; due: string } | null }
@@ -154,7 +154,7 @@ export function mk(db: DB, subjCat: CatItem[]) {
   }
   const planSt = (p: Plan): [string, string] => { const ss = sessOfPlan(p.id)
     return p.status === 'cancelled' ? ['Đã huỷ', 'bad'] : p.status === 'draft' ? ['Nháp', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Chờ đánh giá', 'warn'] }
-  const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
+  const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'cancelled' ? ['Đã huỷ', 'bad', 'closed'] : p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
     : (p.reg_due ?? '0') >= T && sessOfPlan(p.id).some(s => !sessEnd(s)) ? ['Đang mở đăng ký', 'good', 'open'] : ['Quá hạn đăng ký', 'warn', 'closed']
   const plansOf = (pid: string) => db.plans.filter(p => p.program_id === pid)
   const progCover = (pr: Prog) => { const c = new Set(plansOf(pr.id).flatMap(planSubjs)); return subjectsOf(pr).filter(k => c.has(k)).length }
