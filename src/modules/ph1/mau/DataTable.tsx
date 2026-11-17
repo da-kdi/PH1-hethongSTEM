@@ -43,7 +43,7 @@ export function sortVal(t: string | number | null | undefined): string | number 
 }
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString('vi-VN')
 
-export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty, search, filterBox, fcount, onClearFilters, dataTools, view, grid, fold, subBy }: {
+export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', bulk = [], onDelete, onArchive, groupBy, tools, filters, onFilters, empty, search, filterBox, fcount, onClearFilters, dataTools, view, grid, fold, subBy, plain }: {
   /** khoá lưu cấu hình cột / bộ lọc (vd 'ct', 'pp') */
   id: string
   rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string
@@ -57,6 +57,8 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   groupBy?: (r: T) => [string, ReactNode, (string | null)?]
   /** Bản mẫu v315 (.gscroll): mỗi nhóm là một khối thu gọn được (summary.phead), nút Thu gọn tất cả trên thanh công cụ */
   fold?: boolean
+  /** Bảng gọn trong khung chi tiết (bản mẫu .cttools/.cttbl): không cột chọn, không thao tác hàng loạt */
+  plain?: boolean
   /** dải phụ trong nhóm (vd Môn): trả [khoá, nhãn] */
   subBy?: (r: T) => [string, ReactNode]
   /** nút riêng trên thanh công cụ của bảng (bên trái) */
@@ -166,24 +168,31 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
 
   const n = vis.length
   const rowsOf = (rs: T[]) => <>{rs.map((r, ri) => { const k = rowKey(r), on = sel.has(k); const sb = subBy ? subBy(r) : null; const sb0 = subBy && ri > 0 ? subBy(rs[ri - 1])[0] : null
-            return <Fragment key={k}>{sb && sb[0] !== sb0 && <tr className="band"><td colSpan={n + 1}>{sb[1]}</td></tr>}<tr data-k={k} className={on ? 'rsel' : ''} onClick={onOpen ? () => onOpen(r) : undefined} style={onOpen ? { cursor: 'pointer' } : undefined}>
-              <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>
+            return <Fragment key={k}>{sb && sb[0] !== sb0 && <tr className="band"><td colSpan={n + (plain ? 0 : 1)}>{sb[1]}</td></tr>}<tr data-k={k} className={on ? 'rsel' : ''} onClick={onOpen ? () => onOpen(r) : undefined} style={onOpen ? { cursor: 'pointer' } : undefined}>
+              {!plain && <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>}
               {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}</td>)}
             </tr></Fragment> })}</>
-  const colg = !wide && <colgroup><col style={{ width: 44 }} />{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>
+  const colg = !wide && <colgroup>{!plain && <col style={{ width: 44 }} />}{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>
   const thead = <thead>
-          <tr><th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>
+          <tr>{!plain && <th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>}
             {vis.map(c => { const on = srt?.k === c.key ? srt.d : ''
               return <th key={c.key} className={'sortable' + (on ? ' sorted' : '')} aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}
                 title={on === 'asc' ? 'Đang xếp tăng dần — bấm để xếp giảm dần' : on === 'desc' ? 'Đang xếp giảm dần — bấm để bỏ sắp xếp' : 'Bấm để sắp xếp'}
                 onClick={() => setSrt(!on ? { k: c.key, d: 'asc' } : on === 'asc' ? { k: c.key, d: 'desc' } : null)}>
                 {c.label}<span className={'srt ' + on} aria-hidden="true"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path className="sd" d="M5 3v10M2.5 10.5 5 13l2.5-2.5" /><path className="su" d="M11 13V3M8.5 5.5 11 3l2.5 2.5" /></svg></span></th> })}</tr>
-          <tr className="sumrow"><th className="chkc" />{sums.map((s, i) => <th key={vis[i].key}>{s}</th>)}</tr>
+          <tr className="sumrow">{!plain && <th className="chkc" />}{sums.map((s, i) => <th key={vis[i].key}>{s}</th>)}</tr>
         </thead>
   // B8 · cột ngắn luôn đủ chỗ cho tên cột: bảng có độ rộng tối thiểu, hẹp hơn thì kéo ngang
   const minW = 44 + vis.reduce((a, c) => a + (c.name ? 240 : c.width && /px$/.test(c.width) ? parseInt(c.width) : 120), 0)
   const x = n >= 9 || wide
   return <div className={'dtable' + (wide ? ' wide' : '')} ref={box}>
+    {plain ? <div className="cttools">
+      {search && <input value={search.value} onChange={e => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} />}
+      <div className="dsbar btngrp" role="group" aria-label="Dữ liệu"><button type="button" className="btn sm" disabled={!rows.length} title="Tải toàn bộ danh sách ra file Excel (.csv)" onClick={() => exportCsv(rows, 'tat-ca')}><Ic n="download" /> Xuất</button>{dataTools}</div>
+      <div className="btngrp tools"><span className="colpkw fwrap"><button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} title="Chọn cột hiện trên bảng"><Ic n="cols" /> Cột</button>
+        {pick && <ColPicker cols={cols} order={order} hide={hide} lockKey={lockKey} onClose={() => setPick(false)} onSave={(o, h) => { putCfg({ order: o, hide: h }); setPick(false) }} onReset={() => { putCfg({}); setPick(false) }} />}</span>
+        <button type="button" className={'btn sm' + (wide ? ' on' : '')} aria-pressed={wide} onClick={() => { setWide(!wide); save('stem-tblwide:' + id, !wide || null) }} title="Hiện đủ mọi cột"><span aria-hidden="true">↔</span> {wide ? 'Thu gọn' : 'Mở rộng'}</button></div>{tools}
+    </div> :
     <div className={'toolbar tbc' + (inTree ? ' tbtight' : '')}>
       {search && <label className="search"><Ic n="search" /><input type="search" value={search.value} onChange={e => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} /></label>}
       <span className="tbcount">{rows.length} {noun}</span>
@@ -211,7 +220,7 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
         {dataTools}</div>
       {tools}
       {view}
-    </div>
+    </div>}
     {chosen.length > 0 && <div className="bulkbar" role="toolbar" aria-label="Thao tác với các dòng đã chọn">
       <label className="bkall"><input type="checkbox" checked={allOn} onChange={toggleAll} /> Đã chọn <b>{chosen.length}</b> {noun}</label>
       <button type="button" className="bkb" onClick={() => exportCsv()}><Ic n="download" /> Xuất file</button>
@@ -237,11 +246,11 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
           <table className="gtbl dt">{colg}<tbody>{rowsOf(g.rows)}</tbody></table></details>)}
       </div></div>
       : <div className="panel" style={{ padding: 0 }}><div className={'tblwrap' + (x ? ' xscroll' : '')} style={{ ['--tmin' as string]: (x && !wide ? Math.max(minW, n * 130) : minW) + 'px' }}>
-      <table className="dt" style={x && !wide ? { minWidth: 'var(--tmin)' } : undefined}>
+      <table className={plain ? 'dt cttbl' : 'dt'} style={x && !wide ? { minWidth: 'var(--tmin)' } : undefined}>
         {colg}
         {thead}
         <tbody>{groups.map(g => <Fragment key={g.k}>
-          {groupBy && <tr className="band"><td colSpan={n + 1}>{g.label} <small>{g.rows.length}</small></td></tr>}
+          {groupBy && <tr className="band"><td colSpan={n + (plain ? 0 : 1)}>{g.label} <small>{g.rows.length}</small></td></tr>}
           {rowsOf(g.rows)}
         </Fragment>)}</tbody>
       </table></div></div>}

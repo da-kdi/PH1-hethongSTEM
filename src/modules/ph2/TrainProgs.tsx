@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { catOf } from '../ph1/curriculum/api'
-import { AsideWrap, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { AsideWrap, CtHead, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { DataTable } from '../ph1/mau/DataTable'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
@@ -182,13 +182,13 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
   const sb = (key: string, name: string, n: number, h: number) => <button type="button" key={key} className={'ctsb' + (cur === key ? ' on' : '')} onClick={() => setSub(key)}><b>{name}</b><small>{n} chuyên đề · {h} giờ</small></button>
   return <>
     <Back onClick={onBack} title={p.name}>Danh sách chương trình</Back>
-    <div className="dhead"><span className="code" style={cssVar(g.color)}>{p.code}</span><div><h1>{p.name}</h1><span className="crumb">{g.code === 'CXN' ? 'Chưa xếp nhóm' : g.name} · {TFORMAT[p.format]} · {k.progH(p)} giờ · {p.issuer}</span></div><StatusPill s={p.status} />
-      {p.releases[0] && <span className="pill plain">Bản {p.releases[0].no}</span>}
-      {can && <div className="act"><button type="button" className="btn" onClick={() => setTab('setup')}><Ic n="edit" /> Sửa thông tin</button>
+    <CtHead code={p.code} color={g.color} title={p.name} pills={<><StatusPill s={p.status} />{p.releases[0] && <span className="pill plain">Bản {p.releases[0].no}</span>}</>} sub={<>{g.code === 'CXN' ? 'Chưa xếp nhóm' : g.name} · {TFORMAT[p.format]} · {k.progH(p)} giờ · {p.issuer}</>}
+
+            act={can && <><button type="button" className="btn" onClick={() => setTab('setup')}><Ic n="edit" /> Sửa thông tin</button>
         {p.status !== 'published' ? <button type="button" className="btn primary" onClick={() => { if (!ms.length && !subj.length) return P.setMsg('Chưa có học phần / chuyên đề nào')
           P.run(supabase.from('ph2_programs').update({ status: 'published', releases: relNext(k, p) }).eq('id', p.id), '✓ Đã phát hành — dùng được để lập kế hoạch đào tạo') }}><Ic n="send" /> Phát hành</button>
         : <button type="button" className="btn" onClick={() => P.run(supabase.from('ph2_programs').update({ status: 'archived' }).eq('id', p.id), '✓ Đã chuyển sang Ngừng dùng')}><Ic n="archive" /> Ngừng dùng</button>}
-        <button type="button" className="btn danger" aria-label="Xoá chương trình" data-tip="Xoá chương trình" onClick={() => setAsk(true)}><Ic n="trash" /></button></div>}</div>
+        <button type="button" className="btn danger" aria-label="Xoá chương trình" data-tip="Xoá chương trình" onClick={() => setAsk(true)}><Ic n="trash" /></button></>} />
     {ask && <Confirm danger text={`Xoá chương trình “${p.name}”?${plans.length ? ` Đang có ${plans.length} kế hoạch đào tạo dùng chương trình này — sẽ bị xoá cùng.` : ''}`} yes="Xoá"
       onYes={async () => { if (await P.run(supabase.from('ph2_programs').delete().eq('id', p.id), '✓ Đã xoá chương trình')) onBack() }} onNo={() => setAsk(false)} />}
     {tab === 'setup' ? <TpForm P={P} k={k} p={p} orgId={orgId} onDone={() => setTab('overview')} /> : <>
@@ -226,9 +226,9 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
         <Panel title="Phiên bản">{p.releases.length ? p.releases.slice(0, 3).map((r, i) => <div key={r.no} className="ctver"><b>Bản {r.no}</b><small className="sub">{r.date} · {r.mods} chuyên đề</small>{i === 0 && p.status === 'published' && <span className="pill good plain">Đang dùng</span>}</div>)
           : <span className="sub">Chưa phát hành lần nào</span>}</Panel></>}>
         <Panel icon="list" title="Học phần & chuyên đề" className="ctmain">
-          {!subj.length ? <Empty>Chưa có học phần — bấm “Sửa thông tin” để thêm học phần và chuyên đề.</Empty> : <div className="ctlessons">
-            <nav className="ctsubs" aria-label="Học phần">{sb('all', 'Tất cả', ms.length, k.progH(p))}{subj.map(s => sb(s, k.SUBJ(s), k.subjMods(p, s).length, k.subjH(p, s)))}</nav>
-            <DataTable id="tp-mods" rows={rows} rowKey={m => m.id} noun="chuyên đề" search={{ value: mq, onChange: setMq, placeholder: 'Tìm chuyên đề trong mọi học phần…' }}
+          {!subj.length ? <Empty>Chưa có học phần — bấm “Sửa thông tin” để thêm học phần và chuyên đề.</Empty> : <div className="ctgrid">
+            <nav className="ctnav" aria-label="Lọc theo học phần">{sb('all', 'Tất cả', ms.length, k.progH(p))}{subj.map(s => sb(s, k.SUBJ(s), k.subjMods(p, s).length, k.subjH(p, s)))}</nav>
+            <div className="ctbody"><DataTable id="tp-mods" plain rows={rows} rowKey={m => m.id} noun="chuyên đề" search={{ value: mq, onChange: setMq, placeholder: 'Tìm chuyên đề trong mọi học phần…' }}
               empty={<Empty>Chưa có chuyên đề.</Empty>}
               cols={[
                 { key: 'stt', label: '#', width: '56px', sum: false, sort: m => stt.get(m.id), cell: m => stt.get(m.id) },
@@ -236,7 +236,7 @@ function TpDetail({ P, k, p, tab, setTab, itemSel, setItemSel, orgId, onBack, op
                 { key: 'hours', label: 'Số giờ', sum: 'sum', sort: m => Number(m.hours), cell: m => Number(m.hours) },
                 { key: 'sess', label: 'Số buổi', sum: 'sum', sort: m => sessOf(Number(m.hours), p.mpp), cell: m => sessOf(Number(m.hours), p.mpp) },
                 { key: 'mat', label: 'Học liệu', raw: true, sum: 'status', sort: m => k.matSt(m).s, cell: m => <button type="button" className="matbtn" title="Mở học liệu chuyên đề" onClick={e => { e.stopPropagation(); openMat(m.id) }}><MatPill k={k} m={m} /></button> },
-              ]} /></div>}
+              ]} /></div></div>}
         </Panel>
       </AsideWrap>}</>}
   </>

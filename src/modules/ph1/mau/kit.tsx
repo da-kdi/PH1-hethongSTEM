@@ -49,6 +49,10 @@ export function Cover({ subject, label, code }: { subject?: string | null; label
 }
 export function Empty({ children }: { children: ReactNode }) { return <div className="empty">{children}</div> }
 export function Group({ title, n }: { title: ReactNode; n?: number }) { return <div className="group">{title}{n != null && <small>{n}</small>}</div> }
+// Bản mẫu v315 · đầu trang chi tiết (.cthead): mã, tên, nhãn trạng thái; dòng phụ; nút bên phải
+export function CtHead({ code, color, title, pills, sub, act }: { code?: ReactNode; color?: string | null; title: ReactNode; pills?: ReactNode; sub?: ReactNode; act?: ReactNode }) {
+  return <div className="cthead"><div className="cttitle"><div className="ctname">{code != null && <span className="code" style={cssVar(color)}>{code}</span>}<h1>{title}</h1>{pills}</div>{sub && <small className="sub">{sub}</small>}</div>{act && <div className="act">{act}</div>}</div>
+}
 // Một dòng trong bảng Lọc của thanh công cụ (.fpanel .frow1)
 export function FRow({ label, children }: { label: string; children: ReactNode }) { return <label className="frow1"><span>{label}</span>{children}</label> }
 export function Seg<T extends string>({ items, value, onChange, label }: { items: [T, string][]; value: T; onChange: (v: T) => void; label?: string }) {
