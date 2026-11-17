@@ -10,7 +10,8 @@ export type Item = { id: string; name: string; kind: string; mod: string; mode: 
 export type Rel = { no: number; date: string; by: string; note: string; mods: number }
 export type Prog = { id: string; owner_org_id: string; code: string | null; name: string; group_code: string | null; format: Format; mpp: number; status: string; issuer: string | null
   summary: string | null; outcomes: string | null; goal: string | null; audience: { levels: string[]; note: string }; subjects: string[]; subj_hours: Record<string, number>
-  criteria: { att: number; score: number; req: boolean }; cert: string | null; items: Item[]; releases: Rel[]; created_at: string; updated_at: string }
+  criteria: { att: number; score: number; req: boolean }; cert: string | null; items: Item[]; releases: Rel[]; created_at: string; updated_at: string
+  comps?: string[]; edu?: string[] }   // 070: năng lực hướng tới, chương trình giáo dục liên quan
 export type Mod = { id: string; program_id: string; subject: string; seq: number; title: string; hours: number; sessions: number; mat_use: number | null }
 export type MatContent = { desc: string; outcomes: string[]; product: string[]; doc: { written: string[][]; reviewed: string[][]; edited: string[][] }
   acts: { title: string; minutes: number; items: string[] }[]; practice: string; links: { kind: string; title: string; url: string }[]
@@ -24,7 +25,7 @@ export type Trainee = { plan_id: string; teacher_id: string; reg_at: string; sup
 export type Grade = { plan_id: string; item_id: string; teacher_id: string; score: number | null; lv: Record<string, number> | null; note: string | null; sub: { at: string; file: string; late: boolean } | null }
 export type Cert = { plan_id: string; teacher_id: string; no: string; issued_on: string }
 export type Fb = { plan_id: string; teacher_id: string; answers: Record<string, number | string> }
-export type CatRow = { id: string; owner_org_id: string | null; kind: 'group' | 'unit' | 'trainer'; code: string | null; name: string; color: string | null; info: Record<string, string>; sort: number }
+export type CatRow = { id: string; owner_org_id: string | null; kind: 'group' | 'unit' | 'trainer' | 'comp'; code: string | null; name: string; color: string | null; info: Record<string, string>; sort: number }
 export type Lect = { id: string; org_id: string; module_id: string; mat_version: number | null; title: string; author: string | null; status: string; parts: Part[]; updated_at: string }
 export type Part = { title: string; minutes: number; note: string; blocks: { type: string; [k: string]: any }[] }
 export type Q = { id: string; g: string; q: string; type?: 'scale' | 'text' }

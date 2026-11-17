@@ -182,7 +182,9 @@ export function DataTable<T>({ id, rows: rows0, cols, rowKey, onOpen, noun = 'd�
               {!plain && <td className="chkc" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Chọn dòng" checked={on} onChange={() => setSel(s => { const nx = new Set(s); nx.has(k) ? nx.delete(k) : nx.add(k); return nx })} /></td>}
               {vis.map(c => <td key={c.key} data-c={c.key} className={c.raw ? 'raw' : c.name ? 'tcell' : 'one'}>{c.cell(r)}{c.key === lockKey && tagsOf(k).length > 0 && <span className="tagchips">{tagsOf(k).map(t => <span key={t} className="chip tagchip">{t}<button type="button" aria-label={'Bỏ thẻ ' + t} onClick={async e => { e.stopPropagation(); await supabase.from('item_tags').delete().eq('entity', id).eq('item_id', k).eq('tag', t); loadTags() }}>✕</button></span>)}</span>}</td>)}
             </tr></Fragment> })}</>
-  const colg = !wide && <colgroup>{!plain && <col style={{ width: 44 }} />}{vis.map(c => <col key={c.key} style={{ width: c.width ?? (c.name ? (n >= 8 ? '26%' : '30%') : c.date ? 112 : undefined) }} />)}</colgroup>
+  // Độ rộng cột theo loại (bản mẫu tính theo độ rộng tự nhiên): tên 26–30%, ngày 112px, trạng thái 140px, cột số 84px; cột chữ khác chia phần còn lại
+  const colW = (c: Col<T>) => c.width ?? (c.name ? (n >= 8 ? '24%' : '28%') : c.date ? 112 : (c.sum === 'status' || c.key === 'status') ? 140 : c.sum === 'sum' || c.sum === 'avg' ? 88 : c.sum === 'frac' ? 96 : undefined)
+  const colg = !wide && <colgroup>{!plain && <col style={{ width: 44 }} />}{vis.map(c => <col key={c.key} style={{ width: colW(c) }} />)}</colgroup>
   const thead = <thead>
           <tr>{!plain && <th className="chkc"><input type="checkbox" aria-label="Chọn tất cả" checked={allOn} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn }} onChange={toggleAll} /></th>}
             {vis.map(c => { const on = srt?.k === c.key ? srt.d : ''

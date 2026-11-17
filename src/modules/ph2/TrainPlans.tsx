@@ -138,16 +138,36 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
   const progs = db.progs.filter(pr => db.plans.some(p => p.program_id === pr.id && ok(p)))
   const schools = Array.from(new Set(db.teachers.map(t => t.org_id))).map(id => [id, k.orgName(id)] as [string, string]).filter(x => x[1])
   return <>
-    <Panel icon="calendar" title="Đợt đào tạo & đăng ký" act={<small className="sub">Theo chương trình · học viên tự đăng ký ở cổng học viên</small>}>
-      <div className="toolbar"><Search value={F.q} onChange={q => setF({ ...F, q })} placeholder="Tìm chương trình, đợt…" /><Sel label="Tất cả trường" value={F.school} onChange={v => setF({ ...F, school: v })} options={schools} />
-        <Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={Array.from(new Set(db.plans.flatMap(k.planSubjs))).map(s => [s, k.SUBJ(s)])} />
-        <Sel label="Mọi trạng thái đợt" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['open', 'Đang mở đăng ký'], ['draft', 'Chưa mở đăng ký'], ['closed', 'Quá hạn đăng ký']]} />
-        {(F.school || F.subj || F.st || F.q) && <button type="button" className="btn sm ghost" onClick={() => setF({ school: '', subj: '', st: '', q: '' })}>Xoá lọc</button>}</div>
-      {progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = db.plans.filter(p => p.program_id === pr.id && ok(p)).sort((a, b) => order[k.regSt(a)[2]] - order[k.regSt(b)[2]]); 
-        return <details key={pr.id} className="kprog rprog" open={!rshut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setRshut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
-          <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{ps.length} đợt · {ps.reduce((a, p) => a + k.traineesOf(p.id).length, 0)} lượt đăng ký</small></summary>
-          <div className="prgrid">{ps.map(card)}</div></details> })}
-      {!progs.length && <Empty>Không có đợt phù hợp bộ lọc.</Empty>}</Panel>
+    {/* Bản mẫu v315: bảng đợt gom theo chương trình (Đợt · Thời gian · Hạn đăng ký · Đăng ký n/cap · Trạng thái); bấm “Danh sách đăng ký” để xem học viên */}
+    <section className="plainsec"><DataTable id="kh-reg" rows={progs.flatMap(pr => db.plans.filter(p => p.program_id === pr.id && ok(p)).sort((x, y) => order[k.regSt(x)[2]] - order[k.regSt(y)[2]]))} rowKey={p => p.id} noun="kế hoạch" fold
+      onOpen={p => setOpenReg(openReg === p.id ? null : p.id)}
+      search={{ value: F.q, onChange: q => setF({ ...F, q }), placeholder: 'Tìm chương trình, đợt…' }}
+      filterBox={<><FRow label="Trường"><Sel label="Tất cả trường" value={F.school} onChange={v => setF({ ...F, school: v })} options={schools} /></FRow>
+        <FRow label="Học phần"><Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={Array.from(new Set(db.plans.flatMap(k.planSubjs))).map(s => [s, k.SUBJ(s)])} /></FRow>
+        <FRow label="Trạng thái đợt"><Sel label="Mọi trạng thái đợt" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['open', 'Đang mở đăng ký'], ['draft', 'Chưa mở đăng ký'], ['closed', 'Quá hạn đăng ký']]} /></FRow></>}
+      fcount={[F.school, F.subj, F.st].filter(Boolean).length} onClearFilters={() => setF({ ...F, school: '', subj: '', st: '' })}
+      groupBy={p => { const pr = k.prog(p.program_id)!; const ps = db.plans.filter(x => x.program_id === pr.id && ok(x)); return [pr.id, <><span className="pcd">{pr.code}</span><div className="ptit"><b>{pr.name}</b></div><small className="pmeta">{ps.length} đợt · {ps.reduce((n, x) => n + k.traineesOf(x.id).length, 0)} lượt đăng ký</small></>, k.groupOf(pr.group_code).color] }}
+      empty={<Empty>Không có đợt phù hợp bộ lọc.</Empty>}
+      bulk={P.canManage ? [{ label: 'Gửi thông báo nhắc', run: async rs => { const op = rs.filter(p => k.regSt(p)[2] === 'open'); for (const p of op) await supabase.from('ph2_plans').update({ notice: { ...(p.notice ?? { bgh: false }), date: vn(k.T), n: k.eligibleOf(p).filter(t => !k.traineesOf(p.id).includes(t.id)).length } }).eq('id', p.id); await P.reload(); return `Đã gửi nhắc ${op.length} đợt đang mở đăng ký` } }] : []}
+      cols={[
+        { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit} · {p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</small></> },
+        { key: 'date', label: 'Thời gian', sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
+        { key: 'due', label: 'Hạn đăng ký', date: true, sort: p => p.reg_due ? vn(p.reg_due) : null, cell: p => p.reg_due ? vn(p.reg_due) : '—' },
+        { key: 'reg', label: 'Đăng ký', sum: 'frac', sort: p => k.traineesOf(p.id).length, cell: p => `${k.traineesOf(p.id).length}/${p.cap}` },
+        { key: 'st', label: 'Trạng thái', sum: 'status', sort: p => k.regSt(p)[0], cell: p => { const [sl, sc] = k.regSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
+        { key: 'act', label: '', width: '170px', raw: true, sum: false, cell: p => k.regSt(p)[2] === 'draft' ? (P.canManage ? <button type="button" className="btn sm primary" onClick={e => { e.stopPropagation(); publish(P, k, p, true, true) }}><Ic n="send" /> Mở đăng ký</button> : null)
+          : <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); setOpenReg(openReg === p.id ? null : p.id) }}>{openReg === p.id ? 'Thu gọn' : 'Danh sách đăng ký'}</button> },
+      ]} /></section>
+    {(() => { const p = db.plans.find(x => x.id === openReg); if (!p) return null; const tr = db.trainees.filter(x => x.plan_id === p.id); const kk = k.regSt(p)[2]
+      return <Panel icon="users" title={<>Danh sách đăng ký · {p.title} <small className="sub">{tr.length}/{p.cap}</small></>} act={<button type="button" className="btn sm ghost" onClick={() => setOpenReg(null)}>Đóng</button>}>
+        <DataTable id="kh-reglist" plain rows={tr} rowKey={x => x.teacher_id} noun="học viên" empty={<Empty>Chưa có học viên đăng ký.</Empty>}
+          cols={[
+            { key: 'name', label: 'Học viên', name: true, sort: x => k.teacher(x.teacher_id).full_name, cell: x => <><b>{k.teacher(x.teacher_id).full_name}</b><small>{k.teacher(x.teacher_id).school}</small></> },
+            { key: 'subj', label: 'Học phần dạy', cell: x => k.SUBJ(k.teacher(x.teacher_id).subj) || k.teacher(x.teacher_id).subject || '—' },
+            { key: 'date', label: 'Ngày đăng ký', date: true, sort: x => vn(x.reg_at), cell: x => vn(x.reg_at) },
+            { key: 'prev', label: 'Các đợt trước cùng chương trình', cell: x => { const prev = k.plansOf(p.program_id).filter(y => y.id !== p.id && k.traineesOf(y.id).includes(x.teacher_id)); return prev.length ? prev.map(y => shortTitle(y.title) + ' · ' + k.evalOf(y, x.teacher_id).result).join('; ') : 'Lần đầu' } },
+            { key: 'act', label: '', width: '120px', raw: true, sum: false, cell: x => kk === 'open' && P.canManage ? <button type="button" className="btn sm ghost" onClick={() => unreg(p, x.teacher_id)}>Huỷ đăng ký</button> : null },
+          ]} /></Panel> })()}
     <Panel icon="users" title="Tiến độ hoàn thành chương trình theo học viên"><div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Chương trình</th><th>Học phần đã hoàn thành</th><th>Đang học / còn thiếu</th><th>Trạng thái</th></tr></thead><tbody>
       {progRows.map(({ t, pr, g }) => <tr key={t.id + pr.id}><td><b>{t.full_name}</b><br /><small className="sub">{t.school}</small></td><td>{pr.code}<br /><small className="sub">{g.ps.length} đợt</small></td>
         <td>{[...g.done].map(s => <span key={s} className="chip k" style={cssVar('var(--good)')}>{k.SUBJ(s)}</span>)}{!g.done.size && '—'}</td>
