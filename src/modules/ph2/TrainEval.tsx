@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
+import { errMsg } from '../ph1/ui'
+import { DataTable } from '../ph1/mau/DataTable'
 import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { ATTK, COMP, FBG, IKIND, LV, LVC, LVP, PAGE, SUBMIT, SUPK, SURVEY, addD, fmt1, goto, resPill, shortTitle, takeIntent, uid, vn, vnS, type Item, type K, type Plan, type Q } from './api'
@@ -37,10 +39,8 @@ export function TrainEval({ orgId, go }: { orgId: string | null; go?: (p: string
   return <Mau>{msg}{head}
     <Back onClick={() => { setPlan(null); setCert(null) }} title={p.title}>Tất cả đợt đào tạo</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)}</span></div><span className={`pill ${scl} plain`}>{sl}</span></div>
-    <div className="stats"><StatCard c="c-blue" icon="users" label="Học viên" value={tr.length} sub={`${ss.filter(k.sessEnd).length}/${ss.length} buổi đã diễn ra`} />
-      <StatCard c="c-green" icon="check" label="Chuyên cần TB" value={Math.round(avg(at) ?? 0) + '%'} sub="trên các buổi đã diễn ra" />
-      <StatCard c="c-violet" icon="target" label="Điểm TB" value={fmt1(avg(sc))} sub="thang 10, theo trọng số đầu điểm" />
-      <StatCard c="c-amber" icon="award" label="Hoàn thành" value={<>{rows.filter(r => r.result === 'Hoàn thành').length}<small>/{rows.length}</small></>} sub={tr.filter(t => k.certOf(p, t)).length + ' đã cấp chứng nhận'} /></div>
+    <div className="ctbar"><div /><div className="ctstats"><span><b>{tr.length}</b>học viên · {ss.filter(k.sessEnd).length}/{ss.length} buổi đã diễn ra</span><span>Chuyên cần TB <b>{Math.round(avg(at) ?? 0)}%</b></span>
+      <span>Điểm TB <b>{fmt1(avg(sc))}</b></span><span>Hoàn thành <b>{rows.filter(r => r.result === 'Hoàn thành').length}/{rows.length}</b></span><span>Chứng nhận <b>{tr.filter(t => k.certOf(p, t)).length}</b></span></div></div>
     {p.confirmed && (tab === 'att' || tab === 'grade') && <div className="note warnnote"><Ic n="lock" /> Đợt đã kết thúc, kết quả chốt {p.confirmed.date}. Muốn sửa, vào bước Kết quả bấm “Mở lại” hoặc giao bổ sung cho từng học viên.</div>}
     {body}
     {cert && k.certOf(p, cert) && <CertModal k={k} p={p} tid={cert} onClose={() => setCert(null)} setMsg={P.setMsg} />}{histM}
@@ -50,9 +50,10 @@ export function TrainEval({ orgId, go }: { orgId: string | null; go?: (p: string
 const lockedT = (k: K, p: Plan, t: string) => !!p.confirmed && !k.trainee(p.id, t)?.supp
 
 // ---------- Danh sách đợt theo chương trình ----------
+// Bản mẫu v315 · C9: bảng chương trình/đợt trước (bảng dùng chung, gom theo chương trình; còn Thẻ), bấm vào đợt mới thấy bảng điểm danh / điểm; thao tác hàng loạt Xuất kết quả · Cấp chứng nhận
 function PlanList({ P, k, tab, onOpen }: { P: P2; k: K; tab: Tab; onOpen: (id: string) => void }) {
   const db = P.db!
-  const [view, setView] = useState<'table' | 'grid'>('grid')
+  const [view, setView] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.dg.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const [prog, setProg] = useState('')
   const [shut, setShut] = useState<Set<string>>(new Set())
   const mt = (p: Plan) => { const tr = k.traineesOf(p.id); const rs = tr.map(t => k.evalOf(p, t)); const at = rs.map(r => r.att).filter((x): x is number => x != null); const sc = rs.map(r => r.score).filter((x): x is number => x != null)
@@ -64,22 +65,46 @@ function PlanList({ P, k, tab, onOpen }: { P: P2; k: K; tab: Tab; onOpen: (id: s
   const pub = (pid: string) => k.plansOf(pid).filter(p => p.status === 'published')
   const progs = db.progs.filter(pr => pub(pr.id).length && (!prog || pr.id === prog))
   const what: Record<string, string> = { att: 'bảng điểm danh', grade: 'phần chấm bài', result: 'sổ điểm', cert: 'chứng nhận', fb: 'phản hồi khoá' }
+  const rows = progs.flatMap(pr => pub(pr.id))
+  // Xuất kết quả: mỗi học viên một dòng (đợt, chuyên cần, điểm, kết quả, số chứng nhận)
+  const exportRes = (ps: Plan[]) => { const head = ['Đợt đào tạo', 'Chương trình', 'Học viên', 'Đơn vị', 'Chuyên cần (%)', 'Điểm', 'Kết quả', 'Số chứng nhận']
+    const out = ps.flatMap(p => k.traineesOf(p.id).map(t => { const e = k.evalOf(p, t); const T = k.teacher(t); return [p.title, k.prog(p.program_id)?.code ?? '', T.full_name, T.school, e.att ?? '', e.score == null ? '' : fmt1(e.score), e.result, k.certOf(p, t)?.no ?? ''] }))
+    const csv = '﻿' + [head, ...out].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'ket-qua-dao-tao.csv'; a.click(); URL.revokeObjectURL(a.href)
+    return `Đã xuất kết quả ${out.length} lượt học viên của ${ps.length} đợt` }
+  const certAll = async (ps: Plan[]) => { let n = 0, skip = 0
+    for (const p of ps) { if (!p.confirmed) { skip++; continue } const ids = k.traineesOf(p.id).filter(t => k.evalOf(p, t).result === 'Hoàn thành' && !k.certOf(p, t)); if (!ids.length) continue
+      const { data, error } = await supabase.rpc('ph2_issue_certs', { p_plan: p.id, p_teachers: ids }); if (error) return errMsg(error.message); n += Number(data) || 0 }
+    await P.reload(); return `Đã cấp ${n} chứng nhận${skip ? ` · bỏ qua ${skip} đợt chưa kết thúc & chốt kết quả` : ''}` }
   return <>
     <div className="toolbar"><Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(pr => k.plansOf(pr.id).length).map(pr => [pr.id, `${pr.code} · ${pr.name}`])} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={setView} /><small className="sub" style={{ marginLeft: 'auto' }}>Chọn một đợt để mở {what[tab]}</small></div>
-    {progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = pub(pr.id)
+      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.dg.mode', v) } catch { /* bỏ qua */ } }} /><small className="sub" style={{ marginLeft: 'auto' }}>Chọn một đợt để mở {what[tab]}</small></div>
+    {view === 'table' ? <DataTable id="dg" rows={rows} rowKey={p => p.id} noun="đợt" onOpen={p => onOpen(p.id)}
+      groupBy={p => { const pr = k.prog(p.program_id)!; const ps = pub(pr.id); return [pr.id, <><span className="code sm" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span> {pr.name} <small>{ps.length} đợt · {new Set(ps.flatMap(x => k.traineesOf(x.id))).size} học viên</small></>] }}
+      empty={<Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}
+      bulk={[{ label: 'Xuất kết quả', run: exportRes }, ...(P.canManage ? [{ label: 'Cấp chứng nhận', run: certAll }] : [])]}
+      cols={[
+        { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit}</small></> },
+        { key: 'date', label: 'Thời gian', date: true, sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
+        { key: 'n', label: 'Học viên', sum: 'sum', sort: p => k.traineesOf(p.id).length, cell: p => k.traineesOf(p.id).length },
+        { key: 'past', label: 'Buổi đã học', sum: 'frac', sort: p => mt(p).past, cell: p => `${mt(p).past}/${k.sessOfPlan(p.id).length}` },
+        { key: 'att', label: 'Chuyên cần TB', sum: 'avg', sort: p => mt(p).att, cell: p => { const a = mt(p).att; return a == null ? '—' : a + '%' } },
+        { key: 'gd', label: 'Đã chấm', sum: 'frac', sort: p => mt(p).gd, cell: p => `${mt(p).gd}/${mt(p).gt}` },
+        { key: 'sc', label: 'Điểm TB', sum: false, sort: p => mt(p).sc, cell: p => mt(p).sc ?? '—' },
+        { key: 'done', label: 'Hoàn thành', sum: 'frac', sort: p => mt(p).done, cell: p => `${mt(p).done}/${mt(p).n}` },
+        { key: 'iss', label: 'Chứng nhận', sum: 'sum', sort: p => mt(p).iss, cell: p => mt(p).iss },
+        { key: 'status', label: 'Trạng thái', sum: 'status', sort: p => k.planSt(p)[0], cell: p => { const [sl, sc] = k.planSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
+      ]} />
+    : <>{progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = pub(pr.id)
       return <details key={pr.id} className="kprog mprog" open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
         <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{ps.length} đợt · {new Set(ps.flatMap(p => k.traineesOf(p.id))).size} học viên</small></summary>
-        {view === 'grid' ? <div className="grid dgrid kgrid">{ps.map(p => { const m = mt(p); const [sl, sc] = k.planSt(p)
+        <div className="grid dgrid kgrid">{ps.map(p => { const m = mt(p); const [sl, sc] = k.planSt(p)
           return <article key={p.id} className="pcard dcard kcard" style={cssVar(g.color)} tabIndex={0} onClick={() => onOpen(p.id)} onKeyDown={e => e.key === 'Enter' && onOpen(p.id)}>
             <div className="cover"><CoverDeco s={k.planSubjs(p)[0]} /><span>{pr.code} · {m.n} học viên</span><b>{shortTitle(p.title)}</b></div>
             <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
             <div className="chips"><span className="chip">{m.past}/{k.sessOfPlan(p.id).length} buổi</span><span className="chip">CC {m.att == null ? '—' : m.att + '%'}</span><span className="chip">Điểm {m.sc ?? '—'}</span><span className="chip">HT {m.done}/{m.n}</span></div>
-            <div className="foot"><span><b>{key(p, m)}</b></span><span className={`pill ${sc} plain`}>{sl}</span></div></article> })}</div>
-          : <div className="tblwrap"><table><thead><tr><th>Đợt đào tạo</th><th>Thời gian</th><th className="c">Học viên</th><th className="c">Buổi đã học</th><th className="c">Chuyên cần TB</th><th className="c">Đã chấm</th><th className="c">Điểm TB</th><th className="c">Hoàn thành</th><th className="c">Chứng nhận</th><th>Trạng thái</th></tr></thead><tbody>
-            {ps.map(p => { const m = mt(p); const [sl, sc] = k.planSt(p); return <tr key={p.id} className="rowlink" tabIndex={0} onClick={() => onOpen(p.id)}><td><b>{p.title}</b><br /><small className="sub">{p.unit}</small></td><td>{k.planRange(p)}</td><td className="c">{m.n}</td>
-              <td className="c">{m.past}/{k.sessOfPlan(p.id).length}</td><td className="c">{m.att == null ? '—' : m.att + '%'}</td><td className="c">{m.gd}/{m.gt}</td><td className="c">{m.sc ?? '—'}</td><td className="c">{m.done}/{m.n}</td><td className="c">{m.iss}</td><td><span className={`pill ${sc} plain`}>{sl}</span></td></tr> })}</tbody></table></div>}</details> })}
-    {!progs.length && <Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}
+            <div className="foot"><span><b>{key(p, m)}</b></span><span className={`pill ${sc} plain`}>{sl}</span></div></article> })}</div></details> })}
+      {!progs.length && <Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}</>}
   </>
 }
 
