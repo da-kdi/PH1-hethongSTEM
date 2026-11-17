@@ -4,8 +4,8 @@
 //   B4 bấm tiêu đề để sắp xếp tăng → giảm → bỏ (ô trống luôn cuối, sắp trong từng nhóm)
 //   B5 dòng tổng ngay dưới tiêu đề (không cộng Điểm, Trọng số, Tuần, Tiết PPCT)          B6 cột ngày: khai báo col.date
 //   B7 chọn cột (ẩn/hiện + kéo thả đổi thứ tự) và lưu bộ lọc                            B8 cột tên ≥ 26–30%, nút Mở rộng, kéo ngang khi ≥ 9 cột
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Ic, cssVar } from './kit'
+import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Ic, InTree, cssVar } from './kit'
 
 export type Col<T> = {
   key: string
@@ -72,6 +72,7 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   grid?: ReactNode
 }) {
   const [fOpen, setFOpen] = useState(false)
+  const inTree = useContext(InTree)
   const [shut, setShut] = useState<Set<string>>(() => new Set(load<string[]>('stem-fold:' + id, [])))
   const putShut = (n: Set<string>) => { setShut(n); save('stem-fold:' + id, n.size ? [...n] : null) }
   const box = useRef<HTMLDivElement>(null)
@@ -183,7 +184,7 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
   const minW = 44 + vis.reduce((a, c) => a + (c.name ? 240 : c.width && /px$/.test(c.width) ? parseInt(c.width) : 120), 0)
   const x = n >= 9 || wide
   return <div className={'dtable' + (wide ? ' wide' : '')} ref={box}>
-    <div className="toolbar tbc tbtight">
+    <div className={'toolbar tbc' + (inTree ? ' tbtight' : '')}>
       {search && <label className="search"><Ic n="search" /><input type="search" value={search.value} onChange={e => search.onChange(e.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} /></label>}
       <span className="tbcount">{rows.length} {noun}</span>
       {onFilters && saved.length > 0 && <span className="savedf">{saved.map((s, i) => <span key={i} className="chip sf"><button type="button" onClick={() => onFilters(s.f)} data-tip="Áp dụng bộ lọc đã lưu">{s.n}</button>

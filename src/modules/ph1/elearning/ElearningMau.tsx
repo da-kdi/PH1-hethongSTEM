@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { norm } from '../ui'
 import { errMsg } from '../ui'
 import { catName, catOf, effectiveCatalog, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { gradesText } from '../curriculum/CurriculumPage'
@@ -19,7 +20,8 @@ type Prog = { id: string; lessons: number; ok: number }
 
 export function ElearningMau(props: { orgId: string | null; teacherId?: string | null }) {
   const { orgId } = props
-  const [tab, setTab] = useState<'course' | 'test'>('course')
+  const [tab, setTab] = useState<'course' | 'test'>('test')
+  const [eq, setEq] = useState('')
   const [manage, setManage] = useState(false)
   const [progs, setProgs] = useState<Curriculum[]>([])
   const [stat, setStat] = useState<Map<string, Prog>>(new Map())
@@ -100,12 +102,19 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
     <PageHead icon="cap" title="E-learning & luyện thi" sub="Khoá tự học và đề luyện dựng từ bài học, học liệu đã phát hành của chương trình">
       {tab === 'test' ? orgId && <button type="button" className="btn primary" onClick={() => setQe(true)}><Ic n="plus" /> Câu hỏi mới / nhập file</button>
         : <button type="button" className="btn primary" onClick={() => noCourse[0] ? create(noCourse[0]) : setManage(true)} title={noCourse[0] ? `Tạo khoá tự học cho ${noCourse[0].code}` : 'Mở quản lý khoá học'}><Ic n="plus" /> Khoá học</button>}</PageHead>
-    <Flow steps={[['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`], ['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`]]} value={tab} onChange={setTab} />
+    <Flow steps={[['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`], ['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`]]} value={tab} onChange={setTab} />
     {qe && orgId && <QEditor orgId={orgId} subject="" grade={null} subjects={subjects} onClose={() => setQe(false)} onSaved={ids => { setQe(false); setMsg(`Đã lưu ${ids.length} câu vào ngân hàng câu hỏi — mở một đề để thêm câu vào đề.`) }} />}
     {tab === 'course' ? <>
-      <div className="toolbar"><Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={cview} onChange={v => { setCview(v); try { localStorage.setItem('ph1.el.mode', v) } catch { /* bỏ qua */ } }} /></div>
-      {!progs.length ? <Empty>Chưa có chương trình đã phát hành.</Empty> : cview === 'table'
-        ? <DataTable id="el-course" rows={crows} rowKey={r => r.p.id} noun="khoá học" onOpen={r => r.c ? setManage(true) : undefined}
+      {!progs.length ? <Empty>Chưa có chương trình đã phát hành.</Empty>
+        : <DataTable id="el-course" rows={crows}
+          view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={cview} onChange={v => { setCview(v); try { localStorage.setItem('ph1.el.mode', v) } catch { /* bỏ qua */ } }} />}
+          grid={cview === 'grid' ? (<div className="grid">{progs.map(p => { const c = courseOf(p); const s = stat.get(p.id) ?? { lessons: 0, ok: 0 }; const L = learnersOf(c)
+          return <article key={p.id} className="pcard dcard" style={cssVar(p.color)}>
+            <div className="cover"><i className="cg"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[mainSubj(p) ?? ''] ?? SGLYPH.khtn }} /></i><span>{gradesText(cat, p.grades)}</span><b>{p.code}</b></div>
+            <h3>Khoá tự học: {p.name}</h3>
+            <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
+            <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
+              {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>) : undefined} rowKey={r => r.p.id} noun="khoá học" onOpen={r => r.c ? setManage(true) : undefined}
           bulk={[{ label: 'Phát hành', run: rs => setSt('courses', 'published', 'Đã phát hành')(rs.filter(r => r.c).map(r => r.c!)) }, { label: 'Đóng', run: rs => setSt('courses', 'archived', 'Đã đóng')(rs.filter(r => r.c).map(r => r.c!)) }]}
           cols={[
             { key: 'title', label: 'Khoá học', name: true, sort: r => r.p.name, cell: r => <><b>Khoá tự học: {r.p.name}</b><small>{r.c ? r.c.title : 'Chưa tạo khoá học'}</small></> },
@@ -119,21 +128,15 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
             { key: 'act', label: 'Thao tác', raw: true, sum: false, cell: r => r.c ? <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); setManage(true) }}>Mở ›</button>
               : <button type="button" className="btn sm primary" disabled={!orgId} onClick={e => { e.stopPropagation(); create(r.p) }}><Ic n="plus" /> Tạo khoá học</button> },
           ]} />
-        : <div className="grid">{progs.map(p => { const c = courseOf(p); const s = stat.get(p.id) ?? { lessons: 0, ok: 0 }; const L = learnersOf(c)
-          return <article key={p.id} className="pcard dcard" style={cssVar(p.color)}>
-            <div className="cover"><i className="cg"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[mainSubj(p) ?? ''] ?? SGLYPH.khtn }} /></i><span>{gradesText(cat, p.grades)}</span><b>{p.code}</b></div>
-            <h3>Khoá tự học: {p.name}</h3>
-            <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
-            <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
-              {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>}</>
-      : <DataTable id="el-test" rows={exams} rowKey={e => e.id} noun="đề luyện" onOpen={e => setOpenExam(e.id)}
+    }</>
+      : <DataTable id="el-test" rows={exams.filter(e => !eq || norm(e.title).includes(norm(eq)))} search={{ value: eq, onChange: setEq, placeholder: 'Tìm…' }} rowKey={e => e.id} noun="đề luyện" onOpen={e => setOpenExam(e.id)}
         empty={<Empty>Chưa có đề luyện — tạo ở “Quản lý chi tiết”.</Empty>}
         bulk={[{ label: 'Phát hành', run: setSt('practice_exams', 'published', 'Đã phát hành') }, { label: 'Đóng', run: setSt('practice_exams', 'closed', 'Đã đóng') }]}
         cols={[
-          { key: 'title', label: 'Đề luyện', name: true, sort: e => e.title, cell: e => <><b>{e.title}</b><small>{e.mode === 'fixed' ? 'Đề cố định' : 'Đề ngẫu nhiên'}</small></> },
-          { key: 'subj', label: 'Môn học', sort: e => catName(cat, 'subject', e.subject) || e.subject, cell: e => catName(cat, 'subject', e.subject) || e.subject || '—' },
-          { key: 'grade', label: 'Khối', sum: false, sort: e => e.grade, cell: e => e.grade ? 'Khối ' + e.grade : '—' },
-          { key: 'q', label: 'Số câu', sum: 'sum', sort: e => qOf(e), cell: e => qOf(e) },
+          { key: 'title', label: 'Đề luyện', name: true, sort: e => e.title, cell: e => <b>{e.title}</b> },
+          { key: 'subj', label: 'Môn', sort: e => catName(cat, 'subject', e.subject) || e.subject, cell: e => catName(cat, 'subject', e.subject) || e.subject || '—' },
+          { key: 'kind', label: 'Loại', sort: e => e.mode, cell: e => e.mode === 'fixed' ? 'Đề cố định' : 'Đề ngẫu nhiên' },
+          { key: 'q', label: 'Số câu · thời gian', sort: e => qOf(e), cell: e => `${qOf(e)} câu` }, // TODO: practice_exams chưa có thời gian làm bài
           { key: 'att', label: 'Lượt làm', sum: 'sum', sort: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length, cell: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length },
           { key: 'avg', label: 'Điểm TB', sum: false, sort: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? sc.reduce((x, a) => x + Number(a.score), 0) / sc.length : null },
             cell: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? (sc.reduce((x, a) => x + Number(a.score), 0) / sc.length).toFixed(1) : '—' } },

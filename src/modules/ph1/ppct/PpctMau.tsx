@@ -351,7 +351,7 @@ function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canMana
         <select value={to} onChange={e => setTo(e.target.value)} aria-label="Trường"><option value="">Chọn trường…</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button type="button" className="btn sm primary" disabled={!to} onClick={async () => { await onAssign(assign, to); setAssign(null); setTo('') }}>Gán</button>
           <button type="button" className="btn sm ghost" onClick={() => setAssign(null)}>Huỷ</button></span></div>}
-      <DataTable id="pp" rows={ds} rowKey={d => d.id} noun="bản phân phối" onOpen={d => onOpen(d.id)} groupBy={d => ['k' + String(d.grade).padStart(2, '0'), 'Khối ' + d.grade]}
+      <DataTable id="pp" rows={ds} rowKey={d => d.id} noun="bản phân phối" onOpen={d => onOpen(d.id)}
         filters={f} onFilters={v => setF({ ...EMPTY_F, ...v })}
         search={{ value: f.q, onChange: q => setF({ ...f, q }), placeholder: 'Tìm bản phân phối…' }} filterBox={fbox}
         fcount={Object.entries(f).filter(([k, v]) => k !== 'q' && v).length} onClearFilters={() => setF({ ...EMPTY_F, q: f.q })}
@@ -359,16 +359,18 @@ function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canMana
         onDelete={canManage ? onBulkDelete : undefined}
         empty={<Empty>{grade != null ? `Khối ${grade} chưa có bản phân phối.` : filtered ? 'Không có bản phân phối phù hợp bộ lọc.' : 'Chưa có bản phân phối.'} {canManage && <button type="button" className="btn sm primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</Empty>}
         cols={[
-          { key: 'title', label: 'Bản phân phối', name: true, sort: d => d.title ?? '', cell: d => <><b>{d.title}</b><small>Khối {d.grade} · {d.school_year}</small></> },
+          { key: 'lv', label: 'Cấp học', sort: d => catName(cat, 'level', levelOfGrade(cat, d.grade) ?? '') || null, cell: d => catName(cat, 'level', levelOfGrade(cat, d.grade) ?? '') || '—' },
+          { key: 'grade', label: 'Khối', sum: false, sort: d => d.grade, cell: d => 'Khối ' + d.grade },
+          { key: 'title', label: 'Bản phân phối', name: true, sort: d => d.title ?? '', cell: d => <b>{d.title}</b> },
           { key: 'school', label: 'Áp dụng', sort: d => d.target_org_id ? orgById(d.target_org_id)?.name ?? '' : 'Tất cả các trường', cell: d => d.target_org_id ? orgById(d.target_org_id)?.name : 'Tất cả các trường' },
           { key: 'prog', label: 'Chương trình', sort: d => progsOf(d).map(p => p.code).join(', '), cell: d => progsOf(d).map(p => p.code ?? p.name).join(', ') || '—' },
           { key: 'subj', label: 'Môn học', sort: d => subsOf(d).map(i => sn(i.subject)).join(', '), cell: d => [...new Set(subsOf(d).map(i => sn(i.subject)))].join(', ') || '—' },
-          { key: 'periods', label: 'Số tiết', sum: 'sum', sort: d => st(d)?.sch.reduce((a, x) => a + x.periods, 0) ?? 0, cell: d => st(d)?.sch.reduce((a, x) => a + x.periods, 0) ?? 0 },
           { key: 'chk', label: 'Kiểm tra', sum: 'status', sort: d => chkOf(d), cell: d => { const c = st(d)?.c ?? { err: [], warn: [] }
             return c.err.length ? <span className="pill bad">{c.err.length} lỗi</span> : c.warn.length ? <span className="pill warn">{c.warn.length} cảnh báo</span> : <span className="pill good">Hợp lệ</span> } },
           { key: 'date', label: 'Cập nhật', date: true, sort: d => new Date(d.updated_at).toLocaleDateString('vi-VN'), cell: d => new Date(d.updated_at).toLocaleDateString('vi-VN') },
           { key: 'status', label: 'Trạng thái', sum: 'status', sort: d => d.status, cell: d => <StatusPill s={d.status} /> },
         ]} />
+      {(() => { const miss = (level ? gradesOfLevel(cat, level) : levels.flatMap(l => gradesOfLevel(cat, l.code))).filter(g => !docs.some(d => d.grade === g)); return miss.length > 0 && <p className="sub">Khối chưa có phân phối: {miss.map((g, i) => <span key={g}>{i > 0 && ' · '}<button type="button" className="linkbtn" onClick={() => { setGrade(g); setLevel(null) }}>Khối {g}</button></span>)}</p> })()}
     </LevelTree></>
 }
 

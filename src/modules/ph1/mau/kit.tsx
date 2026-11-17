@@ -13,6 +13,8 @@ export function Ic({ n, cls = 'i' }: { n: string; cls?: string }) {
 }
 // Khung gốc: biến màu, phông chữ, kiểu bìa thẻ của bản mẫu
 // Bản mẫu v315: đầu trang chỉ còn tiêu đề; nút hành động của trang nằm bên phải thanh bước (.flowsec .tabact) — PageHead chuyển nút sang đó khi trang có Flow
+// Bảng nằm cạnh cây Cấp học › Khối thì thanh công cụ gọn (.tbtight) như bản mẫu
+export const InTree = createContext(false)
 const HeadSlot = createContext<{ slot: HTMLElement | null; setSlot: (e: HTMLElement | null) => void }>({ slot: null, setSlot: () => {} })
 export function Mau({ children }: { children: ReactNode }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null)
@@ -129,9 +131,9 @@ export function LevelTree({ id, levels, total, level, grade, onPick, children, u
         </div> })}
       {!lv.length && <small className="sub" style={{ padding: 8 }}>Chưa có {unit ?? 'dữ liệu'}.</small>}
     </aside>
-    <div className="treemain">
+    <div className="treemain"><InTree.Provider value={true}>
       {hide && <button type="button" className="btn sm tshow" title="Hiện sơ đồ Cấp học › Khối" onClick={() => put(id + ':hide', false)}><Ic n="list" /> Sơ đồ</button>}
-      {children}
+      {children}</InTree.Provider>
     </div>
   </div>
 }
