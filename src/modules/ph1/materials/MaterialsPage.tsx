@@ -4,7 +4,7 @@ import { errMsg, norm, timeAgo, useRpcBool } from '../ui'
 import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, newerOf, gradesOfLevel, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
 import { gradesText, groupOfCur } from '../curriculum/CurriculumPage'
 import { DataTable } from '../mau/DataTable'
-import { LevelTree, FRow, type TreeLevel, Back, HNote, Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { LevelTree, FRow, TblWrap, type TreeLevel, Back, HNote, Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.2 Học liệu — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
 //   Danh sách: mỗi bài học của chương trình có một học liệu; gom theo Nhóm chương trình › Chương trình; Bảng | Thẻ; chuỗi bước
@@ -170,10 +170,10 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   // Cây Khối bên trái (bản mẫu v315 · TREECFG.hl)
   const treeLv: TreeLevel[] = catOf(cat, 'level').map(l => { const gs = gradesOfLevel(cat, l.code)
     return { code: l.code, name: l.name, n: rows.filter(r => r.p.grades.some(g => gs.includes(g))).length, grades: gs.map(g => ({ g, label: gradeLabel(g), n: rows.filter(r => r.p.grades.includes(g)).length })) } })
-  const tableOf = (rs: Row[]) => <div className="tblwrap"><table><thead><tr><th>STT</th><th>Bài học</th><th>Môn</th><th>Tiết</th><th>Học liệu (PB đang dùng)</th><th>4 nhóm</th><th></th></tr></thead><tbody>
+  const tableOf = (rs: Row[]) => <TblWrap><table><thead><tr><th>STT</th><th>Bài học</th><th>Môn</th><th>Tiết</th><th>Học liệu (PB đang dùng)</th><th>4 nhóm</th><th></th></tr></thead><tbody>
     {rs.map((r, i) => { const nw = newerOf(allL, r.v)
       return <tr key={r.cl.id}><td className="n">{i + 1}</td><td><b>{r.cl.title}</b></td><td>{catName(cat, 'subject', r.cl.subject)}</td><td>{r.cl.periods}</td>
-        <td><MatPill v={r.v} />{nw && <> <span className="pill info plain">có PB {nw.version_no}</span></>}</td><td>{r.v ? <GDots v={r.v} /> : '—'}</td><td style={{ textAlign: 'right' }}>{action(r)}</td></tr> })}</tbody></table></div>
+        <td><MatPill v={r.v} />{nw && <> <span className="pill info plain">có PB {nw.version_no}</span></>}</td><td>{r.v ? <GDots v={r.v} /> : '—'}</td><td style={{ textAlign: 'right' }}>{action(r)}</td></tr> })}</tbody></table></TblWrap>
   const cardsOf = (rs: Row[], color: string) => <div className="grid hlgrid">{rs.map((r, i) => { const nw = newerOf(allL, r.v)
     return <article key={r.cl.id} className="pcard dcard hlcard" style={cssVar(color)}><Cover subject={r.cl.subject} label={`${catName(cat, 'subject', r.cl.subject)} · ${r.cl.periods} tiết`} code={`Bài ${i + 1}`} /><h3>{r.cl.title}</h3>
       <div className="chips"><MatPill v={r.v} />{nw && <span className="pill info plain">có PB {nw.version_no}</span>}</div>
@@ -271,10 +271,10 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
     <div className="gasec"><h3>I. Yêu cầu cần đạt</h3>{L(lines(l.objectives), v => upd({ objectives: v.join('\n') || null }))}</div>
     <div className="gasec"><h3>Yêu cầu sản phẩm</h3>{L(lines(l.product_requirements), v => upd({ product_requirements: v.join('\n') || null }))}</div>
     <div className="gasec"><h3>II. Đồ dùng dạy học</h3><p className="sub" style={{ margin: 0 }}>Nguyên vật liệu cho một sản phẩm, công cụ & thiết bị cho một nhóm: xem tab <button type="button" className="linkbtn2" onClick={() => setTab('norms')}>Định mức vật tư</button> ({norms.length} mục). Tài liệu, phiếu học tập: tab <button type="button" className="linkbtn2" onClick={() => setTab('links')}>Link học liệu</button> ({files.length}).</p></div>
-    <div className="gasec"><h3>Thông tin tài liệu</h3><div className="tblwrap"><table className="docinfo"><tbody>{([['written', 'Được soạn ngày'], ['reviewed', 'Được review ngày'], ['edited', 'Được hiệu chỉnh ngày']] as [keyof Doc, string][]).map(([k, n]) =>
+    <div className="gasec"><h3>Thông tin tài liệu</h3><TblWrap><table className="docinfo"><tbody>{([['written', 'Được soạn ngày'], ['reviewed', 'Được review ngày'], ['edited', 'Được hiệu chỉnh ngày']] as [keyof Doc, string][]).map(([k, n]) =>
       <tr key={k}><th>{n}</th><td>{ro ? (doc[k].length ? doc[k].map(([d, b], i) => <div key={i}>{d} · <b>{b}</b></div>) : <span className="sub">—</span>)
         : <textarea rows={Math.max(1, doc[k].length)} placeholder="dd/mm/yyyy · Họ tên (mỗi lần một dòng)" defaultValue={doc[k].map(([d, b]) => d + ' · ' + b).join('\n')}
-          onBlur={e => upd({ doc_info: { ...doc, [k]: lines(e.target.value).map(t => { const [d, ...b] = t.split('·'); return [d.trim(), b.join('·').trim()] }) } })} />}</td></tr>)}</tbody></table></div></div>
+          onBlur={e => upd({ doc_info: { ...doc, [k]: lines(e.target.value).map(t => { const [d, ...b] = t.split('·'); return [d.trim(), b.join('·').trim()] }) } })} />}</td></tr>)}</tbody></table></TblWrap></div>
   </section>
 
   if (tab === 'content') { const tot = plan.reduce((a, se) => a + se.acts.reduce((b, x) => b + x.minutes, 0), 0)
@@ -302,13 +302,13 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
   if (tab === 'links') { const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (!fail(error)) loadParts() }
     body = <section className="panel"><Head icon="link" title="Link học liệu" act={<>{!ro && <><button type="button" className="btn sm" onClick={() => run(supabase.from('material_files').insert({ lesson_id: l.id, seq: files.length + 1, kind: 'bai_giang', title: 'Bài giảng' }))}><Ic n="plus" /> Bài giảng</button>
       <button type="button" className="btn sm" onClick={() => run(supabase.from('material_files').insert({ lesson_id: l.id, seq: files.length + 1, kind: 'phieu_hoc_tap', title: 'Phiếu học tập' }))}><Ic n="plus" /> Phiếu học tập</button></>}{gToggle('links')}</>} />
-      <div className="tblwrap"><table><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th>{!ro && <th></th>}</tr></thead><tbody>
+      <TblWrap><table><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th>{!ro && <th></th>}</tr></thead><tbody>
         {files.map(k => { const u = (p: Partial<File>) => run(supabase.from('material_files').update(p).eq('id', k.id))
           return <tr key={k.id}><td>{ro ? FILE_KIND[k.kind] ?? k.kind : <select value={k.kind} onChange={e => u({ kind: e.target.value })} aria-label="Loại">{Object.entries(FILE_KIND).map(([a, b]) => <option key={a} value={a}>{b}</option>)}</select>}</td>
             {ro ? <><td><b>{k.title}</b></td><td>{k.url ? <a href={k.url} target="_blank" rel="noreferrer">{k.url}</a> : <span style={{ color: 'var(--muted)' }}>chưa có đường dẫn</span>}</td></>
               : <><td><input defaultValue={k.title} aria-label="Tên" onBlur={e => e.target.value !== k.title && u({ title: e.target.value })} /></td><td><input defaultValue={k.url ?? ''} placeholder="https://…" aria-label="Đường dẫn" onBlur={e => e.target.value !== (k.url ?? '') && u({ url: e.target.value || null })} /></td>
                 <td><button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => run(supabase.from('material_files').delete().eq('id', k.id))}><Ic n="trash" /></button></td></>}</tr> })}
-        {!files.length && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>Chưa có tài liệu.</td></tr>}</tbody></table></div></section> }
+        {!files.length && <tr><td colSpan={4} style={{ color: 'var(--muted)' }}>Chưa có tài liệu.</td></tr>}</tbody></table></TblWrap></section> }
 
   if (tab === 'norms') { const run = async (q: PromiseLike<{ error: { message: string } | null }>) => { const { error } = await q; if (!fail(error)) loadParts() }
     const catOfN = (n: Norm) => n.category === 'vat_tu' ? 'vl' : 'cc'
@@ -316,7 +316,7 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
     const part = (c: 'vl' | 'cc', title: string, hint: string) => { const list = norms.filter(n => catOfN(n) === c)
       return <div className="nmpart"><div className="nmhead"><span className="tag">{c === 'vl' ? 'Danh mục 1' : 'Danh mục 2'}</span><b>{title}</b><small>{hint} · {list.length} mục</small>
         {!ro && <button type="button" className="btn sm" onClick={() => run(supabase.from('material_norms').insert({ lesson_id: l.id, seq: norms.length + 1, category: c === 'vl' ? 'vat_tu' : 'dung_cu', name: c === 'vl' ? 'Vật liệu mới' : 'Dụng cụ mới', unit: 'cái', qty: 1, basis: c === 'vl' ? 'per_product' : 'per_group' }))}><Ic n="plus" /> Thêm</button>}</div>
-        <div className="tblwrap"><table className="nmtbl"><thead><tr><th>STT</th><th>Tên</th><th>Quy cách</th><th>Đơn vị</th><th style={{ textAlign: 'right' }}>Số lượng</th><th>Tính theo</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th>{!ro && <th></th>}</tr></thead><tbody>
+        <TblWrap><table className="nmtbl"><thead><tr><th>STT</th><th>Tên</th><th>Quy cách</th><th>Đơn vị</th><th style={{ textAlign: 'right' }}>Số lượng</th><th>Tính theo</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th>{!ro && <th></th>}</tr></thead><tbody>
           {list.map((x, k) => { const u = (p: Partial<Norm>) => run(supabase.from('material_norms').update(p).eq('id', x.id))
             return ro ? <tr key={x.id}><td className="n">{k + 1}</td><td><b>{x.name}</b></td><td>{x.spec || '—'}</td><td>{x.unit}</td><td style={{ textAlign: 'right' }}>{+x.qty}</td><td>{BASIS[x.basis]}</td><td style={{ textAlign: 'right' }}><b>{need(x)}</b> {x.unit}</td></tr>
               : <tr key={x.id}><td className="n">{k + 1}</td><td><input defaultValue={x.name} aria-label="Tên" onBlur={e => e.target.value !== x.name && u({ name: e.target.value })} /></td>
@@ -327,17 +327,17 @@ function MaterialDetail({ lesson, versions, inUseId, cl, prog, cat, orgId, canOw
                 <td style={{ textAlign: 'right' }}><b>{need(x)}</b> {x.unit}</td>
                 <td style={{ whiteSpace: 'nowrap' }}><button type="button" className="btn sm ghost" title={`Chuyển sang ${c === 'vl' ? 'Công cụ & thiết bị' : 'Nguyên vật liệu'}`} onClick={() => u({ category: c === 'vl' ? 'dung_cu' : 'vat_tu' })}>{c === 'vl' ? '→ CC' : '→ VL'}</button>
                   <button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => run(supabase.from('material_norms').delete().eq('id', x.id))}><Ic n="trash" /></button></td></tr> })}
-          {!list.length && <tr><td colSpan={ro ? 7 : 8} style={{ color: 'var(--muted)' }}>Chưa có mục nào.</td></tr>}</tbody></table></div></div> }
+          {!list.length && <tr><td colSpan={ro ? 7 : 8} style={{ color: 'var(--muted)' }}>Chưa có mục nào.</td></tr>}</tbody></table></TblWrap></div> }
     body = <section className="panel"><Head icon="box" title="Định mức vật tư" act={gToggle('norms')} />
       <div className="calc"><label>Số học sinh <input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: Number(e.target.value) || 1 })} /></label>
         <label>Số nhóm (= số sản phẩm) <input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: Number(e.target.value) || 1 })} /></label><span>→ nhu cầu cho một lớp ở cột cuối</span></div>
       {part('vl', 'Nguyên vật liệu', 'tiêu hao, thường tính theo sản phẩm / học sinh')}{part('cc', 'Công cụ & thiết bị', 'dùng lại, thường tính theo nhóm / lớp')}</section> }
 
   if (tab === 'designs') body = <section className="panel"><Head icon="edit" title="Bài giảng soạn từ học liệu này" act={orgId && <button type="button" className="btn sm primary" onClick={toDesign}><Ic n="plus" /> Soạn bài giảng từ PB {(use ?? l).version_no}</button>} />
-    {designs.length ? <div className="tblwrap"><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản học liệu</th><th>Trạng thái</th><th>Cập nhật</th><th></th></tr></thead><tbody>
+    {designs.length ? <TblWrap><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản học liệu</th><th>Trạng thái</th><th>Cập nhật</th><th></th></tr></thead><tbody>
       {designs.map(d => { const fv = versions.find(v => v.id === d.material_lesson_id)
         return <tr key={d.id} className="rowlink" onClick={() => { try { sessionStorage.setItem('ph1:open-design', d.id) } catch { /* bỏ qua */ } go?.('Soạn bài giảng & kho hoạt động') }}><td><b>{d.title}</b></td><td>PB {fv?.version_no ?? '?'}{fv && newerOf(versions, fv) && <> <span className="pill info plain">có bản mới</span></>}</td>
-          <td>{d.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}</td><td>{timeAgo(d.updated_at)}</td><td style={{ textAlign: 'right' }}><span className="btn sm">Xem ›</span></td></tr> })}</tbody></table></div>
+          <td>{d.status === 'published' ? <span className="pill good">Đã xuất bản</span> : <span className="pill draft">Nháp</span>}</td><td>{timeAgo(d.updated_at)}</td><td style={{ textAlign: 'right' }}><span className="btn sm">Xem ›</span></td></tr> })}</tbody></table></TblWrap>
       : <Empty>Chưa có bài giảng.</Empty>}</section>
 
   return <>

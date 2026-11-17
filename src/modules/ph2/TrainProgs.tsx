@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { catOf } from '../ph1/curriculum/api'
-import { AsideWrap, CtHead, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { AsideWrap, CtHead, FRow, Back, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar, TblWrap } from '../ph1/mau/kit'
 import { DataTable } from '../ph1/mau/DataTable'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
@@ -300,7 +300,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
     <p className="note"><Ic n="info" /> Khung đánh giá định nghĩa một lần cho chương trình; mọi đợt đào tạo tự kế thừa. Giảng viên chấm ở <b>Đánh giá kết quả › Chấm bài</b>.</p>
     {used.length > 0 && <p className="note warnnote"><Ic n="alert" /> {used.length} đợt đã có điểm theo khung này ({used.map(x => x.title.split('–').pop()!.trim()).join(', ')}). Thêm tiêu chí hoặc đầu điểm mới sẽ cần chấm bổ sung cho các đợt đó.</p>}
     <Panel icon="list" title="1. Đầu điểm đánh giá" act={<small className={tw === 100 ? 'sub' : 'badtxt'}>Tổng trọng số <b>{tw}%</b>{tw === 100 ? '' : ' — cần bằng 100%'}</small>}>
-      <div className="tblwrap"><table className="ittbl"><thead><tr><th>STT</th><th>Đầu điểm</th><th>Loại</th><th>Gắn với chuyên đề</th><th>Cách chấm</th><th className="c">Trọng số</th><th /></tr></thead><tbody>
+      <TblWrap><table className="ittbl"><thead><tr><th>STT</th><th>Đầu điểm</th><th>Loại</th><th>Gắn với chuyên đề</th><th>Cách chấm</th><th className="c">Trọng số</th><th /></tr></thead><tbody>
         {its.map((i, n) => <tr key={i.id} className={it?.id === i.id ? 'cur' : ''}><td className="n">{n + 1}</td>
           <td><input defaultValue={i.name} key={i.name} disabled={ro} aria-label="Tên đầu điểm" onBlur={e => e.target.value !== i.name && patch(i.id, { name: e.target.value })} /></td>
           <td><select value={i.kind} disabled={ro} aria-label="Loại đầu điểm" onChange={e => patch(i.id, { kind: e.target.value, ...(e.target.value === 'demo' ? { mode: 'rubric' as const } : {}) })}>{Object.entries(IKIND).map(([kk, [n2]]) => <option key={kk} value={kk}>{n2}</option>)}</select></td>
@@ -310,7 +310,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
           <td className="c"><label className="unit"><input type="number" min={0} max={100} defaultValue={i.w} key={i.w} disabled={ro} aria-label="Trọng số" onBlur={e => +e.target.value !== i.w && patch(i.id, { w: Math.max(0, +e.target.value || 0) })} /><em>%</em></label></td>
           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><button type="button" className={'btn sm' + (it?.id === i.id ? ' primary' : '')} onClick={() => setSel(i.id)}>{i.mode === 'rubric' ? `Rubric · ${i.rubric.length} tiêu chí` : 'Chi tiết'}</button>
             {!ro && <button type="button" className="btn sm ghost" aria-label="Xoá đầu điểm" onClick={() => { saveItems(its.filter(x => x.id !== i.id)); P.setMsg('✓ Đã xoá đầu điểm') }}><Ic n="trash" /></button>}</td></tr>)}
-        {!its.length && <tr><td colSpan={7} className="sub">Chưa có đầu điểm — thêm ở dòng dưới.</td></tr>}</tbody></table></div>
+        {!its.length && <tr><td colSpan={7} className="sub">Chưa có đầu điểm — thêm ở dòng dưới.</td></tr>}</tbody></table></TblWrap>
       {!ro && <div className="catadd"><Ic n="plus" /><input className="cin" value={nn} onChange={e => setNn(e.target.value)} placeholder="Tên đầu điểm, VD: Kiểm tra cuối khoá" />
         <select className="cin" style={{ flex: 'none', width: 'auto' }} value={nk} onChange={e => setNk(e.target.value)} aria-label="Loại đầu điểm">{Object.entries(IKIND).map(([kk, [n2]]) => <option key={kk} value={kk}>{n2}</option>)}</select>
         <button type="button" className="btn sm primary" onClick={() => { if (!nn.trim()) return P.setMsg('Nhập tên đầu điểm'); const mode = nk === 'quiz' || nk === 'essay' ? 'score' : 'rubric'
@@ -319,7 +319,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
       <label className="fld"><span>Đề bài / yêu cầu cho học viên</span><textarea rows={2} defaultValue={it.task} key={it.id + 't'} disabled={ro} placeholder="Học viên cần làm gì, nộp gì, hạn nộp…" onBlur={e => e.target.value !== it.task && patch(it.id, { task: e.target.value })} /></label>
       {it.mode === 'score' ? <div className="fld"><span>Thang điểm</span><label className="unit"><input type="number" min={1} defaultValue={it.max} key={it.id + 'm'} disabled={ro} aria-label="Thang điểm" onBlur={e => patch(it.id, { max: Math.max(1, +e.target.value || 10) })} /><em>điểm</em></label><small className="sub">Quy về thang 10 khi tính điểm tổng.</small></div>
         : <><div className="rbhead"><b>Rubric chấm</b><small className="sub">{it.rubric.length} tiêu chí · {it.rubric.reduce((a, c) => a + (+c.pts || 0), 0)} điểm · Điểm đầu điểm = Σ điểm theo mức ÷ {it.rubric.reduce((a, c) => a + (+c.pts || 0), 0) || '…'} × 10</small></div>
-          <div className="tblwrap"><table className="rbtbl"><thead><tr><th>Tiêu chí</th>{LV.map((l, kk) => <th key={l} className={'lv' + kk}>{l}<small>{LVP[kk] * 100}% điểm</small></th>)}<th /></tr></thead><tbody>
+          <TblWrap><table className="rbtbl"><thead><tr><th>Tiêu chí</th>{LV.map((l, kk) => <th key={l} className={'lv' + kk}>{l}<small>{LVP[kk] * 100}% điểm</small></th>)}<th /></tr></thead><tbody>
             {it.rubric.map(c => <tr key={c.id}><td className="rbc"><input defaultValue={c.name} key={c.name} disabled={ro} aria-label="Tên tiêu chí" onBlur={e => e.target.value !== c.name && patchC(c.id, { name: e.target.value })} />
               <div className="rbmeta"><label className="unit"><input type="number" min={1} defaultValue={c.pts} key={c.pts} disabled={ro} aria-label="Điểm tối đa" onBlur={e => patchC(c.id, { pts: Math.max(1, +e.target.value || 1) })} /><em>điểm</em></label>
                 <select value={c.comp} disabled={ro} aria-label="Năng lực" onChange={e => patchC(c.id, { comp: e.target.value })}>{Object.entries(COMP).map(([kk, n2]) => <option key={kk} value={kk}>{n2}</option>)}</select>
@@ -327,7 +327,7 @@ function TpAssess({ P, k, p, sel, setSel }: { P: P2; k: K; p: Prog; sel: string 
               {LV.map((l, kk) => <td key={l} className={'lv' + kk}><textarea rows={3} defaultValue={c.desc[kk] ?? ''} key={c.id + kk + (c.desc[kk] ?? '')} disabled={ro} aria-label={`Mô tả mức ${l}`} placeholder={`Mô tả mức ${l.toLowerCase()}…`}
                 onBlur={e => e.target.value !== (c.desc[kk] ?? '') && patchC(c.id, { desc: c.desc.map((d, j) => j === kk ? e.target.value : d) })} /><small>{+(c.pts * LVP[kk]).toFixed(2)} điểm</small></td>)}
               <td>{!ro && <button type="button" className="btn sm ghost" aria-label="Xoá tiêu chí" onClick={() => patch(it.id, { rubric: it.rubric.filter(x => x.id !== c.id) })}><Ic n="trash" /></button>}</td></tr>)}
-            {!it.rubric.length && <tr><td colSpan={6} className="sub">Chưa có tiêu chí.</td></tr>}</tbody></table></div>
+            {!it.rubric.length && <tr><td colSpan={6} className="sub">Chưa có tiêu chí.</td></tr>}</tbody></table></TblWrap>
           <div className="formact" style={{ justifyContent: 'flex-start' }}>{!ro && <button type="button" className="btn sm" onClick={() => patch(it.id, { rubric: [...it.rubric, newC('Tiêu chí mới', 3)] })}><Ic n="plus" /> Thêm tiêu chí</button>}
             <small className="sub">Tiêu chí “Bắt buộc đạt” ở mức Chưa đạt → học viên chưa hoàn thành chương trình. Mỗi tiêu chí gắn một năng lực để cập nhật hồ sơ năng lực nhà giáo.</small></div></>}</Panel>}
     <Panel icon="award" title="3. Điều kiện hoàn thành & chứng nhận"><div className="crgrid">

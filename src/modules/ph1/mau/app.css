@@ -40,3 +40,9 @@
 .mau .tagchips{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:6px;vertical-align:middle}
 .mau .chip.tagchip{font-size:11px;padding:1px 4px 1px 8px;background:color-mix(in srgb,var(--primary) 9%,var(--surface));color:var(--primary);border-color:transparent;display:inline-flex;align-items:center;gap:2px}
 .mau .chip.tagchip button{border:0;background:none;color:inherit;cursor:pointer;font-size:10px;padding:0 3px;opacity:.6}.mau .chip.tagchip button:hover{opacity:1}
+/* Bản mẫu v315: dải số tổng dạng chip (.sumline) thay khối thẻ số */
+.mau .stats{display:flex!important;flex-wrap:wrap;gap:4px 6px;margin:2px 0 4px;grid-template-columns:none!important}
+.mau .stats .sumchip{display:inline-flex;align-items:baseline;gap:4px;padding:3px 10px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);font-size:13px;white-space:nowrap}
+.mau .stats .sumchip b{color:var(--fg);font-size:14px;font-weight:700}.mau .stats .sumchip b small{font-size:12px;color:var(--muted);font-weight:500}
+.mau .tbtools{display:flex;justify-content:flex-end;gap:8px;margin:0 0 6px}.mau .tbtools .btngrp>.btn{height:32px!important}
+.mau .panel>.tbtools{padding:8px 12px 0}

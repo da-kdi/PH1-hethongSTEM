@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar, TblWrap } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from '../ph1/designs/blocks'
 import { ACTS, clone, setActToast } from '../ph1/designs/acts'
@@ -119,9 +119,9 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
     <div className="gasec"><h3>I. Yêu cầu cần đạt</h3>{Lst(C.outcomes, x => saveC({ outcomes: x }))}</div>
     <div className="gasec"><h3>Yêu cầu sản phẩm của học viên</h3>{Lst(C.product, x => saveC({ product: x }))}</div>
     <div className="gasec"><h3>II. Học liệu & thiết bị</h3><p className="sub" style={{ margin: 0 }}>Vật tư, thiết bị: tab <button type="button" className="linkbtn2" onClick={() => setTab('norms')}>Định mức vật tư</button> ({C.norms?.length ?? 0} mục) · Slide, video, phiếu: tab <button type="button" className="linkbtn2" onClick={() => setTab('links')}>Link tài liệu</button> ({C.links?.length ?? 0} mục).</p></div>
-    <div className="gasec"><h3>Thông tin tài liệu</h3><div className="tblwrap"><table className="docinfo"><tbody>{(([['written', 'Được soạn ngày'], ['reviewed', 'Được review ngày'], ['edited', 'Được hiệu chỉnh ngày']]) as const).map(([key, n]) => { const arr = C.doc?.[key] ?? []
+    <div className="gasec"><h3>Thông tin tài liệu</h3><TblWrap><table className="docinfo"><tbody>{(([['written', 'Được soạn ngày'], ['reviewed', 'Được review ngày'], ['edited', 'Được hiệu chỉnh ngày']]) as const).map(([key, n]) => { const arr = C.doc?.[key] ?? []
       return <tr key={key}><th>{n}</th><td>{ro ? (arr.length ? arr.map(([d, b], i) => <div key={i}>{d} · <b>{b}</b></div>) : <span className="sub">—</span>)
-        : <textarea rows={Math.max(1, arr.length)} placeholder="dd/mm/yyyy · Họ tên" defaultValue={arr.map(([d, b]) => d + ' · ' + b).join('\n')} key={v.id + key + arr.length} onBlur={e => saveC({ doc: { ...C.doc, [key]: lines(e.target.value).map(x => x.split('·').map(y => y.trim())) } })} />}</td></tr> })}</tbody></table></div></div></Panel>
+        : <textarea rows={Math.max(1, arr.length)} placeholder="dd/mm/yyyy · Họ tên" defaultValue={arr.map(([d, b]) => d + ' · ' + b).join('\n')} key={v.id + key + arr.length} onBlur={e => saveC({ doc: { ...C.doc, [key]: lines(e.target.value).map(x => x.split('·').map(y => y.trim())) } })} />}</td></tr> })}</tbody></table></TblWrap></div></Panel>
   if (tab === 'content') { const tot = (C.acts ?? []).reduce((a, x) => a + (+x.minutes || 0), 0); const acts = C.acts ?? []
     body = <Panel icon="list" title="III. Tiến trình đào tạo" act={<><small className="sub">{acts.length} hoạt động · {tot} phút ({fmtM(tot)})</small>{!ro && <button type="button" className="btn sm" onClick={() => saveC({ acts: [...acts, { title: 'Hoạt động mới', minutes: 15, items: [] }] })}><Ic n="plus" /> Hoạt động</button>}{gT('content')}</>}>
       {acts.map((x, ai) => <div key={ai} className="gaact"><div className="gaacth"><span className="sno">{ai + 1}</span>{ro ? <><b>{x.title}</b><span className="mins">{x.minutes}′</span></>
@@ -132,16 +132,16 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
       <div className="gasec"><h3>Nhiệm vụ thực hành sau buổi</h3>{ro ? <p className="outcomes">{C.practice}</p> : <textarea rows={2} defaultValue={C.practice} key={v.id + 'pr'} onBlur={e => e.target.value !== C.practice && saveC({ practice: e.target.value })} />}<small className="sub">Dùng cho bước “Hoạt động thực hành”.</small></div></Panel> }
   if (tab === 'links') { const ls = C.links ?? []
     body = <Panel icon="link" title="Link tài liệu" act={<>{!ro && Object.entries(TLINK).map(([kk, n]) => <button type="button" key={kk} className="btn sm" onClick={() => saveC({ links: [...ls, { kind: kk, title: n + ' mới', url: '' }] })}><Ic n="plus" /> {n}</button>)}{gT('links')}</>}>
-      <div className="tblwrap"><table><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th>{!ro && <th />}</tr></thead><tbody>{ls.map((x, i) => <tr key={i}><td>{TLINK[x.kind]}</td>{ro
+      <TblWrap><table><thead><tr><th>Loại</th><th>Tên</th><th>Đường dẫn</th>{!ro && <th />}</tr></thead><tbody>{ls.map((x, i) => <tr key={i}><td>{TLINK[x.kind]}</td>{ro
         ? <><td><b>{x.title}</b></td><td>{x.url ? <a href={x.url} target="_blank" rel="noreferrer">{x.url}</a> : <span className="sub">chưa có đường dẫn</span>}</td></>
         : <><td><input defaultValue={x.title} key={v.id + i + x.title} aria-label="Tên" onBlur={e => saveC({ links: ls.map((y, j) => j === i ? { ...y, title: e.target.value } : y) })} /></td>
           <td><input defaultValue={x.url} key={v.id + i + x.url} placeholder="https://…" aria-label="Đường dẫn" onBlur={e => saveC({ links: ls.map((y, j) => j === i ? { ...y, url: e.target.value } : y) })} /></td>
           <td><button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => saveC({ links: ls.filter((_, j) => j !== i) })}><Ic n="trash" /></button></td></>}</tr>)}
-        {!ls.length && <tr><td colSpan={4} className="sub">Chưa có tài liệu.</td></tr>}</tbody></table></div></Panel> }
+        {!ls.length && <tr><td colSpan={4} className="sub">Chưa có tài liệu.</td></tr>}</tbody></table></TblWrap></Panel> }
   if (tab === 'norms') { const ns = C.norms ?? []; const need = (n: typeof ns[0]) => +(n.qty * (n.basis === 'group' ? calc.groups : n.basis === 'student' ? calc.students : 1)).toFixed(2)
     const part = (cat: string, title: string, hint: string) => { const list = ns.map((n, i) => ({ n, i })).filter(x => x.n.cat === cat)
       return <div className="nmpart"><div className="nmhead"><span className="tag">{cat === 'vl' ? 'Danh mục 1' : 'Danh mục 2'}</span><b>{title}</b><small>{hint} · {list.length} mục</small>{!ro && <button type="button" className="btn sm" onClick={() => saveC({ norms: [...ns, { name: '', unit: 'cái', qty: 1, basis: cat === 'vl' ? 'group' : 'cls', cat }] })}><Ic n="plus" /> Thêm</button>}</div>
-        <div className="tblwrap"><table className="nmtbl"><thead><tr><th>STT</th><th>Tên</th><th>Đơn vị</th><th style={{ textAlign: 'right' }}>Số lượng</th><th>Tính theo</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th>{!ro && <th />}</tr></thead><tbody>
+        <TblWrap><table className="nmtbl"><thead><tr><th>STT</th><th>Tên</th><th>Đơn vị</th><th style={{ textAlign: 'right' }}>Số lượng</th><th>Tính theo</th><th style={{ textAlign: 'right' }}>Cần cho lớp</th>{!ro && <th />}</tr></thead><tbody>
           {list.map(({ n, i }, kk) => { const up = (x: Partial<typeof n>) => saveC({ norms: ns.map((y, j) => j === i ? { ...y, ...x } : y) })
             return ro ? <tr key={i}><td className="n">{kk + 1}</td><td><b>{n.name}</b></td><td>{n.unit}</td><td style={{ textAlign: 'right' }}>{n.qty}</td><td>{TBASIS[n.basis]}</td><td style={{ textAlign: 'right' }}><b>{need(n)}</b> {n.unit}</td></tr>
               : <tr key={i}><td className="n">{kk + 1}</td><td><input defaultValue={n.name} key={v.id + i + n.name} aria-label="Tên" onBlur={e => e.target.value !== n.name && up({ name: e.target.value })} /></td>
@@ -149,14 +149,14 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
                 <td style={{ textAlign: 'right' }}><input type="number" min={0} step="any" defaultValue={n.qty} key={v.id + i + 'q' + n.qty} aria-label="Số lượng" style={{ width: 80, textAlign: 'right' }} onBlur={e => +e.target.value !== n.qty && up({ qty: +e.target.value || 0 })} /></td>
                 <td><select value={n.basis} aria-label="Tính theo" onChange={e => up({ basis: e.target.value })}>{Object.entries(TBASIS).map(([b, t]) => <option key={b} value={b}>{t}</option>)}</select></td>
                 <td style={{ textAlign: 'right' }}><b>{need(n)}</b> {n.unit}</td><td><button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => saveC({ norms: ns.filter((_, j) => j !== i) })}><Ic n="trash" /></button></td></tr> })}
-          {!list.length && <tr><td colSpan={7} className="sub">Chưa có mục nào.</td></tr>}</tbody></table></div></div> }
+          {!list.length && <tr><td colSpan={7} className="sub">Chưa có mục nào.</td></tr>}</tbody></table></TblWrap></div> }
     body = <Panel icon="box" title="Định mức vật tư" act={gT('norms')}>
       <div className="calc"><label>Số học viên <input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: +e.target.value || 1 })} /></label><label>Số nhóm <input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: +e.target.value || 1 })} /></label><span>→ nhu cầu cho một lớp đào tạo ở cột cuối</span></div>
       {part('vl', 'Nguyên vật liệu', 'tiêu hao, tính theo học viên / nhóm')}{part('cc', 'Công cụ & thiết bị', 'dùng lại, tính theo nhóm / lớp')}</Panel> }
   const ls = P.db!.lects.filter(l => l.module_id === mid)
   if (tab === 'lects') body = <Panel icon="edit" title="Kho bài giảng của chuyên đề" act={<button type="button" className="btn sm primary" onClick={onNewLect}><Ic n="plus" /> Soạn bài giảng từ PB {k.matSt(m).v || v.version_no}</button>}>
-    {ls.length ? <div className="tblwrap"><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản</th><th>Người soạn</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead><tbody>{ls.map(l => <tr key={l.id} className="rowlink" tabIndex={0} onClick={() => onLect(l.id)}>
-      <td><b>{l.title}</b></td><td>PB {l.mat_version ?? '?'}</td><td>{l.author}</td><td>{l.status === 'published' ? <span className="pill good plain">Đã xuất bản</span> : <span className="pill draft plain">Nháp</span>}</td><td>{vn(l.updated_at)}</td></tr>)}</tbody></table></div>
+    {ls.length ? <TblWrap><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản</th><th>Người soạn</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead><tbody>{ls.map(l => <tr key={l.id} className="rowlink" tabIndex={0} onClick={() => onLect(l.id)}>
+      <td><b>{l.title}</b></td><td>PB {l.mat_version ?? '?'}</td><td>{l.author}</td><td>{l.status === 'published' ? <span className="pill good plain">Đã xuất bản</span> : <span className="pill draft plain">Nháp</span>}</td><td>{vn(l.updated_at)}</td></tr>)}</tbody></table></TblWrap>
       : <Empty>Chưa có bài giảng nào soạn từ học liệu này.</Empty>}</Panel>
   return <>
     <Back onClick={onBack} title={m.title}>Học liệu đào tạo</Back>

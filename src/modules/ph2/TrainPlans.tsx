@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg, norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, Confirm, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar, TblWrap } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { IKIND, PAGE, SUBMIT, TFORMAT, resPill, addD, fmtM, goto, monOf, platformOf, shortTitle, takeIntent, vn, vnS, wd, wdFull, type Item, type K, type Plan, type Prog, type Sess } from './api'
@@ -127,12 +127,12 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
       <div className="chips">{k.planSubjs(p).map(s => <span key={s} className="chip k" style={cssVar(g.color)}>{k.SUBJ(s)}</span>)}<span className="chip">{p.schools?.length ? p.schools.length + ' trường' : 'Mọi trường'}</span><span className={`pill ${sc} plain`}>{sl}</span></div>
       <div className="foot"><span>Đăng ký {n}/{cap}</span><span className="cbtns">{kk === 'draft' ? (P.canManage && <button type="button" className="btn sm primary" onClick={() => publish(P, k, p, true, true)}><Ic n="send" /> Phát hành & mở đăng ký</button>)
         : <button type="button" className="btn sm" onClick={() => setOpenReg(op ? null : p.id)}>{op ? 'Thu gọn' : 'Danh sách đăng ký'}</button>}</span></div>
-      {op && <div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Học phần dạy</th><th>Ngày đăng ký</th><th>Các đợt trước cùng chương trình</th><th /></tr></thead><tbody>
+      {op && <TblWrap><table><thead><tr><th>Học viên</th><th>Học phần dạy</th><th>Ngày đăng ký</th><th>Các đợt trước cùng chương trình</th><th /></tr></thead><tbody>
         {tr.map(x => { const tt = k.teacher(x.teacher_id); const prev = k.plansOf(p.program_id).filter(y => y.id !== p.id && k.traineesOf(y.id).includes(x.teacher_id))
           return <tr key={x.teacher_id}><td><b>{tt.full_name}</b><br /><small className="sub">{tt.school}</small></td><td>{k.SUBJ(tt.subj) || tt.subject}</td><td>{vn(x.reg_at)}</td>
             <td>{prev.map(y => <span key={y.id} className="chip">{shortTitle(y.title)} · {k.evalOf(y, x.teacher_id).result}</span>)}{!prev.length && <span className="sub">Lần đầu</span>}</td>
             <td style={{ textAlign: 'right' }}>{kk === 'open' && P.canManage && <button type="button" className="btn sm ghost" onClick={() => unreg(p, x.teacher_id)}>Huỷ đăng ký</button>}</td></tr> })}
-        {!tr.length && <tr><td colSpan={5} className="sub">Chưa có học viên đăng ký.</td></tr>}</tbody></table></div>}</article> }
+        {!tr.length && <tr><td colSpan={5} className="sub">Chưa có học viên đăng ký.</td></tr>}</tbody></table></TblWrap>}</article> }
   const progRows = db.progs.filter(pr => pr.status !== 'draft').flatMap(pr => db.teachers.map(t => ({ t, pr, g: k.progProgress(t.id, pr) })).filter(x => x.g.ps.length))
   const ok = (p: Plan) => (!F.school || !p.schools?.length || p.schools.includes(F.school)) && (!F.subj || k.planSubjs(p).includes(F.subj)) && (!F.st || k.regSt(p)[2] === F.st) && (!F.q || norm(p.title + ' ' + k.prog(p.program_id)?.name).includes(norm(F.q)))
   const progs = db.progs.filter(pr => db.plans.some(p => p.program_id === pr.id && ok(p)))
@@ -168,12 +168,12 @@ function KhReg({ P, k, orgId }: { P: P2; k: K; orgId: string | null }) {
             { key: 'prev', label: 'Các đợt trước cùng chương trình', cell: x => { const prev = k.plansOf(p.program_id).filter(y => y.id !== p.id && k.traineesOf(y.id).includes(x.teacher_id)); return prev.length ? prev.map(y => shortTitle(y.title) + ' · ' + k.evalOf(y, x.teacher_id).result).join('; ') : 'Lần đầu' } },
             { key: 'act', label: '', width: '120px', raw: true, sum: false, cell: x => kk === 'open' && P.canManage ? <button type="button" className="btn sm ghost" onClick={() => unreg(p, x.teacher_id)}>Huỷ đăng ký</button> : null },
           ]} /></Panel> })()}
-    <Panel icon="users" title="Tiến độ hoàn thành chương trình theo học viên"><div className="tblwrap"><table><thead><tr><th>Học viên</th><th>Chương trình</th><th>Học phần đã hoàn thành</th><th>Đang học / còn thiếu</th><th>Trạng thái</th></tr></thead><tbody>
+    <Panel icon="users" title="Tiến độ hoàn thành chương trình theo học viên"><TblWrap><table><thead><tr><th>Học viên</th><th>Chương trình</th><th>Học phần đã hoàn thành</th><th>Đang học / còn thiếu</th><th>Trạng thái</th></tr></thead><tbody>
       {progRows.map(({ t, pr, g }) => <tr key={t.id + pr.id}><td><b>{t.full_name}</b><br /><small className="sub">{t.school}</small></td><td>{pr.code}<br /><small className="sub">{g.ps.length} đợt</small></td>
         <td>{[...g.done].map(s => <span key={s} className="chip k" style={cssVar('var(--good)')}>{k.SUBJ(s)}</span>)}{!g.done.size && '—'}</td>
         <td>{[...g.pend].map(s => <span key={s} className="chip k" style={cssVar('var(--info)')}>{k.SUBJ(s)}</span>)} {g.left.map(s => <span key={s} className="chip">{k.SUBJ(s)}</span>)}</td>
         <td>{g.done.size === g.all.length ? <span className="pill good plain">Hoàn thành chương trình</span> : <span className="pill warn plain">{g.done.size}/{g.all.length} học phần</span>}</td></tr>)}
-      {!progRows.length && <tr><td colSpan={5} className="sub">Chưa có học viên.</td></tr>}</tbody></table></div></Panel>
+      {!progRows.length && <tr><td colSpan={5} className="sub">Chưa có học viên.</td></tr>}</tbody></table></TblWrap></Panel>
     {T && <Panel className="portal" icon="user" title={<>Cổng học viên <small className="sub">xem trước</small></>} act={<select value={T.id} onChange={e => setAsT(e.target.value)} aria-label="Chọn học viên">{db.teachers.slice(0, 400).map(x => <option key={x.id} value={x.id}>{x.full_name} · {x.school}</option>)}</select>}>
       <small className="sub">Học viên thấy các đợt đang mở và tự đăng ký; một chương trình có thể hoàn thành qua nhiều đợt.</small>
       {open.map(p => { const pr = k.prog(p.program_id)!; const on = k.traineesOf(p.id).includes(T.id); const why = on ? '' : k.canReg(p, T.id); const g = k.progProgress(T.id, pr)
@@ -258,7 +258,7 @@ function SessModal({ P, k, s, onClose, onEdit, go }: { P: P2; k: K; s: Sess; onC
           : <small className="sub">Chưa có bài giảng cho chuyên đề này.</small>}
         {its.length > 0 && <small className="sub">Sau buổi: {its.map((i, j) => <Fragment key={i.id}>{j > 0 && ', '}<b>{i.name}</b> (hạn {vn(k.itemDue(p, i))})</Fragment>)}</small>}</section>
       <section className="sbox"><header><b><Ic n="check" /> Điểm danh buổi</b>{k.sessEnd(s) && <button type="button" className="btn sm" onClick={toAtt}>Mở bảng điểm danh</button>}</header>
-        {k.sessEnd(s) ? <><div className="sbar"><span>Có mặt</span><div className="hbar"><i style={{ width: `${tr.length ? pres / tr.length * 100 : 0}%` }} /></div><b>{pres}/{tr.length}</b></div><small className="sub">{s.mode === 'on' ? 'Lấy tự động theo thời gian tham gia lớp ảo, có thể chỉnh tay.' : 'Giảng viên/trợ giảng điểm danh tại lớp.'}</small></>
+        {k.sessEnd(s) ? <><div className="sbar"><span>Có mặt</span><b>{pres}/{tr.length}</b></div><small className="sub">{s.mode === 'on' ? 'Lấy tự động theo thời gian tham gia lớp ảo, có thể chỉnh tay.' : 'Giảng viên/trợ giảng điểm danh tại lớp.'}</small></>
           : <small className="sub">Mở sau khi buổi diễn ra · {tr.length} học viên đăng ký.</small>}</section></div>
     <div className="afoot"><button type="button" className="btn big" onClick={onClose}>Đóng</button>{P.canManage && <button type="button" className="btn primary big" onClick={onEdit}><Ic n="edit" /> Sửa buổi / phân công</button>}</div></div></>
 }
@@ -363,8 +363,8 @@ function KhDetail({ P, k, p, holOn, sedit, setSedit, onSess, onBack, toEval }: {
         <div className="formact"><button type="button" className="btn ghost" onClick={() => setAddS(false)}>Huỷ</button><button type="button" className="btn primary" onClick={async () => { const m = k.mod(ns.mod)
           if (await P.run(supabase.from('ph2_sessions').insert({ plan_id: p.id, date: ns.date, start_t: ns.from, end_t: ns.to, module_id: ns.mod || null, subject: m?.subject ?? null, mode: ns.mode, place: ns.mode === 'on' ? null : ns.place, trainer: ns.tr }), '✓ Đã thêm buổi đào tạo')) setAddS(false) }}><Ic n="check" /> Thêm buổi</button></div></Panel>}
       {view === 'cal' ? <section className="panel"><TrainCal k={k} sessions={ss} holOn={holOn} /></section>
-        : <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>STT</th><th>Thứ</th><th>Ngày</th><th>Giờ</th><th>Chuyên đề</th><th>Hình thức</th><th>Địa điểm / lớp ảo</th><th>Giảng viên</th><th>Trạng thái</th><th /></tr></thead><tbody>{ss.map(row)}</tbody>
-          <tfoot><tr><td className="n">{ss.length}</td><td /><td colSpan={2}>Tổng {ss.length} buổi</td><td>{new Set(ss.map(s => s.module_id ?? s.subject)).size} chuyên đề</td><td>{ss.filter(s => s.mode === 'on').length} trực tuyến</td><td colSpan={2} /><td>{done} đã diễn ra</td><td /></tr></tfoot></table></div></div>}</>}
+        : <div className="panel" style={{ padding: 0 }}><TblWrap><table><thead><tr><th>STT</th><th>Thứ</th><th>Ngày</th><th>Giờ</th><th>Chuyên đề</th><th>Hình thức</th><th>Địa điểm / lớp ảo</th><th>Giảng viên</th><th>Trạng thái</th><th /></tr></thead><tbody>{ss.map(row)}</tbody>
+          <tfoot><tr><td className="n">{ss.length}</td><td /><td colSpan={2}>Tổng {ss.length} buổi</td><td>{new Set(ss.map(s => s.module_id ?? s.subject)).size} chuyên đề</td><td>{ss.filter(s => s.mode === 'on').length} trực tuyến</td><td colSpan={2} /><td>{done} đã diễn ra</td><td /></tr></tfoot></table></TblWrap></div>}</>}
   </>
 }
 // Tab “Bài tập & kiểm tra” của đợt (bản mẫu v315)
@@ -391,10 +391,10 @@ function KhAsg({ k, p, st, toEval }: { k: K; p: Plan; st: { late: number }; toEv
           { key: 'gd', label: 'Chấm', sum: 'frac', sort: i => gdOf(i), cell: i => `${gdOf(i)}/${n}` },
         ]} /></Panel>
     <Panel icon="users" title={<>Tiến độ theo học viên <small className="sub">bấm để mở Đánh giá kết quả</small></>} act={<span className="legend"><span><span className="wk ok">8</span> đã chấm</span><span><span className="wk sub"><Ic n="upload" /></span> đã nộp, chờ chấm</span><span><span className="wk wait">…</span> đang mở</span><span><span className="wk bad">!</span> quá hạn</span><span><span className="wk">·</span> chưa mở</span></span>}>
-      <div className="tblwrap"><table className="wktbl"><thead><tr><th>Học viên</th>{its.map(i => <th key={i.id} className="c" title={i.name}>{i.name.length > 16 ? i.name.slice(0, 15) + '…' : i.name}</th>)}<th className="c">Chuyên cần</th><th>Kết quả</th></tr></thead><tbody>
+      <TblWrap><table className="wktbl"><thead><tr><th>Học viên</th>{its.map(i => <th key={i.id} className="c" title={i.name}>{i.name.length > 16 ? i.name.slice(0, 15) + '…' : i.name}</th>)}<th className="c">Chuyên cần</th><th>Kết quả</th></tr></thead><tbody>
         {trs.map(t => { const e = k.evalOf(p, t); return <tr key={t} className="rowlink" onClick={() => toEval('result')}><td><b>{k.teacher(t).full_name}</b></td>{its.map(i => <td key={i.id} className="c">{cell(i, t)}</td>)}
           <td className="c">{e.att == null ? '—' : e.att + '%'}</td><td><span className={`pill ${resPill(e.result)} plain`}>{e.result}</span></td></tr> })}
-        {!trs.length && <tr><td colSpan={its.length + 3} className="sub">Chưa có học viên.</td></tr>}</tbody></table></div></Panel>
+        {!trs.length && <tr><td colSpan={its.length + 3} className="sub">Chưa có học viên.</td></tr>}</tbody></table></TblWrap></Panel>
   </>
 }
 function KhPeople({ P, k, p, pr }: { P: P2; k: K; p: Plan; pr: Prog }) {
@@ -406,10 +406,10 @@ function KhPeople({ P, k, p, pr }: { P: P2; k: K; p: Plan; pr: Prog }) {
     {pick && <section className="panel"><Search value={q} onChange={setQ} placeholder="Tìm giáo viên, trường…" /><div className="pickgrid">{cand.map(t => <label key={t.id} className={'pick' + (subs.includes(t.subj) ? ' sug' : '')}>
       <input type="checkbox" onChange={() => P.run(supabase.from('ph2_trainees').insert({ plan_id: p.id, teacher_id: t.id, reg_at: k.T }))} /><span><b>{t.full_name}</b><small>{t.school} · {k.SUBJ(t.subj) || t.subject}{subs.includes(t.subj) ? ' · đúng học phần' : ''}</small></span></label>)}
       {!cand.length && <span className="sub">Không còn giáo viên phù hợp.</span>}</div></section>}
-    <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>STT</th><th>Mã HV</th><th>Họ tên</th><th>Đơn vị</th><th>Học phần dạy</th><th /></tr></thead><tbody>
+    <div className="panel" style={{ padding: 0 }}><TblWrap><table><thead><tr><th>STT</th><th>Mã HV</th><th>Họ tên</th><th>Đơn vị</th><th>Học phần dạy</th><th /></tr></thead><tbody>
       {trs.map((id, i) => { const t = k.teacher(id); return <tr key={id}><td className="n">{i + 1}</td><td><code>{t.code}</code></td><td><b>{t.full_name}</b></td><td>{t.school}</td><td>{k.SUBJ(t.subj) || t.subject}</td>
         <td style={{ textAlign: 'right' }}>{P.canManage && <button type="button" className="btn sm ghost" aria-label="Bỏ học viên" onClick={() => P.run(supabase.from('ph2_trainees').delete().eq('plan_id', p.id).eq('teacher_id', id))}><Ic n="trash" /></button>}</td></tr> })}
-      {!trs.length && <tr><td colSpan={6} className="sub">Chưa có học viên.</td></tr>}</tbody></table></div></div>
+      {!trs.length && <tr><td colSpan={6} className="sub">Chưa có học viên.</td></tr>}</tbody></table></TblWrap></div>
   </>
 }
 
