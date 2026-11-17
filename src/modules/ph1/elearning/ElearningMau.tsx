@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { errMsg } from '../ui'
-import { catName, effectiveCatalog, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
+import { catName, catOf, effectiveCatalog, useCatalog, useOrgs, type Curriculum } from '../curriculum/api'
 import { gradesText } from '../curriculum/CurriculumPage'
-import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, StatCard, cssVar } from '../mau/kit'
+import { Back, Empty, Flow, Ic, Mau, PageHead, Seg, StatusPill, cssVar } from '../mau/kit'
+import { DataTable } from '../mau/DataTable'
+import { ExamDetail, QEditor, type Exam } from './QEditor'
 import { SGLYPH } from '../mau/icons'
 
 const ElearningManage = lazy(() => import('../../../pages/elearning/Manage'))
@@ -12,7 +14,6 @@ const ElearningManage = lazy(() => import('../../../pages/elearning/Manage'))
 //   Khoá học: mỗi chương trình đã phát hành có một khoá tự học dựng từ bài học + học liệu đã phát hành (tạo nhanh nếu chưa có);
 //   Đề luyện: đề của ngân hàng câu hỏi với số câu, lượt làm, điểm trung bình. Chi tiết khoá / đề / ngân hàng câu hỏi giữ màn quản lý sẵn có (053).
 type Course = { id: string; org_id: string; title: string; status: string; curriculum_id: string | null; course_lessons: { id: string }[] }
-type Exam = { id: string; title: string; subject: string | null; grade: number | null; mode: string; question_ids: string[]; criteria: { count?: number } | null; status: string }
 type Att = { exam_id: string; score: number | null; status: string }
 type Prog = { id: string; lessons: number; ok: number }
 
@@ -27,6 +28,10 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
   const [exams, setExams] = useState<Exam[]>([])
   const [atts, setAtts] = useState<Att[]>([])
   const [msg, setMsg] = useState('')
+  // Bản mẫu v315 · C5: danh sách dạng bảng; đề luyện mở chi tiết (câu hỏi theo mức độ, thêm/bớt); trình soạn / nhập file câu hỏi
+  const [cview, setCview] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.el.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
+  const [openExam, setOpenExam] = useState<string | null>(null)
+  const [qe, setQe] = useState(false)
   const { all, hidden } = useCatalog()
   const { below } = useOrgs(orgId)
   const cat = effectiveCatalog(all, hidden, below)
@@ -35,7 +40,7 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
     const [c, co, e, a, pr] = await Promise.all([
       supabase.from('curricula').select('*').eq('status', 'published').order('code'),
       supabase.from('courses').select('id, org_id, title, status, curriculum_id, course_lessons(id)').order('created_at'),
-      supabase.from('practice_exams').select('id, title, subject, grade, mode, question_ids, criteria, status').order('title'),
+      supabase.from('practice_exams').select('id, org_id, title, subject, grade, mode, question_ids, criteria, status, closes_at, updated_at').order('title'),
       supabase.from('exam_attempts').select('exam_id, score, status'),
       supabase.from('course_progress').select('lesson_id, student_id'),
     ])
@@ -82,29 +87,59 @@ export function ElearningMau(props: { orgId: string | null; teacherId?: string |
   if (manage) return <Mau><Back onClick={() => { setManage(false); load() }} title={'Quản lý chi tiết'}>Quay lại</Back>
     <Suspense fallback={<p className="sub">Đang tải…</p>}><div style={{ fontSize: 14 }}><ElearningManage {...props} /></div></Suspense></Mau>
   const noCourse = progs.filter(p => !courseOf(p))
+  const subjects = catOf(cat, 'subject').map(s => [s.code, s.name] as [string, string])
+  const openE = exams.find(e => e.id === openExam)
+  if (openE && orgId) return <Mau>{msg && <p className="msg" role="status" onClick={() => setMsg('')}>{msg}</p>}
+    <ExamDetail e={openE} orgId={orgId} cat={cat} canEdit={openE.org_id === orgId} subjects={subjects} onBack={() => setOpenExam(null)} reload={load} /></Mau>
+  const setSt = (table: 'courses' | 'practice_exams', status: string, label: string) => async (rs: { id: string }[]) => {
+    const { error } = await supabase.from(table).update({ status }).in('id', rs.map(r => r.id)); if (error) return errMsg(error.message); await load(); return `${label} ${rs.length} ${table === 'courses' ? 'khoá học' : 'đề luyện'}` }
+  type CRow = { p: Curriculum; c: Course | null }
+  const crows: CRow[] = progs.map(p => ({ p, c: courseOf(p) }))
   return <Mau>
     {msg && <p className="msg" role="status" onClick={() => setMsg('')}>{msg}</p>}
     <PageHead icon="cap" title="E-learning & luyện thi" sub="Khoá tự học và đề luyện dựng từ bài học, học liệu đã phát hành của chương trình">
-      <button type="button" className="btn primary" onClick={() => noCourse[0] ? create(noCourse[0]) : setManage(true)} title={noCourse[0] ? `Tạo khoá tự học cho ${noCourse[0].code}` : 'Mở quản lý khoá học'}><Ic n="plus" /> Khoá học</button></PageHead>
-    <Flow steps={[['course', 'Khoá học', `${progs.length} khoá tự học`], ['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu hỏi`]]} value={tab} onChange={setTab} />
-    <div className="stats">
-      <StatCard c="c-blue" icon="cap" label="Khoá học" value={courses.filter(c => c.curriculum_id && progs.some(p => p.id === c.curriculum_id)).length} sub="theo chương trình đã phát hành" />
-      <StatCard c="c-green" icon="user" label="Học viên" value={learners.toLocaleString('vi-VN')} sub="đang học" />
-      <StatCard c="c-violet" icon="list" label="Đề luyện" value={exams.length} sub={exams.reduce((a, e) => a + qOf(e), 0) + ' câu hỏi'} />
-      <StatCard c="c-amber" icon="target" label="Điểm TB" value={avg} sub="trên thang 10" /></div>
-    {tab === 'course' ? (progs.length ? <div className="grid">{progs.map(p => { const c = courseOf(p); const s = stat.get(p.id) ?? { lessons: 0, ok: 0 }; const L = learnersOf(c)
-      return <article key={p.id} className="pcard dcard" style={cssVar(p.color)}>
-        <div className="cover"><i className="cg"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[mainSubj(p) ?? ''] ?? SGLYPH.khtn }} /></i><span>{gradesText(cat, p.grades)}</span><b>{p.code}</b></div>
-        <h3>Khoá tự học: {p.name}</h3>
-        <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
-        <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
-          {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>
-      : <Empty>Chưa có chương trình đã phát hành.</Empty>)
-      : exams.length ? <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>Đề luyện</th><th>Môn · khối</th><th>Số câu</th><th>Lượt làm</th><th>Điểm TB</th></tr></thead><tbody>
-        {exams.map(e => { const as = atts.filter(a => a.exam_id === e.id && a.status === 'submitted'); const sc = as.filter(a => a.score != null)
-          return <tr key={e.id} style={{ cursor: 'pointer' }} onClick={() => setManage(true)}><td><b>{e.title}</b></td><td>{catName(cat, 'subject', e.subject) || e.subject || '—'}{e.grade ? ` · Khối ${e.grade}` : ''}</td><td>{qOf(e)}</td><td>{as.length}</td>
-            <td><b>{sc.length ? (sc.reduce((x, a) => x + Number(a.score), 0) / sc.length).toFixed(1) : '—'}</b></td></tr> })}</tbody></table></div></div>
-      : <Empty>Chưa có đề luyện — tạo ở “Quản lý chi tiết”.</Empty>}
-    <p className="note">Chi tiết khoá học, đề luyện và ngân hàng câu hỏi: <button type="button" className="linkbtn" onClick={() => setManage(true)}>Quản lý chi tiết ›</button></p>
+      {tab === 'test' ? orgId && <button type="button" className="btn primary" onClick={() => setQe(true)}><Ic n="plus" /> Câu hỏi mới / nhập file</button>
+        : <button type="button" className="btn primary" onClick={() => noCourse[0] ? create(noCourse[0]) : setManage(true)} title={noCourse[0] ? `Tạo khoá tự học cho ${noCourse[0].code}` : 'Mở quản lý khoá học'}><Ic n="plus" /> Khoá học</button>}</PageHead>
+    <Flow steps={[['course', 'Khoá học', `${progs.length} khoá tự học · ${learners.toLocaleString('vi-VN')} học viên`], ['test', 'Đề luyện', `${exams.length} đề · ${exams.reduce((a, e) => a + qOf(e), 0)} câu · điểm TB ${avg}`]]} value={tab} onChange={setTab} />
+    {qe && orgId && <QEditor orgId={orgId} subject="" grade={null} subjects={subjects} onClose={() => setQe(false)} onSaved={ids => { setQe(false); setMsg(`Đã lưu ${ids.length} câu vào ngân hàng câu hỏi — mở một đề để thêm câu vào đề.`) }} />}
+    {tab === 'course' ? <>
+      <div className="toolbar"><Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={cview} onChange={v => { setCview(v); try { localStorage.setItem('ph1.el.mode', v) } catch { /* bỏ qua */ } }} /></div>
+      {!progs.length ? <Empty>Chưa có chương trình đã phát hành.</Empty> : cview === 'table'
+        ? <DataTable id="el-course" rows={crows} rowKey={r => r.p.id} noun="khoá học" onOpen={r => r.c ? setManage(true) : undefined}
+          bulk={[{ label: 'Phát hành', run: rs => setSt('courses', 'published', 'Đã phát hành')(rs.filter(r => r.c).map(r => r.c!)) }, { label: 'Đóng', run: rs => setSt('courses', 'archived', 'Đã đóng')(rs.filter(r => r.c).map(r => r.c!)) }]}
+          cols={[
+            { key: 'title', label: 'Khoá học', name: true, sort: r => r.p.name, cell: r => <><b>Khoá tự học: {r.p.name}</b><small>{r.c ? r.c.title : 'Chưa tạo khoá học'}</small></> },
+            { key: 'prog', label: 'Chương trình', sort: r => r.p.code, cell: r => r.p.code ?? '—' },
+            { key: 'grade', label: 'Cấp học · Khối', cell: r => gradesText(cat, r.p.grades) },
+            { key: 'lessons', label: 'Số bài', sum: 'sum', sort: r => r.c?.course_lessons.length ?? 0, cell: r => r.c?.course_lessons.length ?? 0 },
+            { key: 'mat', label: 'Bài có học liệu', sum: 'frac', sort: r => (stat.get(r.p.id)?.ok ?? 0), cell: r => { const s = stat.get(r.p.id) ?? { ok: 0, lessons: 0 }; return `${s.ok}/${s.lessons}` } },
+            { key: 'learn', label: 'Học viên', sum: 'sum', sort: r => learnersOf(r.c).n, cell: r => learnersOf(r.c).n },
+            { key: 'done', label: '% hoàn thành', sort: r => learnersOf(r.c).done, cell: r => r.c ? learnersOf(r.c).done + '%' : '—' },
+            { key: 'status', label: 'Trạng thái', sum: 'status', sort: r => r.c?.status ?? 'none', cell: r => r.c ? <StatusPill s={r.c.status} /> : <span className="pill draft plain">Chưa tạo</span> },
+            { key: 'act', label: 'Thao tác', raw: true, sum: false, cell: r => r.c ? <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); setManage(true) }}>Mở ›</button>
+              : <button type="button" className="btn sm primary" disabled={!orgId} onClick={e => { e.stopPropagation(); create(r.p) }}><Ic n="plus" /> Tạo khoá học</button> },
+          ]} />
+        : <div className="grid">{progs.map(p => { const c = courseOf(p); const s = stat.get(p.id) ?? { lessons: 0, ok: 0 }; const L = learnersOf(c)
+          return <article key={p.id} className="pcard dcard" style={cssVar(p.color)}>
+            <div className="cover"><i className="cg"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[mainSubj(p) ?? ''] ?? SGLYPH.khtn }} /></i><span>{gradesText(cat, p.grades)}</span><b>{p.code}</b></div>
+            <h3>Khoá tự học: {p.name}</h3>
+            <small style={{ color: 'var(--muted)' }}>{c ? `${L.done}% học viên hoàn thành · ` : 'Chưa tạo khoá học · '}{s.ok}/{s.lessons} bài có học liệu</small>
+            <div className="foot"><span>{c ? `${L.n} học viên · ${c.course_lessons.length} bài` : '—'}</span>
+              {c ? <button type="button" className="btn sm" onClick={() => setManage(true)}>Mở ›</button> : <button type="button" className="btn sm primary" disabled={!orgId} onClick={() => create(p)}><Ic n="plus" /> Tạo khoá học</button>}</div></article> })}</div>}</>
+      : <DataTable id="el-test" rows={exams} rowKey={e => e.id} noun="đề luyện" onOpen={e => setOpenExam(e.id)}
+        empty={<Empty>Chưa có đề luyện — tạo ở “Quản lý chi tiết”.</Empty>}
+        bulk={[{ label: 'Phát hành', run: setSt('practice_exams', 'published', 'Đã phát hành') }, { label: 'Đóng', run: setSt('practice_exams', 'closed', 'Đã đóng') }]}
+        cols={[
+          { key: 'title', label: 'Đề luyện', name: true, sort: e => e.title, cell: e => <><b>{e.title}</b><small>{e.mode === 'fixed' ? 'Đề cố định' : 'Đề ngẫu nhiên'}</small></> },
+          { key: 'subj', label: 'Môn học', sort: e => catName(cat, 'subject', e.subject) || e.subject, cell: e => catName(cat, 'subject', e.subject) || e.subject || '—' },
+          { key: 'grade', label: 'Khối', sum: false, sort: e => e.grade, cell: e => e.grade ? 'Khối ' + e.grade : '—' },
+          { key: 'q', label: 'Số câu', sum: 'sum', sort: e => qOf(e), cell: e => qOf(e) },
+          { key: 'att', label: 'Lượt làm', sum: 'sum', sort: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length, cell: e => atts.filter(a => a.exam_id === e.id && a.status === 'submitted').length },
+          { key: 'avg', label: 'Điểm TB', sum: false, sort: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? sc.reduce((x, a) => x + Number(a.score), 0) / sc.length : null },
+            cell: e => { const sc = atts.filter(a => a.exam_id === e.id && a.status === 'submitted' && a.score != null); return sc.length ? (sc.reduce((x, a) => x + Number(a.score), 0) / sc.length).toFixed(1) : '—' } },
+          { key: 'date', label: 'Hạn làm', date: true, sort: e => e.closes_at ? new Date(e.closes_at).toLocaleDateString('vi-VN') : null, cell: e => e.closes_at ? new Date(e.closes_at).toLocaleDateString('vi-VN') : 'Không hạn' },
+          { key: 'status', label: 'Trạng thái', sum: 'status', sort: e => e.status, cell: e => e.status === 'closed' ? <span className="pill warn">Đã đóng</span> : <StatusPill s={e.status} /> },
+        ]} />}
+    <p className="note">Chi tiết khoá học, cấu hình đề và ngân hàng câu hỏi: <button type="button" className="linkbtn" onClick={() => setManage(true)}>Quản lý chi tiết ›</button></p>
   </Mau>
 }

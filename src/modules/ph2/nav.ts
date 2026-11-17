@@ -10,7 +10,9 @@ export const PH2_NAV: Partial<Record<RoleKey, NavGroup[]>> = {
   platform: [G('2.1. Đào tạo & đánh giá năng lực nhà giáo')],
   department: [{ title: 'Đào tạo & đánh giá nhà giáo', items: [...CORE] }],
   school_admin: [{ title: 'Đào tạo & đánh giá nhà giáo', items: [...CORE] }],
-  teacher: [{ title: 'Tập huấn của tôi', items: ['Kế hoạch tập huấn', 'Nội dung tập huấn', 'Đánh giá kết quả'] }],
+  teacher: [{ title: 'Đào tạo của tôi', items: ['Kế hoạch tập huấn', 'Nội dung tập huấn', 'Đánh giá kết quả'] }],
 }
 // Mục menu → chức năng (quyền vai trò ở cổng Trường, gói dịch vụ): phân hệ "training"
+// Bản mẫu v315: “tập huấn” → “đào tạo” (chỉ đổi tên hiển thị, giữ mã trang)
+export const PH2_LABEL: Record<string, string> = { 'Chương trình tập huấn': 'Chương trình đào tạo', 'Kế hoạch tập huấn': 'Kế hoạch đào tạo', 'Nội dung tập huấn': 'Nội dung đào tạo' }
 export const PH2_MODULE_OF: Record<string, string> = Object.fromEntries(CORE.map(k => [k, 'training']))

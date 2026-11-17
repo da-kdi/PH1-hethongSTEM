@@ -149,16 +149,17 @@ export function mk(db: DB, subjCat: CatItem[]) {
     const ended = all.length > 0 && !all.some(s => !sessEnd(s))
     const pass = att != null && att >= C.att && score != null && score >= C.score && !(C.req && fails.length)
     const risk = att != null && (att < C.att || (score != null && score < C.score) || (C.req && fails.length > 0))
-    const result = !ended ? (risk ? 'Có nguy cơ chưa đạt' : 'Đang tập huấn') : got.length < its.length ? 'Thiếu điểm' : pass ? 'Hoàn thành' : 'Chưa hoàn thành'
+    const result = !ended ? (risk ? 'Có nguy cơ chưa đạt' : 'Đang đào tạo') : got.length < its.length ? 'Thiếu điểm' : pass ? 'Hoàn thành' : 'Chưa hoàn thành'
     return { att, score, items, fails, graded: got.length, total: its.length, result }
   }
   const planSt = (p: Plan): [string, string] => { const ss = sessOfPlan(p.id)
-    return p.status === 'draft' ? ['Đang lập (nháp)', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Học xong · chờ kết thúc', 'warn'] }
+    return p.status === 'cancelled' ? ['Đã huỷ', 'bad'] : p.status === 'draft' ? ['Nháp', 'warn'] : !ss.some(sessEnd) ? ['Sắp diễn ra', 'info'] : ss.some(s => !sessEnd(s)) ? ['Đang diễn ra', 'good'] : p.confirmed ? ['Đã kết thúc', 'draft'] : ['Chờ đánh giá', 'warn'] }
   const regSt = (p: Plan): [string, string, 'draft' | 'open' | 'closed'] => p.status === 'draft' ? ['Chưa mở đăng ký', 'draft', 'draft']
     : (p.reg_due ?? '0') >= T && sessOfPlan(p.id).some(s => !sessEnd(s)) ? ['Đang mở đăng ký', 'good', 'open'] : ['Quá hạn đăng ký', 'warn', 'closed']
   const plansOf = (pid: string) => db.plans.filter(p => p.program_id === pid)
   const progCover = (pr: Prog) => { const c = new Set(plansOf(pr.id).flatMap(planSubjs)); return subjectsOf(pr).filter(k => c.has(k)).length }
-  const progPlanSt = (pr: Prog): [string, string, string] => { const ps = plansOf(pr.id); return !ps.length ? ['none', 'Chưa lập kế hoạch', 'bad'] : ps.some(p => p.status === 'draft') || progCover(pr) < subjectsOf(pr).length ? ['doing', 'Đang lập dở', 'warn'] : ['done', 'Đã lập kế hoạch', 'good'] }
+  const progPlanSt = (pr: Prog): [string, string, string] => { const ps = plansOf(pr.id).filter(p => p.status !== 'cancelled'); const n = subjectsOf(pr).length, c = progCover(pr)
+    return !ps.length ? ['none', 'Chưa lập kế hoạch', 'bad'] : ps.some(p => p.status === 'draft') ? ['doing', 'Nháp', 'warn'] : c < n ? ['part', `Chưa đủ học phần (${c}/${n})`, 'warn'] : ['done', 'Đã lập kế hoạch', 'good'] }
   const eligibleOf = (p: Plan) => db.teachers.filter(t => (!p.schools?.length || p.schools.includes(t.org_id)) && (!p.subj_only || planSubjs(p).includes(t.subj)))
   const doneProg = (t: string, pid: string) => db.plans.some(p => p.program_id === pid && traineesOf(p.id).includes(t) && evalOf(p, t).result === 'Hoàn thành')
   const canReg = (p: Plan, t: string) => { const Tt = teacher(t); if (regSt(p)[2] !== 'open') return 'Đợt không mở đăng ký'
@@ -169,7 +170,7 @@ export function mk(db: DB, subjCat: CatItem[]) {
   const progProgress = (t: string, pr: Prog) => { const ps = plansOf(pr.id).filter(p => traineesOf(p.id).includes(t)); const all = subjectsOf(pr)
     const done = new Set(ps.filter(p => evalOf(p, t).result === 'Hoàn thành').flatMap(planSubjs)); const pend = new Set(ps.filter(p => evalOf(p, t).result !== 'Hoàn thành').flatMap(planSubjs).filter(k => !done.has(k)))
     return { ps, all, done, pend, left: all.filter(k => !done.has(k) && !pend.has(k)) } }
-  const condText = (p: Plan) => [p.subj_only && 'Dạy đúng môn của đợt (' + planSubjs(p).map(SUBJ).join(', ') + ')', p.prereq && 'Đã hoàn thành ' + (prog(p.prereq)?.code ?? ''), p.cond].filter(Boolean) as string[]
+  const condText = (p: Plan) => [p.subj_only && 'Dạy đúng học phần của đợt (' + planSubjs(p).map(SUBJ).join(', ') + ')', p.prereq && 'Đã hoàn thành ' + (prog(p.prereq)?.code ?? ''), p.cond].filter(Boolean) as string[]
   const certOf = (p: Plan, t: string) => db.certs.get(p.id + '|' + t)
   const compOf = (tid: string) => { const out: Record<string, { k: number; n: number; src: Set<string> }> = {}
     for (const p of db.plans.filter(x => traineesOf(x.id).includes(tid))) for (const i of planItems(p)) { if (i.mode !== 'rubric') continue; const g = grOf(p, i, tid); if (!g?.lv) continue
@@ -179,7 +180,7 @@ export function mk(db: DB, subjCat: CatItem[]) {
   const fbQs = (p: Plan) => p.survey?.form?.length ? p.survey.form : db.survey ?? SURVEY
   const fbAvg = (p: Plan, f: (q: Q) => boolean = () => true) => { const qs = fbQs(p).filter(q => q.type !== 'text' && f(q)); const v = fbOf(p.id).flatMap(r => qs.map(q => r.answers[q.id])).filter(x => typeof x === 'number') as number[]
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
-  // Lịch dự kiến: mỗi mô-đun của các môn trong đợt × số buổi; môn chưa chia mô-đun tính theo số giờ ÷ thời lượng buổi
+  // Lịch dự kiến: mỗi chuyên đề của các học phần trong đợt × số buổi; học phần chưa chia chuyên đề tính theo số giờ ÷ thời lượng buổi
   const genSessions = (pr: Prog, start: string, step: number | { days: number[]; every: number }, from: string, to: string, mode: 'off' | 'on', place: string, trainer: string, subjs: string[]) => {
     const units = subjs.flatMap(k => subjMods(pr, k).length ? subjMods(pr, k).map(m => ({ module_id: m.id as string | null, subject: k, sessions: m.sessions })) : [{ module_id: null, subject: k, sessions: sessOf(subjH(pr, k), pr.mpp) }])
     const cus = typeof step === 'object' && step.days.length ? step : null; const w0 = cus ? pd(monOf(start)).getTime() : 0
@@ -208,5 +209,5 @@ export function goto(go: ((p: string) => void) | undefined, page: string, intent
 export function takeIntent(page: string): Record<string, any> | null {
   try { const s = sessionStorage.getItem(INTENT_KEY); if (!s) return null; const x = JSON.parse(s); if (x.page !== page) return null; sessionStorage.removeItem(INTENT_KEY); return x } catch { return null }
 }
-export const PAGE = { tp: 'Chương trình tập huấn', kh: 'Kế hoạch tập huấn', bt: 'Nội dung tập huấn', dg: 'Đánh giá kết quả' }
+export const PAGE = { tp: 'Chương trình tập huấn', kh: 'Kế hoạch tập huấn', bt: 'Nội dung tập huấn', dg: 'Đánh giá kết quả' }   // mã trang (giữ nguyên); tên hiển thị đổi ở PH2_LABEL
 export const resPill = (r: string) => r === 'Hoàn thành' ? 'good' : r === 'Chưa hoàn thành' ? 'bad' : r === 'Có nguy cơ chưa đạt' || r === 'Thiếu điểm' ? 'warn' : 'info'

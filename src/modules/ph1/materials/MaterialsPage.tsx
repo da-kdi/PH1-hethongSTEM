@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { errMsg, norm, timeAgo, useRpcBool } from '../ui'
-import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, newerOf, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
+import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradeLabel, inUseOf, newerOf, gradesOfLevel, useCatalog, useOrgs, type CatItem, type Curriculum, type MStatus } from '../curriculum/api'
 import { gradesText, groupOfCur } from '../curriculum/CurriculumPage'
-import { Back, HNote, Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { DataTable } from '../mau/DataTable'
+import { LevelTree, type TreeLevel, Back, HNote, Confirm, Cover, Empty, Flow, Ic, Mau, PageHead, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.2 Học liệu — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html, 28/10/2026):
 //   Danh sách: mỗi bài học của chương trình có một học liệu; gom theo Nhóm chương trình › Chương trình; Bảng | Thẻ; chuỗi bước
@@ -55,7 +56,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const [cls, setCls] = useState<CL[]>([])
   const [open, setOpen] = useState<string | null>(null)       // id phiên bản học liệu đang mở
   const [q, setQ] = useState('')
-  const [f, setF] = useState({ grp: '', prog: '', subj: '', grade: '', fs: '' })
+  const [f, setF] = useState({ grp: '', prog: '', subj: '', level: '', grade: '', fs: '' })
   const [mode, setMode] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph1.hl.mode') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const [shut, setShut] = useState<Set<string>>(new Set())
   const [msg, setMsg] = useState('')
@@ -123,7 +124,7 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const qq = norm(q)
   const grpCode = (p: Curriculum) => groupOfCur(cat, p)?.code ?? ''
   const shown = rows.filter(r => (!qq || norm(r.cl.title).includes(qq)) && (!f.grp || grpCode(r.p) === f.grp) && (!f.prog || r.p.id === f.prog) && (!f.subj || r.cl.subject === f.subj)
-    && (!f.grade || r.p.grades.includes(Number(f.grade))) && (!f.fs || matOf(r.v) === f.fs))
+    && (!f.grade || r.p.grades.includes(Number(f.grade))) && (!f.level || r.p.grades.some(g => gradesOfLevel(cat, f.level).includes(g))) && (!f.fs || matOf(r.v) === f.fs))
   const fam = rows.filter(r => r.v); const wait = rows.length - fam.length
   const nNew = fam.filter(r => newerOf(allL, r.v)).length
   const groups = [...catOf(cat, 'category').filter(g => progs.some(p => grpCode(p) === g.code)), ...(progs.some(p => !grpCode(p)) ? [{ code: '', name: 'Chưa xếp nhóm', color: '#94a3b8' } as CatItem] : [])]
@@ -132,6 +133,28 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
   const tog = (k: string, o: boolean) => setShut(s => { const n = new Set(s); o ? n.delete(k) : n.add(k); return n })
   const action = (r: Row) => r.v ? <button type="button" className="btn sm" onClick={() => setOpen(r.v!.id)}>Mở ›</button>
     : canManage ? <button type="button" className="btn sm primary" onClick={() => createFor(r.cl)}><Ic n="plus" /> Tạo học liệu</button> : <span className="sub">Bài chờ</span>
+  // Phát hành phiên bản hàng loạt (bảng C0): học liệu nháp đã chốt đủ 4 nhóm
+  const okAll = (v: MLesson) => (['info', 'content', 'links', 'norms'] as const).every(k => v.groups?.[k] === 'ok')
+  async function bulkPublish(rs: Row[]) {
+    const vs = rs.map(r => r.v).filter((v): v is MLesson => !!v && v.status === 'draft' && okAll(v)); let n = 0
+    for (const v of vs) { const { error } = await supabase.rpc('material_publish', { p_lesson: v.id }); if (!error) n++ }
+    await load(); return `Đã phát hành ${n} phiên bản học liệu${rs.length - n ? ` · bỏ qua ${rs.length - n} bài (chưa có học liệu, đã phát hành hoặc chưa chốt đủ 4 nhóm)` : ''}`
+  }
+  const dt = (id: string, rs: Row[]) => <DataTable id={'hl-' + id} rows={rs} rowKey={r => r.cl.id} noun="bài học" onOpen={r => r.v ? setOpen(r.v.id) : undefined}
+    groupBy={r => [r.p.id, <><span className="code sm" style={cssVar(r.p.color)}>{r.p.code}</span> {r.p.name} <small>{gradesText(cat, r.p.grades)} · {rs.filter(x => x.p === r.p && x.v).length}/{rs.filter(x => x.p === r.p).length} bài có học liệu</small></>]}
+    bulk={canManage ? [{ label: 'Phát hành phiên bản', run: bulkPublish }] : []}
+    cols={[
+      { key: 'title', label: 'Bài học', name: true, sort: r => r.cl.title, cell: r => <b>{r.cl.title}</b> },
+      { key: 'subj', label: 'Môn học', sort: r => catName(cat, 'subject', r.cl.subject), cell: r => catName(cat, 'subject', r.cl.subject) },
+      { key: 'periods', label: 'Số tiết', sum: 'sum', sort: r => r.cl.periods, cell: r => r.cl.periods },
+      { key: 'mat', label: 'Học liệu (PB đang dùng)', sum: 'status', sort: r => matOf(r.v), cell: r => { const nw = newerOf(allL, r.v); return <><MatPill v={r.v} />{nw && <> <span className="pill info plain">có PB {nw.version_no}</span></>}</> } },
+      { key: 'g4', label: '4 nhóm', raw: true, sum: false, sort: r => r.v ? (['info', 'content', 'links', 'norms'] as const).filter(k => r.v!.groups?.[k] === 'ok').length : null, cell: r => r.v ? <GDots v={r.v} /> : '—' },
+      { key: 'date', label: 'Cập nhật', date: true, sort: r => r.v ? new Date((r.v as any).updated_at ?? r.v.published_at ?? Date.now()).toLocaleDateString('vi-VN') : null, cell: r => r.v ? new Date((r.v as any).updated_at ?? r.v.published_at ?? Date.now()).toLocaleDateString('vi-VN') : <span className="sub">Bài chờ</span> },
+      { key: 'act', label: 'Thao tác', raw: true, sum: false, cell: r => <span onClick={e => e.stopPropagation()}>{action(r)}</span> },
+    ]} />
+  // Cây Khối bên trái (bản mẫu v315 · TREECFG.hl)
+  const treeLv: TreeLevel[] = catOf(cat, 'level').map(l => { const gs = gradesOfLevel(cat, l.code)
+    return { code: l.code, name: l.name, n: rows.filter(r => r.p.grades.some(g => gs.includes(g))).length, grades: gs.map(g => ({ g, label: gradeLabel(g), n: rows.filter(r => r.p.grades.includes(g)).length })) } })
   const tableOf = (rs: Row[]) => <div className="tblwrap"><table><thead><tr><th>STT</th><th>Bài học</th><th>Môn</th><th>Tiết</th><th>Học liệu (PB đang dùng)</th><th>4 nhóm</th><th></th></tr></thead><tbody>
     {rs.map((r, i) => { const nw = newerOf(allL, r.v)
       return <tr key={r.cl.id}><td className="n">{i + 1}</td><td><b>{r.cl.title}</b></td><td>{catName(cat, 'subject', r.cl.subject)}</td><td>{r.cl.periods}</td>
@@ -147,18 +170,13 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
     <Flow steps={[['none', 'Tạo học liệu', `${n('none')} bài chờ học liệu`], ['draft', 'Soạn & chốt 4 nhóm', `${n('draft')} học liệu đang soạn`], ['ok', 'Phát hành phiên bản', `${n('ok')} đã phát hành · bấm lại để bỏ lọc`]] as [Mat, string, string][]}
       value={f.fs as Mat | ''} onChange={k => setF({ ...f, fs: f.fs === k ? '' : k })} />
     {msg && <p className="msg">{msg}</p>}
-    <div className="stats">
-      <StatCard c="c-blue" icon="file" label="Học liệu" value={fam.length} sub={`trên ${rows.length} bài học`} />
-      <StatCard c="c-red" icon="alert" label="Bài chờ" value={wait} sub="chưa có học liệu" />
-      <StatCard c="c-green" icon="check" label="Đã phát hành" value={n('ok')} sub="phiên bản đang dùng đã phát hành" />
-      <StatCard c="c-amber" icon="history" label="Có bản mới" value={nNew} sub="đơn vị chưa chuyển sang" />
-    </div>
+
+    <LevelTree id="hl" levels={treeLv} total={rows.length} level={f.level} grade={f.grade} noCount onPick={(l, g) => setF({ ...f, level: l, grade: g })}>
     <div className="toolbar">
       <Search value={q} onChange={setQ} placeholder="Tìm bài học…" />
       <Sel label="Tất cả nhóm chương trình" value={f.grp} onChange={v => setF({ ...f, grp: v, prog: '' })} options={groups.filter(g => g.code).map(g => [g.code, `${g.code} · ${g.name}`])} />
       <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={progs.filter(p => !f.grp || grpCode(p) === f.grp).map(p => [p.id, `${p.code ?? ''} · ${p.name}`])} />
       <Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={Array.from(new Set(cls.map(c => c.subject).filter(Boolean) as string[])).map(s => [s, catName(cat, 'subject', s)])} />
-      <Sel label="Tất cả khối" value={f.grade} onChange={v => setF({ ...f, grade: v })} options={Array.from(new Set(progs.flatMap(p => p.grades))).sort((a, b) => a - b).map(g => [String(g), gradeLabel(g)])} />
       <Sel label="Mọi trạng thái" value={f.fs} onChange={v => setF({ ...f, fs: v })} options={[['none', 'Bài chờ'], ['draft', 'Đang soạn'], ['ok', 'Đã phát hành']]} />
       <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={mode} onChange={v => { setMode(v); try { localStorage.setItem('ph1.hl.mode', v) } catch { /* bỏ qua */ } }} />
       <button type="button" className="btn sm ghost" onClick={() => setShut(allKeys.every(k => shut.has(k)) ? new Set() : new Set(allKeys))}>{allKeys.length && allKeys.every(k => shut.has(k)) ? 'Mở tất cả' : 'Thu gọn tất cả'}</button>
@@ -166,11 +184,10 @@ export function MaterialsPage({ orgId, go }: { orgId: string | null; go?: (p: st
     {!byGrp.length ? <Empty>Không có bài học phù hợp.</Empty> : byGrp.map(({ g, ps }) => { const k = 'g:' + g.code
       return <details key={k} className="grpbox" open={!shut.has(k)} onToggle={e => tog(k, (e.currentTarget as HTMLDetailsElement).open)} style={cssVar(g.color)}>
         <summary className="grphead"><span className="chev"><Ic n="chev" /></span><span className="dotc" style={cssVar(g.color)} /><b>{g.code ? `${g.code} · ${g.name}` : g.name}</b><small>{ps.length} chương trình · {ps.reduce((a, x) => a + x.rs.length, 0)} bài</small></summary>
-        {ps.map(({ p, rs }) => { const kp = 'p:' + p.id; const col = p.color ?? g.color ?? '#64748b'
-          return <details key={kp} className="panel dsub" style={{ padding: 0, gap: 0 }} open={!shut.has(kp)} onToggle={e => tog(kp, (e.currentTarget as HTMLDetailsElement).open)}>
-            <summary className="phead" style={cssVar(col)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{p.code}</span><b>{p.name}</b><small>{gradesText(cat, p.grades)}</small><span className="act">{rs.filter(r => r.v).length}/{rs.length} bài có học liệu</span></summary>
-            {mode === 'grid' ? <div style={{ padding: 12 }}>{cardsOf(rs, col)}</div> : tableOf(rs)}</details> })}
+        {mode === 'grid' ? ps.map(({ p, rs }) => <div key={p.id} style={{ padding: 12 }}><div className="group"><span className="code sm" style={cssVar(p.color)}>{p.code}</span> {p.name}</div>{cardsOf(rs, p.color ?? g.color ?? '#64748b')}</div>)
+          : <div style={{ padding: '10px 12px' }}>{dt(g.code || '_', ps.flatMap(x => x.rs))}</div>}
       </details> })}
+    </LevelTree>
   </Mau>
 }
 

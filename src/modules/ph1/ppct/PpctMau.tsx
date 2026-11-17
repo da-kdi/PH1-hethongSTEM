@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type Re
 import { supabase } from '../../../lib/supabase'
 import { SCHOOL_YEAR, errMsg, norm, useRpcBool } from '../ui'
 import { OPEN_LESSON_KEY, catName, catOf, effectiveCatalog, gradesOfLevel, levelOfGrade, useCatalog, useOrgs, type CatItem, type Curriculum } from '../curriculum/api'
-import { Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
+import { DataTable } from '../mau/DataTable'
+import { LevelTree, type TreeLevel, Back, HNote, Confirm, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatCard, StatusPill, cssVar } from '../mau/kit'
 
 // 1.1.3 Phân phối chương trình — dựng theo bản mẫu giao diện (ph1-chuong-trinh-mau.html):
 //   Bước 1 · Năm học & lịch nghỉ: dùng chung cho mọi bản phân phối (ngày bắt đầu, số tuần HK I/II, lịch nghỉ toàn tỉnh + riêng từng trường, khoá tuần).
@@ -22,7 +23,7 @@ type Hol = { id: string; org_id: string; name: string; short_name: string | null
 type Org = { id: string; name: string; type: string; parent_id: string | null }
 type Wk = { cw: number; mon: Date; locked: boolean; manual: boolean; off: number; hol: string; hs: string; t: number | null; hk: 1 | 2 }
 type Cal = { ws: Wk[]; WEEKS: number; HK1: number }
-type QRow = { l: L; week: number; wEnd: number; pin: number | null }
+type QRow = { l: L; week: number; wEnd: number; pin: number | null; wk: { w: number; n: number }[] }
 type Sch = { it: Item; p: Curriculum | null; rows: QRow[]; start: number; end: number; periods: number; clash: number }
 
 // ===== Lịch năm học =====
@@ -60,8 +61,10 @@ function schedule(items: Item[], lessonsOf: (it: Item) => L[], progOf: (id: stri
     let pos = 0, clash = 0, cum = 0
     const rows = ordered(lessonsOf(it), it).map(l => { const pin = it.pins?.[l.id]
       if (pin) { const np = Math.ceil(Math.max(0, pin - start) * ppw); if (np < pos) clash++; else pos = np }
-      const w = start + Math.floor(pos / ppw); pos += l.periods; cum += l.periods
-      return { l, week: w, wEnd: Math.max(w, start + Math.ceil(pos / ppw) - 1), pin: pin ?? null } })
+      const p0 = pos, w = start + Math.floor(pos / ppw); pos += l.periods; cum += l.periods
+      // tiết thứ j của bài rơi vào tuần start + ⌊(p0 + j) / nhịp⌋ — dùng cho Bảng PPCT
+      const wk: { w: number; n: number }[] = []; for (let j = 0; j < l.periods; j++) { const ww = start + Math.floor((p0 + j) / ppw); const o = wk[wk.length - 1]; if (o && o.w === ww) o.n++; else wk.push({ w: ww, n: 1 }) }
+      return { l, week: w, wEnd: Math.max(w, start + Math.ceil(pos / ppw) - 1), pin: pin ?? null, wk } })
     const end = rows.length ? Math.max(...rows.map(r => r.wEnd)) : start - 1; prevEnd = end
     out.push({ it, p: progOf(it.curriculum_id), rows, start, end, periods: cum, clash })
   }
@@ -99,6 +102,47 @@ function useTip() {
   const bind = (body: ReactNode) => ({ onMouseEnter: (e: { currentTarget: HTMLElement }) => show(e, body), onFocus: (e: { currentTarget: HTMLElement }) => show(e, body), onMouseLeave: () => setTip(null), onBlur: () => setTip(null) })
   const node = tip ? <div ref={ref} className="ctip" style={{ visibility: 'hidden', left: 0, top: 0 }}>{tip.body}</div> : null
   return { node, bind, hide: () => setTip(null) }
+}
+
+// ===== Bảng PPCT theo mẫu Bộ GD&ĐT (bản mẫu v315 · C2): mỗi dòng = một bài trong một tuần; Tiết PPCT đánh liên tục cả năm cho mọi môn =====
+type PE = { w: number; n: number; k: number; x: Sch; r: QRow; no: number; t0: number; t1: number; l0: number; l1: number }
+function ppctRows(sch: Sch[]): PE[] {
+  const out: PE[] = []
+  sch.forEach((x, k) => x.rows.forEach((r, i) => r.wk.forEach(y => out.push({ w: y.w, n: y.n, k, x, r, no: i + 1, t0: 0, t1: 0, l0: 0, l1: 0 }))))
+  out.sort((a, b) => a.w - b.w || a.k - b.k)
+  let c = 0; const seen = new Map<string, number>()
+  out.forEach(e => { e.t0 = c + 1; c += e.n; e.t1 = c; const key = e.k + '|' + e.r.l.id; const p = seen.get(key) ?? 0; e.l0 = p + 1; e.l1 = p + e.n; seen.set(key, e.l1) })
+  return out
+}
+const weekRange = (cal: Cal, t: number) => { const w = cal.ws.find(x => x.t === t); if (!w) return ''; const f = new Date(w.mon); f.setDate(f.getDate() + 4); return `${ddmm(w.mon)} – ${fullD(f)}` }
+const matNote = (m: Mat) => m.s === 'ok' ? '' : m.s === 'draft' ? 'Học liệu đang soạn' : 'Chưa có học liệu'
+// Xuất file PPCT: mỗi tiết một dòng (nhập VnEdu / SMAS)
+function ppctExport(d: Doc, sch: Sch[], cal: Cal, sn: (s: string) => string) {
+  const rows: (string | number)[][] = [['Tuần', 'Thời gian', 'Tiết PPCT', 'Học kỳ', 'Tên bài học / Chủ đề', 'Chương trình', 'Môn học', 'Ghi chú']]
+  const seen = new Map<string, number>()
+  ppctRows(sch).forEach(e => { for (let i = 0; i < e.n; i++) { const key = e.k + '|' + e.r.l.id; const tk = (seen.get(key) ?? 0) + 1; seen.set(key, tk)
+    rows.push([e.w, weekRange(cal, e.w), e.t0 + i, e.w <= cal.HK1 ? 1 : 2, `Bài ${e.no}: ${e.r.l.title}${e.r.l.periods > 1 ? ` (Tiết ${tk})` : ''}`, e.x.p ? `${e.x.p.code ?? ''} · ${e.x.p.name}` : '', sn(e.x.it.subject), matNote(e.r.l.mat)]) } })
+  const q = (v: string | number) => { const s = String(v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+  const csv = '﻿' + rows.map(r => r.map(q).join(',')).join('\r\n')
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  a.download = `PPCT-khoi-${d.grade}-${d.school_year}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  return rows.length - 1
+}
+function PpctTable({ sch, cal, sn, openMat }: { sch: Sch[]; cal: Cal; sn: (s: string) => string; openMat: (l: L) => void }) {
+  const rows = ppctRows(sch)
+  if (!rows.length) return <Empty>Chưa có bài nào được xếp lịch.</Empty>
+  const band = (h: 1 | 2) => { const rs = rows.filter(e => (e.w <= cal.HK1 ? 1 : 2) === h); if (!rs.length) return null
+    const ws = [...new Set(rs.map(e => e.w))]
+    return <Fragment key={h}><tr className="band"><td colSpan={8}><b>Học kỳ {h === 1 ? 'I' : 'II'}</b> <small className="sub">· {ws.length} tuần có tiết · {rs.reduce((a, e) => a + e.n, 0)} tiết</small></td></tr>
+      {rs.map((e, i) => { const first = i === 0 || rs[i - 1].w !== e.w; const span = rs.filter(x => x.w === e.w).length
+        return <tr key={e.k + '|' + e.r.l.id + '|' + e.w}>
+          {first && <td rowSpan={span} className="wk">{e.w}</td>}{first && <td rowSpan={span} className="wk nw">{weekRange(cal, e.w)}</td>}
+          <td>{e.t0 === e.t1 ? e.t0 : e.t0 + '–' + e.t1}</td>
+          <td><b>Bài {e.no}: {e.r.l.title}</b>{e.r.l.periods > 1 && <small className="sub"> (Tiết {e.l0 === e.l1 ? e.l0 : e.l0 + '–' + e.l1}/{e.r.l.periods})</small>}{e.r.pin ? <> <Ic n="pin" cls="i pinmini" /></> : null}</td>
+          <td title={e.x.p?.name}>{e.x.p?.code ?? '—'}</td><td>{sn(e.x.it.subject)}</td><td>{e.n}</td>
+          <td>{e.r.l.cl ? <button type="button" className="matbtn" title="Mở học liệu" onClick={() => openMat(e.r.l)}><MatPill m={e.r.l.mat} /></button> : <MatPill m={e.r.l.mat} />}</td></tr> })}</Fragment> }
+  return <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table className="dt ppcttbl"><thead><tr><th>Tuần</th><th>Thời gian</th><th>Tiết PPCT</th><th>Bài học</th><th>Chương trình</th><th>Môn học</th><th>Số tiết</th><th>Học liệu</th></tr></thead>
+    <tbody>{band(1)}{band(2)}</tbody></table></div></div>
 }
 
 // ===== Màn chính =====
@@ -223,6 +267,12 @@ export function PpctMau({ orgId, go }: { orgId: string | null; go?: (p: string) 
     setMsg(status === 'published' ? 'Đã phát hành bản phân phối.' : 'Đã lưu nháp.'); setWiz(null); await load(); setOpen(id)
   }
 
+  async function copyDoc(d: Doc, school?: string) {
+    if (!orgId) return null; const { id: _i, updated_at: _u, ...rest } = d
+    const title = school ? `Phân phối khối ${d.grade} – ${orgById(school)?.name ?? ''}` : (d.title ?? '') + ' (bản sao)'
+    const r = await supabase.from('ppct_docs').insert({ ...rest, org_id: orgId, items: itemsOf(d), title, status: 'draft', based_on_id: d.id, ...(school ? { target_org_id: school } : {}) }).select('id').single()
+    if (r.error) { setMsg(errMsg(r.error.message)); return null } return (r.data as { id: string }).id
+  }
   const body = (() => {
     if (wiz) return <Wizard w={wiz} setW={setWiz} cat={cat} schools={schools} progs={progs} les={les} lessonsOf={lessonsOf} progOf={progOf} sn={sn} cal={calFor(wiz.school)}
       yearLine={<YearLine year={year} n={holsFor(wiz.school).length} school={wiz.school ? orgById(wiz.school)?.name : ''} go={() => { setWiz(null); setTab('year') }} />}
@@ -243,7 +293,12 @@ export function PpctMau({ orgId, go }: { orgId: string | null; go?: (p: string) 
         saveYear={saveYear} holRun={holRun} toggleLock={toggleLock} tip={tip} />}</>
     return <DocList docs={docs} states={states} cat={cat} progs={progs} schools={schools} sn={sn} orgById={orgById} flow={flow} canManage={canManage}
       level={level} setLevel={setLevel} grade={grade} setGrade={setGrade} f={f} setF={setF} onOpen={setOpen}
-      onNew={() => setWiz({ school: '', level: level ?? '', grade, progs: [], items: [], max: 3 })} />
+      onNew={() => setWiz({ school: '', level: level ?? '', grade, progs: [], items: [], max: 3 })}
+      onBulkPublish={async ds => { const ids = ds.filter(d => d.status !== 'published' && !states.get(d.id)?.c.err.length).map(d => d.id)
+        if (ids.length) { const { error } = await supabase.from('ppct_docs').update({ status: 'published' }).in('id', ids); if (error) return errMsg(error.message) }
+        await load(); return `Đã phát hành ${ids.length} bản${ds.length - ids.length ? ` · bỏ qua ${ds.length - ids.length} bản (đã phát hành hoặc còn lỗi)` : ''}` }}
+      onBulkDelete={async ds => { const { error } = await supabase.from('ppct_docs').delete().in('id', ds.map(d => d.id)); if (error) setMsg(errMsg(error.message)); await load() }}
+      onAssign={async (ds, school) => { let n = 0; for (const d of ds) if (await copyDoc(d, school)) n++; setMsg(`Đã gán ${n} bản phân phối cho ${orgById(school)?.name ?? 'trường'} (bản nháp riêng của trường).`); await load() }} />
   })()
   return <Mau>{msg && <p className="msg" role="status" onClick={() => setMsg('')}>{msg}</p>}{body}{tip.node}</Mau>
 }
@@ -256,9 +311,10 @@ function YearLine({ year, n, school, go }: { year: Year | null; n: number; schoo
 
 // ===== Danh sách: Cấp học › Khối → bản phân phối =====
 type St = { cal: Cal; items: Item[]; sch: Sch[]; c: { err: string[]; warn: string[] } }
-function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canManage, level, setLevel, grade, setGrade, f, setF, onOpen, onNew }: {
+function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canManage, level, setLevel, grade, setGrade, f, setF, onOpen, onNew, onBulkPublish, onBulkDelete, onAssign }: {
   docs: Doc[]; states: Map<string, St>; cat: CatItem[]; progs: Curriculum[]; schools: Org[]; sn: (s: string) => string; orgById: (id: string | null) => Org | undefined; flow: ReactNode; canManage: boolean
   level: string | null; setLevel: (v: string | null) => void; grade: number | null; setGrade: (v: number | null) => void; f: typeof EMPTY_F; setF: (v: typeof EMPTY_F) => void; onOpen: (id: string) => void; onNew: () => void
+  onBulkPublish: (ds: Doc[]) => Promise<string>; onBulkDelete: (ds: Doc[]) => Promise<void>; onAssign: (ds: Doc[], school: string) => Promise<void>
 }) {
   const levels = catOf(cat, 'level').filter(l => gradesOfLevel(cat, l.code).length)
   const lv = levels.find(l => l.code === level)
@@ -272,43 +328,48 @@ function DocList({ docs, states, cat, progs, schools, sn, orgById, flow, canMana
     && (!level || gradesOfLevel(cat, level).includes(d.grade)) && (grade == null || d.grade === grade)
   const head = <PageHead icon="calendar" title="Phân phối chương trình" sub="Chọn khối, lấy chương trình và môn phù hợp, xếp lịch theo Học kỳ › Tuần">
     {canManage && <button type="button" className="btn primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</PageHead>
-  const stats = <div className="stats">
-    <StatCard c="c-blue" icon="calendar" label="Bản phân phối" value={docs.length} sub={`năm học ${SCHOOL_YEAR}`} />
-    <StatCard c="c-green" icon="send" label="Đã phát hành" value={docs.filter(d => d.status === 'published').length} sub="trường đang áp dụng" />
-    <StatCard c="c-violet" icon="list" label="Môn được xếp" value={docs.reduce((a, d) => a + subsOf(d).length, 0)} sub="trên mọi bản phân phối" />
-    <StatCard c="c-amber" icon="alert" label="Cần rà soát" value={docs.filter(d => st(d)?.c.warn.length).length} sub="bản có cảnh báo" /></div>
   const years = Array.from(new Set([SCHOOL_YEAR, ...docs.map(d => d.school_year)])).sort()
   const subjOpts = Array.from(new Set(docs.flatMap(d => subsOf(d).map(i => i.subject)).filter(Boolean))).map(s => [s, sn(s)] as [string, string])
   const tb = <div className="toolbar"><Search value={f.q} onChange={q => setF({ ...f, q })} placeholder="Tìm bản phân phối…" />
     <Sel label="Tất cả trường" value={f.school} onChange={v => setF({ ...f, school: v })} options={[['_all', 'Tất cả các trường (bản chung)'], ...schools.map(s => [s.id, s.name] as [string, string])]} />
     <Sel label="Mọi năm học" value={f.year} onChange={v => setF({ ...f, year: v })} options={years.map(y => [y, y])} />
-    <Sel label="Tất cả cấp học" value={level ?? ''} onChange={v => { setLevel(v || null); if (grade != null && v && levelOfGrade(cat, grade) !== v) setGrade(null) }} options={levels.map(l => [l.code, l.name])} />
-    <Sel label="Tất cả khối" value={grade == null ? '' : String(grade)} onChange={v => { const g = v ? Number(v) : null; setGrade(g); if (g != null) setLevel(levelOfGrade(cat, g)) }}
-      options={(lv ? gradesOfLevel(cat, lv.code) : levels.flatMap(l => gradesOfLevel(cat, l.code))).map(g => [String(g), 'Khối ' + g])} />
     <Sel label="Tất cả chương trình" value={f.prog} onChange={v => setF({ ...f, prog: v })} options={progs.map(p => [p.id, `${p.code ?? ''} · ${p.name}`])} />
     <Sel label="Tất cả môn học" value={f.subj} onChange={v => setF({ ...f, subj: v })} options={subjOpts} />
     <Sel label="Mọi trạng thái" value={f.status} onChange={v => setF({ ...f, status: v })} options={[['draft', 'Nháp'], ['published', 'Đã phát hành'], ['archived', 'Ngừng dùng']]} />
     <Sel label="Mọi kết quả kiểm tra" value={f.chk} onChange={v => setF({ ...f, chk: v })} options={[['err', 'Có lỗi'], ['warn', 'Có cảnh báo'], ['ok', 'Hợp lệ']]} />
-    {(filtered || level) && <button type="button" className="btn sm ghost" onClick={() => { setF(EMPTY_F); setLevel(null); setGrade(null) }}>Xoá lọc</button>}</div>
-  const crumbs = <div className="crumbs"><button type="button" onClick={() => { setLevel(null); setGrade(null) }}>Tất cả cấp học</button>
-    {lv && <><span>›</span><button type="button" onClick={() => setGrade(null)}>{lv.name}</button></>}{grade != null && <><span>›</span><b>Khối {grade}</b></>}</div>
-  const docRow = (d: Doc) => { const c = st(d)?.c ?? { err: [], warn: [] }
-    return <tr key={d.id} onClick={() => onOpen(d.id)} style={{ cursor: 'pointer' }}>
-      <td><b>{d.title}</b><br /><small style={{ color: 'var(--muted)' }}>Khối {d.grade} · {d.school_year}</small></td>
-      <td>{d.target_org_id ? orgById(d.target_org_id)?.name : 'Tất cả các trường'}</td>
-      <td>{subsOf(d).map((i, k) => <Fragment key={k}>{k > 0 && <br />}{progs.find(p => p.id === i.curriculum_id)?.code ?? '—'} · {sn(i.subject)}</Fragment>)}</td>
-      <td>{c.err.length > 0 && <span className="pill" style={{ background: 'var(--bad-bg)', color: 'var(--bad)' }}>{c.err.length} lỗi</span>} {c.warn.length ? <span className="pill warn">{c.warn.length} cảnh báo</span> : !c.err.length ? <span className="pill good">Hợp lệ</span> : null}</td>
-      <td><StatusPill s={d.status} /></td></tr> }
-  const table = (ds: Doc[]) => <div className="panel" style={{ padding: 0 }}><div className="tblwrap"><table><thead><tr><th>Bản phân phối</th><th>Áp dụng</th><th>Chương trình · môn</th><th>Kiểm tra</th><th>Trạng thái</th></tr></thead><tbody>{ds.map(docRow)}</tbody></table></div></div>
-  if (filtered) { const ds = docs.filter(match); return <>{head}{flow}{stats}{tb}{ds.length ? table(ds) : <Empty>Không có bản phân phối phù hợp bộ lọc.</Empty>}</> }
-  if (grade != null) { const ds = docs.filter(d => d.grade === grade)
-    return <>{head}{flow}{stats}{tb}{crumbs}{ds.length ? table(ds) : <Empty>Khối {grade} chưa có bản phân phối. {canManage && <button type="button" className="btn sm primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</Empty>}</> }
-  return <>{head}{flow}{stats}{tb}{crumbs}
-    {(lv ? [lv] : levels).map(l => { const gs = gradesOfLevel(cat, l.code)
-      return <Fragment key={l.code}><div className="group">{l.name} <small>{docs.filter(d => gs.includes(d.grade)).length} bản</small></div>
-        <div className="grid g6">{gs.map(g => { const ds = docs.filter(d => d.grade === g); const ps = progs.filter(p => p.status === 'published' && p.grades.includes(g))
-          return <button type="button" key={g} className={'pcard gcard' + (ds.length ? '' : ' dim')} style={cssVar(ds.length ? 'var(--primary)' : 'var(--faint)')} onClick={() => { setGrade(g); setLevel(l.code) }}>
-            <span className="gno">{g}</span><div><b>Khối {g}</b><small>{ds.length ? ds.length + ' bản phân phối' : 'chưa phân phối'} · {ps.length} chương trình</small></div></button> })}</div></Fragment> })}</>
+    {(filtered || level || grade != null) && <button type="button" className="btn sm ghost" onClick={() => { setF(EMPTY_F); setLevel(null); setGrade(null) }}>Xoá lọc</button>}</div>
+  // Cây Cấp học › Khối bên trái (bản mẫu v315 · TREECFG.pp)
+  const treeLv: TreeLevel[] = levels.map(l => { const gs = gradesOfLevel(cat, l.code)
+    return { code: l.code, name: l.name, n: docs.filter(d => gs.includes(d.grade)).length, grades: gs.map(g => ({ g, label: 'Khối ' + g, n: docs.filter(d => d.grade === g).length })) } })
+  const progsOf = (d: Doc) => [...new Set(subsOf(d).map(i => i.curriculum_id).filter(Boolean) as string[])].map(id => progs.find(p => p.id === id)).filter(Boolean) as Curriculum[]
+  const ds = docs.filter(match)
+  const [assign, setAssign] = useState<Doc[] | null>(null)
+  const [to, setTo] = useState('')
+  return <>{head}{flow}
+    <LevelTree id="pp" levels={treeLv} total={docs.length} level={level ?? ''} grade={grade == null ? '' : String(grade)} unit="bản phân phối"
+      onPick={(l, g) => { setLevel(l || null); setGrade(g ? Number(g) : null) }}>
+      {tb}
+      {assign && <div className="confirm"><Ic n="pinmap" /><span>Gán {assign.length} bản phân phối cho trường (tạo bản riêng của trường, giữ bản gốc):</span>
+        <select value={to} onChange={e => setTo(e.target.value)} aria-label="Trường"><option value="">Chọn trường…</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button type="button" className="btn sm primary" disabled={!to} onClick={async () => { await onAssign(assign, to); setAssign(null); setTo('') }}>Gán</button>
+          <button type="button" className="btn sm ghost" onClick={() => setAssign(null)}>Huỷ</button></span></div>}
+      <DataTable id="pp" rows={ds} rowKey={d => d.id} noun="bản phân phối" onOpen={d => onOpen(d.id)} groupBy={d => ['k' + String(d.grade).padStart(2, '0'), 'Khối ' + d.grade]}
+        filters={f} onFilters={v => setF({ ...EMPTY_F, ...v })}
+        bulk={canManage ? [{ label: 'Phát hành', run: onBulkPublish }, { label: 'Gán cho trường', run: rs => { setAssign(rs) } }] : []}
+        onDelete={canManage ? onBulkDelete : undefined}
+        empty={<Empty>{grade != null ? `Khối ${grade} chưa có bản phân phối.` : filtered ? 'Không có bản phân phối phù hợp bộ lọc.' : 'Chưa có bản phân phối.'} {canManage && <button type="button" className="btn sm primary" onClick={onNew}><Ic n="plus" /> Thiết lập phân phối</button>}</Empty>}
+        cols={[
+          { key: 'title', label: 'Bản phân phối', name: true, sort: d => d.title ?? '', cell: d => <><b>{d.title}</b><small>Khối {d.grade} · {d.school_year}</small></> },
+          { key: 'school', label: 'Áp dụng', sort: d => d.target_org_id ? orgById(d.target_org_id)?.name ?? '' : 'Tất cả các trường', cell: d => d.target_org_id ? orgById(d.target_org_id)?.name : 'Tất cả các trường' },
+          { key: 'prog', label: 'Chương trình', sort: d => progsOf(d).map(p => p.code).join(', '), cell: d => progsOf(d).map(p => p.code ?? p.name).join(', ') || '—' },
+          { key: 'subj', label: 'Môn học', sort: d => subsOf(d).map(i => sn(i.subject)).join(', '), cell: d => [...new Set(subsOf(d).map(i => sn(i.subject)))].join(', ') || '—' },
+          { key: 'periods', label: 'Số tiết', sum: 'sum', sort: d => st(d)?.sch.reduce((a, x) => a + x.periods, 0) ?? 0, cell: d => st(d)?.sch.reduce((a, x) => a + x.periods, 0) ?? 0 },
+          { key: 'chk', label: 'Kiểm tra', sum: 'status', sort: d => chkOf(d), cell: d => { const c = st(d)?.c ?? { err: [], warn: [] }
+            return c.err.length ? <span className="pill bad">{c.err.length} lỗi</span> : c.warn.length ? <span className="pill warn">{c.warn.length} cảnh báo</span> : <span className="pill good">Hợp lệ</span> } },
+          { key: 'date', label: 'Cập nhật', date: true, sort: d => new Date(d.updated_at).toLocaleDateString('vi-VN'), cell: d => new Date(d.updated_at).toLocaleDateString('vi-VN') },
+          { key: 'status', label: 'Trạng thái', sum: 'status', sort: d => d.status, cell: d => <StatusPill s={d.status} /> },
+        ]} />
+    </LevelTree></>
 }
 
 // ===== Lịch theo học kỳ: Tháng · Tuần · Ngày · Nghỉ lễ; mỗi môn một hàng, mỗi bài một khối (kéo thả khi soạn) =====
@@ -321,7 +382,8 @@ const dropProps = (ok: () => boolean, onDrop: () => void) => ({
 const dragProps = (start: () => void, hide: () => void) => ({ draggable: true,
   onDragStart: (e: DragEvent<HTMLElement>) => { start(); hide(); e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'x') } catch { /* bỏ qua */ } },
   onDragEnd: (e: DragEvent<HTMLElement>) => { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.dropover').forEach(x => x.classList.remove('dropover')) } })
-function WeekStrip({ sch, cal, sn, dnd, lockable, onLock, tip, yearBtn }: { sch: Sch[]; cal: Cal; sn: (s: string) => string; dnd?: Dnd; lockable?: boolean; onLock?: (mon: string) => void; tip: ReturnType<typeof useTip>; yearBtn?: () => void }) {
+type Hi = { k: number; id: string; w0: number; w1: number } | null
+function WeekStrip({ sch, cal, sn, dnd, lockable, onLock, tip, yearBtn, hi, onHi }: { sch: Sch[]; cal: Cal; sn: (s: string) => string; dnd?: Dnd; lockable?: boolean; onLock?: (mon: string) => void; tip: ReturnType<typeof useTip>; yearBtn?: () => void; hi?: Hi; onHi?: (h: Hi) => void }) {
   const editable = !!dnd
   const lessonTip = (r: Sch, q: QRow, i: number) => { const dt = lessonDates(cal, q.week, q.wEnd); const m = q.l.mat
     return <><b>Bài {i + 1}: {q.l.title}</b><span>{sn(r.it.subject)} · {r.p?.code ?? ''}</span>
@@ -342,7 +404,7 @@ function WeekStrip({ sch, cal, sn, dnd, lockable, onLock, tip, yearBtn }: { sch:
       r.rows.forEach(q => segs(q.week, q.wEnd).forEach((sg, si) => { let k = ends.findIndex(e => e < sg.c); if (k < 0) { k = ends.length; ends.push(0) } ends[k] = sg.c + sg.n - 1; lane.set(q.l.id + '|' + si, k) }))
       return { lane, n: Math.max(1, ends.length) } }
     const holW = ws.filter(x => x.hol || x.manual)
-    return <div className="hkblock" key={hk}><div className="hktitle"><b>Học kỳ {hk === 1 ? 'I' : 'II'}</b><small>{fullD(first)} – {fullD(last)} · {ws.filter(x => !x.locked).length} tuần học{ws.some(x => x.locked) ? ' · ' + ws.filter(x => x.locked).length + ' tuần nghỉ' : ''}</small></div>
+    return <div className="hkblock" key={hk} data-hkb={hk}><div className="hktitle"><b>Học kỳ {hk === 1 ? 'I' : 'II'}</b><small>{fullD(first)} – {fullD(last)} · {ws.filter(x => !x.locked).length} tuần học{ws.some(x => x.locked) ? ' · ' + ws.filter(x => x.locked).length + ' tuần nghỉ' : ''}</small></div>
       <div className="tblwrap"><div className="cal">
         <div className="crow chead" style={gcols}><span className="clab">Tháng</span>{months.map(m => <div key={m.k} className="cmonth" style={{ gridColumn: `${m.c}/span ${m.n}` }}>Tháng {m.d.getMonth() + 1}/{m.d.getFullYear()}</div>)}</div>
         <div className="crow chead" style={gcols}><span className="clab">Tuần học</span>{ws.map(x => <button type="button" key={x.cw} className={'cweek' + (x.locked ? ' lk' : '')} style={{ gridColumn: col.get(x.cw) }} disabled={!lockable}
@@ -353,12 +415,13 @@ function WeekStrip({ sch, cal, sn, dnd, lockable, onLock, tip, yearBtn }: { sch:
         {sch.map((r, k) => { const L = lanesOf(r)
           return <div key={k} className="crow cbody" style={{ ...gcols, gridTemplateRows: `repeat(${L.n},30px)` }}>
             <span className="clab" {...(dnd ? { ...dragProps(() => dnd.row(k), tip.hide), title: 'Kéo để dời cả môn sang tuần khác' } : {})}>{dnd && GRIP}<b>{sn(r.it.subject)}</b><small>{r.p?.code}</small></span>
-            {ws.map(x => <div key={x.cw} className={'ccell' + (x.locked ? ' lk' : '') + (x.off && !x.locked ? ' hol' : '')} style={{ gridColumn: col.get(x.cw), gridRow: `1/span ${L.n}` }}
+            {ws.map(x => <div key={x.cw} className={'ccell' + (x.locked ? ' lk' : '') + (x.off && !x.locked ? ' hol' : '') + (hi && hi.k === k && x.t != null && x.t >= hi.w0 && x.t <= hi.w1 ? ' lnkhl' : '')} style={{ gridColumn: col.get(x.cw), gridRow: `1/span ${L.n}` }}
               {...(dnd && !x.locked && x.t != null ? dropProps(() => dnd.ok(k), () => dnd.dropWeek(k, x.t!)) : {})} />)}
             {r.rows.flatMap((q, i) => segs(q.week, q.wEnd).map((sg, si) => <div key={q.l.id + si}
               className={`clesson c${k % 4}${q.pin ? ' pinned' : ''}${sg.parts > 1 ? ' ' + (sg.part ? 'cont' : 'brk') + (sg.part && sg.part < sg.parts - 1 ? ' brk' : '') : ''}`}
               style={{ gridColumn: `${sg.c}/span ${sg.n}`, gridRow: (L.lane.get(q.l.id + '|' + si) ?? 0) + 1 }} tabIndex={0} aria-label={`Bài ${i + 1}: ${q.l.title}, ${q.l.periods} tiết`}
-              {...tip.bind(lessonTip(r, q, i))}
+              {...(() => { const b = tip.bind(lessonTip(r, q, i)); return { ...b, onMouseEnter: (e: { currentTarget: HTMLElement }) => { b.onMouseEnter(e); onHi?.({ k, id: q.l.id, w0: q.week, w1: q.wEnd }) }, onMouseLeave: () => { b.onMouseLeave(); onHi?.(null) } } })()}
+              data-hl={hi?.id === q.l.id ? '1' : undefined}
               {...(dnd ? { ...dragProps(() => dnd.lesson(k, q.l.id), tip.hide), ...dropProps(() => dnd.ok(k, q.l.id), () => dnd.dropLesson(k, q.l.id)), onDoubleClick: () => q.pin && dnd.unpin(k, q.l.id) } : {})}>
               <span>{sg.part ? '↳ ' : ''}{sg.n > 1 ? `${i + 1}. ${q.l.title}${sg.part ? ' (tiếp)' : ''}` : i + 1}</span>{q.pin ? <Ic n="pin" cls="i pin" /> : null}</div>))}
           </div> })}
@@ -414,6 +477,12 @@ function Wizard({ w, setW, cat, schools, progs, les, lessonsOf, progOf, sn, cal,
   const subjOf = (pid: string) => Array.from(les.keys()).filter(k => k.startsWith(pid + '|')).map(k => k.slice(pid.length + 1))
   const ok = w.grade != null ? progs.filter(p => p.status === 'published' && p.grades.includes(w.grade!) && subjOf(p.id).length) : []
   const sch = schedule(w.items, lessonsOf, progOf, cal.HK1); const c = checks(w.max, w.items, sch, cal, sn)
+  // Xếp lịch chia đôi (bản mẫu v315 · ppSplit): Cả năm | HK I | HK II, Xem gọn, Toàn màn hình, kéo vách giữa, rê bài ↔ tô sáng tuần
+  const [hk, setHk] = useState<'all' | '1' | '2'>('all')
+  const [compact, setCompact] = useState(false)
+  const [ppl, setPpl] = useState(340)
+  const [hi, setHi] = useState<Hi>(null)
+  const splitRef = useRef<HTMLDivElement>(null)
   const set = (p: Partial<Wiz>) => setW({ ...w, ...p })
   const setItems = (items: Item[]) => set({ items })
   const sum = (ls: L[]) => ls.reduce((a, l) => a + l.periods, 0)
@@ -452,37 +521,52 @@ function Wizard({ w, setW, cat, schools, progs, les, lessonsOf, progOf, sn, cal,
     <Panel icon="calendar" title={w.id ? 'Xếp lại lịch phân phối' : 'Thiết lập phân phối chương trình'} act={<span style={{ color: 'var(--muted)', fontSize: 12.5 }}>Chọn đúng khối, hệ thống gợi ý chương trình và môn phù hợp</span>}>
       <div className="wsteps">
         {step(0, 'Trường', <select value={w.school} onChange={e => set({ school: e.target.value })} aria-label="Trường"><option value="">Tất cả các trường</option>{schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>, false, true)}
-        {step(1, 'Cấp học', <div className="seg">{levels.map(l => <button type="button" key={l.code} className={w.level === l.code ? 'on' : ''} onClick={() => set({ level: l.code, grade: null, progs: [], items: [] })}>{l.name}</button>)}</div>)}
-        {step(2, 'Khối', <div className="gchips">{grades.map(g => <button type="button" key={g} className="gchip" aria-pressed={w.grade === g} onClick={() => set({ grade: g, progs: [], items: [] })}>Khối {g}</button>)}</div>, !w.level)}
-        {step(3, 'Chọn chương trình phù hợp', ok.length ? <div className="picks">{ok.map(p => { const ls = subjOf(p.id).flatMap(s => les.get(p.id + '|' + s) ?? []); const on = w.progs.includes(p.id)
+        {step(1, 'Cấp học › Khối', <div className="wlvg">{levels.map(l => <div key={l.code} className="wlvrow"><span className="wlvn">{l.name}</span>
+          <div className="gchips">{gradesOfLevel(cat, l.code).map(g => <button type="button" key={g} className="gchip" aria-pressed={w.grade === g} onClick={() => set({ level: l.code, grade: g, progs: [], items: [] })}>Khối {g}</button>)}</div></div>)}</div>)}
+        {step(2, 'Chọn chương trình phù hợp', ok.length ? <div className="picks">{ok.map(p => { const ls = subjOf(p.id).flatMap(s => les.get(p.id + '|' + s) ?? []); const on = w.progs.includes(p.id)
           return <label key={p.id} className={'pick' + (on ? ' on' : '')} style={cssVar(p.color)}><input type="checkbox" checked={on} onChange={e => toggleProg(p.id, e.target.checked)} /><span className="code sm">{p.code}</span>
             <span><b>{p.name}</b><small>{subjOf(p.id).length} môn · {ls.length} bài · {sum(ls)} tiết</small></span></label> })}</div>
           : <Empty>Chưa có chương trình đã phát hành áp dụng cho khối {w.grade}.</Empty>, w.grade == null)}
-        {step(4, 'Chọn môn', <div className="picks">{w.progs.flatMap(pid => { const p = progOf(pid); return subjOf(pid).map(s => { const on = w.items.some(i => i.curriculum_id === pid && i.subject === s); const ls = les.get(pid + '|' + s) ?? []
+        {step(3, 'Chọn môn', <div className="picks">{w.progs.flatMap(pid => { const p = progOf(pid); return subjOf(pid).map(s => { const on = w.items.some(i => i.curriculum_id === pid && i.subject === s); const ls = les.get(pid + '|' + s) ?? []
           return <label key={pid + s} className={'pick' + (on ? ' on' : '')} style={cssVar(p?.color)}><input type="checkbox" checked={on}
             onChange={e => setItems(e.target.checked ? [...w.items, { curriculum_id: pid, subject: s, start: w.items.length ? 'after' : 'hk1', ppw: 1 }] : w.items.filter(i => !(i.curriculum_id === pid && i.subject === s)))} />
             <span className="code sm">{p?.code}</span><span><b>{sn(s)}</b><small>{ls.length} bài · {sum(ls)} tiết</small></span></label> }) })}</div>, !w.progs.length)}
-        {step(5, 'Xếp lịch: Học kỳ › Tuần', <>{yearLine}
-          <div className="tblwrap"><table className="dragtbl"><thead><tr><th></th><th>#</th><th>Môn</th><th>Bắt đầu</th><th>Nhịp (tiết/tuần)</th><th>Kết quả</th></tr></thead><tbody>
-            {sch.map((x, k) => <tr key={(x.it.curriculum_id ?? '') + x.it.subject + k} draggable onDragStart={e => { rowFrom = k; e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(k)) } catch { /* bỏ qua */ } }}
-              onDragEnd={e => { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.dropover').forEach(z => z.classList.remove('dropover')) }}
-              onDragOver={e => { if (rowFrom != null) { e.preventDefault(); e.currentTarget.classList.add('dropover') } }} onDragLeave={e => e.currentTarget.classList.remove('dropover')}
-              onDrop={e => { e.preventDefault(); if (rowFrom != null) moveItem(rowFrom, k); rowFrom = null }}>
-              <td className="grip"><button type="button" className="griph" data-grip={k} aria-label="Kéo để đổi thứ tự (hoặc Alt + mũi tên lên/xuống)" title="Kéo thả để đổi thứ tự"
-                onKeyDown={e => { if (!e.altKey) return; if (e.key === 'ArrowUp') { e.preventDefault(); moveItem(k, k - 1) } if (e.key === 'ArrowDown') { e.preventDefault(); moveItem(k, k + 1) } }}>{GRIP}</button></td>
-              <td className="n">{k + 1}</td><td><b>{sn(x.it.subject)}</b> <small style={{ color: 'var(--muted)' }}>{x.p?.code}</small></td><td>{startSel(x.it, k)}</td>
-              <td><input type="number" min={0.5} step={0.5} value={x.it.ppw} aria-label="Nhịp" style={{ width: 80 }} onChange={e => patch(k, { ppw: Math.max(0.5, Number(e.target.value) || 1) })} /></td>
-              <td>Tuần {x.start}–{x.end} <small style={{ color: 'var(--muted)' }}>({dateOfWeek(cal, x.start)} → {dateOfWeek(cal, Math.min(x.end, cal.WEEKS))})</small> · {x.periods} tiết{x.end > cal.WEEKS && <> <span className="pill" style={{ background: 'var(--bad-bg)', color: 'var(--bad)' }}>ngoài năm học</span></>}</td></tr>)}</tbody></table></div>
-          <label className="fld" style={{ maxWidth: 260 }}><span>Tối đa tiết STEM/tuần</span><input type="number" min={1} value={w.max} onChange={e => set({ max: Number(e.target.value) || 1 })} /></label>
-          <div className="lesorder"><div className="loh"><b>Thứ tự bài học</b><small>Kéo thả tay nắm để đổi thứ tự (hoặc Alt + ↑/↓). Bài ghim tuần có biểu tượng ghim — bấm ✕ để bỏ ghim.</small></div>
-            <div className="logrid">{sch.map((x, k) => <div key={k} className={'lobox c' + (k % 4)}><div className="lotitle"><i /><b>{sn(x.it.subject)}</b><small>{x.p?.code} · {x.rows.length} bài</small></div><ol>
-              {x.rows.map((q, i) => <li key={q.l.id} {...dragProps(() => dnd.lesson(k, q.l.id), tip.hide)} {...dropProps(() => dnd.ok(k, q.l.id), () => dnd.dropLesson(k, q.l.id))}>
-                <button type="button" className="griph" data-ligrip={`${k}|${q.l.id}`} aria-label="Kéo để đổi thứ tự bài (Alt + mũi tên)"
-                  onKeyDown={e => { if (!e.altKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return; e.preventDefault(); const ids = ordIds(k); const j = e.key === 'ArrowUp' ? i - 1 : i + 1; if (j < 0 || j >= ids.length) return
-                    ids.splice(i, 1); ids.splice(j, 0, q.l.id); patch(k, { order: ids }); setTimeout(() => (document.querySelector(`[data-ligrip="${k}|${q.l.id}"]`) as HTMLElement | null)?.focus()) }}>{GRIP}</button>
-                <span className="lono">{i + 1}</span><span className="lot">{q.l.title}</span><span className="low">T{q.week}{q.wEnd > q.week ? '–' + q.wEnd : ''}<small>{dateOfWeek(cal, q.week)}</small></span>
-                {q.pin && <button type="button" className="pinx" title={`Bỏ ghim tuần ${q.pin}`} onClick={() => unpin(k, q.l.id)}><Ic n="pin" cls="i pin" />✕</button>}</li>)}</ol></div>)}</div></div>
-          <WeekStrip sch={sch} cal={cal} sn={sn} dnd={dnd} tip={tip} /><CheckBox c={c} /></>, !w.items.length)}
+        {step(4, 'Xếp lịch: Học kỳ › Tuần', <>{yearLine}
+          <div className="ppopts"><Seg label="Xem học kỳ" items={[['all', 'Cả năm'], ['1', 'HK I'], ['2', 'HK II']]} value={hk} onChange={setHk} />
+            <button type="button" className={'btn sm' + (compact ? ' on' : '')} aria-pressed={compact} onClick={() => setCompact(!compact)}>Xem gọn</button>
+            <button type="button" className="btn sm" onClick={() => splitRef.current?.requestFullscreen?.().catch(() => setMsg('Trình duyệt không cho mở toàn màn hình'))} data-tip="Esc để thoát"><Ic n="external" /> Toàn màn hình</button>
+            <label className="loppw">Tối đa <input type="number" min={1} value={w.max} aria-label="Tối đa tiết STEM/tuần" onChange={e => set({ max: Number(e.target.value) || 1 })} /> tiết STEM/tuần</label></div>
+          <div ref={splitRef} className={'ppsplit' + (compact ? ' compact' : '')} data-hk={hk} style={{ ['--ppl' as string]: ppl + 'px' }}>
+            <div className="ppleft"><div className="loh"><b>Môn & thứ tự bài</b><small>Kéo ⠿ ở đầu môn để đổi thứ tự môn · kéo bài để đổi thứ tự, hoặc thả vào tuần bên phải để ghim</small></div>
+              <div className="logrid">{sch.map((x, k) => { const miss = x.rows.filter(r => r.l.mat.s !== 'ok').length
+                const warn = [x.end > cal.WEEKS ? `Kết thúc tuần ${x.end}, vượt ${cal.WEEKS} tuần của năm học` : '', x.it.start === 'hk1' && x.end > cal.HK1 ? `Bắt đầu HK I nhưng kéo sang tuần ${x.end} (HK II)` : '',
+                  x.clash ? `${x.clash} bài ghim sớm hơn bài trước nên giữ theo thứ tự` : '', miss ? `${miss} bài chưa có học liệu đã phát hành` : ''].filter(Boolean)
+                return <div key={(x.it.curriculum_id ?? '') + x.it.subject + k} className={'lobox c' + (k % 4)}>
+                  <div className={'lotitle losub' + (x.end > cal.WEEKS ? ' rowerr' : warn.length ? ' rowwarn' : '')} draggable
+                    onDragStart={e => { rowFrom = k; e.currentTarget.classList.add('dragging'); try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(k)) } catch { /* bỏ qua */ } }}
+                    onDragEnd={e => { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.dropover').forEach(z => z.classList.remove('dropover')) }}
+                    onDragOver={e => { if (rowFrom != null) { e.preventDefault(); e.currentTarget.classList.add('dropover') } }} onDragLeave={e => e.currentTarget.classList.remove('dropover')}
+                    onDrop={e => { e.preventDefault(); if (rowFrom != null) moveItem(rowFrom, k); rowFrom = null }}>
+                    <button type="button" className="griph" data-grip={k} aria-label="Kéo để đổi thứ tự môn (hoặc Alt + mũi tên lên/xuống)"
+                      onKeyDown={e => { if (!e.altKey) return; if (e.key === 'ArrowUp') { e.preventDefault(); moveItem(k, k - 1) } if (e.key === 'ArrowDown') { e.preventDefault(); moveItem(k, k + 1) } }}>{GRIP}</button>
+                    <i /><b>{sn(x.it.subject)}</b><small className="locode">{x.p?.code} · {x.rows.length} bài</small>{warn.length > 0 && <HNote tip={warn.join('\n')} />}
+                    <div className="loctl">Bắt đầu {startSel(x.it, k)}
+                      <span className="loppw"><input type="number" min={0.5} step={0.5} value={x.it.ppw} aria-label="Số tiết/tuần" onChange={e => patch(k, { ppw: Math.max(0.5, Number(e.target.value) || 1) })} /> tiết/tuần</span>
+                      <b className="lores">T{x.start}–{x.end} · {x.periods} tiết</b></div></div>
+                  <ol>{x.rows.map((q, i) => <li key={q.l.id} className={hi?.id === q.l.id ? 'lnkhl' : ''} onMouseEnter={() => setHi({ k, id: q.l.id, w0: q.week, w1: q.wEnd })} onMouseLeave={() => setHi(null)}
+                    {...dragProps(() => dnd.lesson(k, q.l.id), tip.hide)} {...dropProps(() => dnd.ok(k, q.l.id), () => dnd.dropLesson(k, q.l.id))}>
+                    <button type="button" className="griph" data-ligrip={`${k}|${q.l.id}`} aria-label="Kéo để đổi thứ tự bài (Alt + mũi tên)"
+                      onKeyDown={e => { if (!e.altKey || !['ArrowUp', 'ArrowDown'].includes(e.key)) return; e.preventDefault(); const ids = ordIds(k); const j = e.key === 'ArrowUp' ? i - 1 : i + 1; if (j < 0 || j >= ids.length) return
+                        ids.splice(i, 1); ids.splice(j, 0, q.l.id); patch(k, { order: ids }); setTimeout(() => (document.querySelector(`[data-ligrip="${k}|${q.l.id}"]`) as HTMLElement | null)?.focus()) }}>{GRIP}</button>
+                    <span className="lono">{i + 1}</span><span className="lot">{q.l.title}</span><span className="low">T{q.week}{q.wEnd > q.week ? '–' + q.wEnd : ''}<small>{dateOfWeek(cal, q.week)}</small></span>
+                    {q.pin && <button type="button" className="pinx" title={`Bỏ ghim tuần ${q.pin}`} onClick={() => unpin(k, q.l.id)}><Ic n="pin" cls="i pin" />✕</button>}</li>)}</ol></div> })}</div></div>
+            <div className="ppdiv" role="separator" aria-label="Kéo để đổi độ rộng" title="Kéo để rộng/hẹp · bấm đúp về mặc định" onDoubleClick={() => setPpl(340)}
+              onMouseDown={e => { e.preventDefault(); const x0 = e.clientX, w0 = ppl; document.body.classList.add('rzing')
+                const mv = (ev: MouseEvent) => setPpl(Math.min(640, Math.max(260, w0 + ev.clientX - x0)))
+                const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); document.body.classList.remove('rzing') }
+                document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up) }} />
+            <div className="ppright"><WeekStrip sch={sch} cal={cal} sn={sn} dnd={dnd} tip={tip} hi={hi} onHi={setHi} /><CheckBox c={c} /></div>
+          </div></>, !w.items.length)}
       </div>
       <div className="formact"><button type="button" className="btn" onClick={() => w.grade != null && w.items.length ? onSave('draft') : setMsg('Chọn khối và ít nhất một môn')}>Lưu nháp</button>
         <button type="button" className="btn primary" disabled={!w.items.length} onClick={() => onSave('published')}><Ic n="send" /> Phát hành</button></div>
@@ -494,14 +578,14 @@ function DocView({ d, st, sn, school, canManage, tip, yearLine, onBack, openMat,
   d: Doc; st: St; sn: (s: string) => string; school: string; canManage: boolean; tip: ReturnType<typeof useTip>; yearLine: ReactNode
   onBack: () => void; openMat: (l: L) => void; onEdit: () => void; onPublish: () => void; onCopy: () => void; onDelete: () => void; setMsg: (m: string) => void
 }) {
-  const [view, setView] = useState<'table' | 'cal'>('table')
+  const [view, setView] = useState<'cal' | 'ppct'>('cal')
   const [shut, setShut] = useState<Set<number>>(new Set())
   const [del, setDel] = useState(false)
   const { sch, cal, c } = st
   const s0 = sch.length ? Math.min(...sch.map(x => x.start)) : 0, s1 = sch.length ? Math.max(...sch.map(x => x.end)) : 0
   const tot = sch.reduce((a, x) => a + x.periods, 0)
   const h1 = sch.reduce((a, x) => a + x.rows.filter(r => r.week <= cal.HK1).reduce((b, r) => b + r.l.periods, 0), 0)
-  const allShut = sch.length > 0 && sch.every((_, k) => shut.has(k))
+  const wUsed = new Set(ppctRows(sch).map(e => e.w)).size
   return <>
     <Back onClick={onBack} title={d.title}>Quay lại</Back>
     <div className="dhead"><span className="code" style={cssVar('var(--primary)')}>K{d.grade}</span><div><h1>{d.title}</h1><span className="crumb">Áp dụng: {school} · năm học {d.school_year} · tối đa {Number(d.max_ppw) || 3} tiết STEM/tuần · cập nhật {new Date(d.updated_at).toLocaleDateString('vi-VN')}</span></div><StatusPill s={d.status} />
@@ -509,24 +593,15 @@ function DocView({ d, st, sn, school, canManage, tip, yearLine, onBack, openMat,
         <button type="button" className="btn" onClick={onEdit}><Ic n="edit" /> Xếp lại lịch</button><button type="button" className="btn" onClick={onCopy}><Ic n="copy" /> Nhân bản</button>
         <button type="button" className="btn ghost" aria-label="Xoá bản phân phối" onClick={() => setDel(true)}><Ic n="trash" /></button></div>}</div>
     {del && <Confirm danger text={`Xoá “${d.title}”? Không hoàn tác được.`} yes="Xoá" onYes={onDelete} onNo={() => setDel(false)} />}
-    <div className="stats">
-      <StatCard c="c-blue" icon="book" label="Môn học" value={sch.length} sub={sch.map(x => sn(x.it.subject)).join(', ') || '—'} />
-      <StatCard c="c-violet" icon="calendar" label="Số tuần" value={sch.length ? s1 - s0 + 1 : 0} sub={sch.length ? `tuần ${s0}–${s1} · ${dateOfWeek(cal, s0)} → ${dateOfWeek(cal, Math.min(s1, cal.WEEKS))}` : '—'} />
-      <StatCard c="c-green" icon="list" label="Số tiết" value={tot} sub={`HK I ${h1} · HK II ${tot - h1} tiết`} />
-      <StatCard c="c-amber" icon="file" label="Bài học" value={sch.reduce((a, x) => a + x.rows.length, 0)} sub={sch.reduce((a, x) => a + x.rows.filter(r => r.l.mat.s === 'ok').length, 0) + ' bài đủ học liệu'} /></div>
-    <CheckBox c={c} />
-    <div className="toolbar"><Seg label="Kiểu xem" items={[['table', 'Bảng'], ['cal', 'Lịch']]} value={view} onChange={setView} /></div>
-    {view === 'cal' ? <Panel>{yearLine}<WeekStrip sch={sch} cal={cal} sn={sn} tip={tip} /><p className="note">Muốn kéo thả bài trên lịch: bấm “Xếp lại lịch”.</p></Panel> : <>
-      <div className="toolbar" style={{ justifyContent: 'flex-end', marginTop: -4 }}><button type="button" className="btn sm ghost" onClick={() => setShut(allShut ? new Set() : new Set(sch.map((_, k) => k)))}>{allShut ? 'Mở tất cả' : 'Thu gọn tất cả'}</button></div>
-      {!sch.length && <Empty>Bản phân phối chưa có môn. {canManage && 'Bấm “Xếp lại lịch” để chọn chương trình và môn.'}</Empty>}
-      {sch.map((x, k) => { const p1 = x.rows.filter(r => r.week <= cal.HK1).reduce((a, r) => a + r.l.periods, 0), okN = x.rows.filter(r => r.l.mat.s === 'ok').length
-        return <details key={k} className="panel dsub" style={{ padding: 0, gap: 0 }} open={!shut.has(k)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(s => { const n = new Set(s); if (o) n.delete(k); else n.add(k); return n }) }}>
-          <summary className="phead" style={cssVar(x.p?.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{x.p?.code ?? '—'}</span><b>{sn(x.it.subject)}</b>
-            <small>{x.rows.length} bài · tuần {x.start}–{x.end} ({dateOfWeek(cal, x.start)} → {dateOfWeek(cal, Math.min(x.end, cal.WEEKS))}) · {x.it.ppw} tiết/tuần · {x.periods} tiết</small></summary>
-          <div className="tblwrap"><table><thead><tr><th>STT</th><th>Bài học</th><th>Tuần</th><th>Học kỳ</th><th>Tiết</th><th>Học liệu</th></tr></thead>
-            <tbody>{x.rows.map((r, i) => <tr key={r.l.id}><td className="n">{i + 1}</td><td><b>{r.l.title}</b>{r.pin ? <> <Ic n="pin" cls="i pinmini" /></> : null}</td>
-              <td>{r.week === r.wEnd ? r.week : r.week + '–' + r.wEnd} <small style={{ color: 'var(--muted)' }}>{dateOfWeek(cal, r.week)}</small></td><td>{r.week <= cal.HK1 ? 'HK I' : 'HK II'}</td><td>{r.l.periods}</td>
-              <td>{r.l.cl ? <button type="button" className="matbtn" title="Mở học liệu" onClick={() => openMat(r.l)}><MatPill m={r.l.mat} /></button> : <MatPill m={r.l.mat} />}</td></tr>)}</tbody>
-            <tfoot><tr><td className="n">{x.rows.length}</td><td>Tổng {x.rows.length} bài</td><td>{x.end - x.start + 1} tuần</td><td>HK I {p1} · HK II {x.periods - p1} tiết</td><td>{x.periods}</td><td>{okN}/{x.rows.length} đủ</td></tr></tfoot></table></div></details> })}</>}
+    <div className="ctbar"><div className="tabs" role="tablist">
+      <button type="button" role="tab" className={view === 'cal' ? 'on' : ''} onClick={() => setView('cal')}>Lịch năm học</button>
+      <button type="button" role="tab" className={view === 'ppct' ? 'on' : ''} onClick={() => setView('ppct')}>Bảng PPCT <small>{tot} tiết</small></button></div>
+      <div className="ctstats"><span><b>{sch.length}</b>môn học</span><span><b>{tot}</b>tiết/năm học</span><span><b>{wUsed}</b>/{cal.WEEKS} tuần học</span>
+        <span><b>{sch.reduce((a, x) => a + x.rows.length, 0)}</b>bài</span>{c.err.length + c.warn.length > 0 && <span className="stwarn" data-tip={[...c.err, ...c.warn].join('\n')}><b>{c.err.length + c.warn.length}</b>cảnh báo</span>}</div></div>
+    {c.err.length > 0 && <CheckBox c={c} />}
+    {view === 'cal' ? <Panel>{yearLine}<WeekStrip sch={sch} cal={cal} sn={sn} tip={tip} />{canManage && <p className="note">Muốn kéo thả bài trên lịch: bấm “Xếp lại lịch”.</p>}</Panel> : <>
+      <div className="toolbar" style={{ justifyContent: 'flex-end' }}><span className="sub" style={{ marginRight: 'auto' }}>Theo mẫu Bộ GD&ĐT · Tiết PPCT đánh liên tục cả năm cho mọi môn</span>
+        <button type="button" className="btn sm" onClick={() => { const n = ppctExport(d, sch, cal, sn); _m(`Đã xuất ${n} tiết ra file .csv — nhập được vào VnEdu / SMAS.`) }}><Ic n="upload" /> Xuất file PPCT</button></div>
+      <PpctTable sch={sch} cal={cal} sn={sn} openMat={openMat} /></>}
   </>
 }
