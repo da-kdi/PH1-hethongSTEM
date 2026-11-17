@@ -9,8 +9,8 @@ import { IKIND, PAGE, SUBMIT, TBASIS, TG4, TLINK, fmtM, goto, lines, shortTitle,
 import { MatPill } from './TrainProgs'
 import { useP2, type P2 } from './use'
 
-// 2.1c Nội dung tập huấn — dựng theo bản mẫu giao diện: Học liệu (mỗi mô-đun một học liệu, nhiều phiên bản, 4 nhóm chốt) › Bài giảng (soạn từ phiên bản học liệu,
-// khối trình chiếu, kho hoạt động) › Hoạt động thực hành (đề bài lấy từ đầu điểm của Khung đánh giá). Buổi học & lớp trực tuyến ở Kế hoạch tập huấn › Lịch.
+// 2.1c Nội dung đào tạo — dựng theo bản mẫu giao diện: Học liệu (mỗi chuyên đề một học liệu, nhiều phiên bản, 4 nhóm chốt) › Bài giảng (soạn từ phiên bản học liệu,
+// khối trình chiếu, kho hoạt động) › Hoạt động thực hành (đề bài lấy từ đầu điểm của Khung đánh giá). Buổi học & lớp trực tuyến ở Kế hoạch đào tạo › Lịch.
 export function TrainContent({ orgId, go }: { orgId: string | null; go?: (p: string) => void }) {
   const P = useP2(orgId)
   const [tab, setTab] = useState<'mat' | 'lect' | 'prac'>('mat')
@@ -37,8 +37,8 @@ export function TrainContent({ orgId, go }: { orgId: string | null; go?: (p: str
   if (tab === 'lect' && L) return <Mau>{msg}<LectEditor P={P} k={k} L={L} part={part} setPart={setPart} learner={learner} setLearner={setLearner} onBack={() => { setLect(null); setLearner(false) }}
     onStore={() => { setTarget({ lect: L.id, part }); setLect(null) }} /></Mau>
   return <Mau>{msg}
-    <PageHead icon="video" title="Nội dung tập huấn" sub="Học liệu theo mô-đun (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch tập huấn › Lịch" />
-    <Flow steps={[['mat', 'Học liệu', `${db.mods.filter(m => k.matSt(m).s !== 'none').length} học liệu mô-đun`], ['lect', 'Bài giảng', `${db.lects.length} bài giảng`],
+    <PageHead icon="video" title="Nội dung đào tạo" sub="Học liệu theo chuyên đề (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch đào tạo › Lịch" />
+    <Flow steps={[['mat', 'Học liệu', `${db.mods.filter(m => k.matSt(m).s !== 'none').length} học liệu chuyên đề`], ['lect', 'Bài giảng', `${db.lects.length} bài giảng`],
       ['prac', 'Hoạt động thực hành', `${db.progs.flatMap(p => p.items).filter(i => i.kind !== 'quiz').length} đề bài · gắn khung đánh giá`]]} value={tab} onChange={t => { setTab(t); setOpen(null); setLect(null) }} />
     {tab === 'mat' ? <MatList P={P} k={k} onOpen={setOpen} />
       : tab === 'lect' ? <LectList P={P} k={k} newLect={newLect} onOpen={(id, l) => { setLect(id); setPart(0); setLearner(l); scrollTo(0, 0) }} />
@@ -62,23 +62,23 @@ function MatList({ P, k, onOpen }: { P: P2; k: K; onOpen: (mid: string) => void 
   const allS = Array.from(new Set(db.progs.flatMap(k.subjectsOf)))
   const progs = db.progs.filter(p => !F.prog || p.id === F.prog)
   return <>
-    <div className="toolbar"><Search value={F.q} onChange={q => setF({ ...F, q })} placeholder="Tìm mô-đun…" /><Sel label="Tất cả chương trình" value={F.prog} onChange={v => setF({ ...F, prog: v })} options={db.progs.map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <Sel label="Tất cả môn học" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={allS.map(s => [s, k.SUBJ(s)])} />
+    <div className="toolbar"><Search value={F.q} onChange={q => setF({ ...F, q })} placeholder="Tìm chuyên đề…" /><Sel label="Tất cả chương trình" value={F.prog} onChange={v => setF({ ...F, prog: v })} options={db.progs.map(p => [p.id, `${p.code} · ${p.name}`])} />
+      <Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={allS.map(s => [s, k.SUBJ(s)])} />
       <Sel label="Mọi tình trạng học liệu" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['ok', 'Đủ'], ['draft', 'Đang soạn'], ['none', 'Chưa có']]} />
       <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={setView} />
       <button type="button" className="btn sm ghost" onClick={() => setShut(progs.every(p => shut.has(p.id)) ? new Set() : new Set(progs.map(p => p.id)))}>{progs.every(p => shut.has(p.id)) ? 'Mở tất cả' : 'Thu gọn tất cả'}</button></div>
     {progs.map(p => { const g = k.groupOf(p.group_code); const subs = k.subjectsOf(p).map(s => [s, k.subjMods(p, s).filter(m => okM(s, m))] as const).filter(([, ms]) => ms.length); if (!subs.length) return null
       const all = subs.flatMap(([, ms]) => ms); const ok = all.filter(m => k.matSt(m).s === 'ok').length
       return <details key={p.id} className="kprog mprog" open={!shut.has(p.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(p.id); else n.add(p.id); return n }) }}>
-        <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{p.code}</span><b>{p.name}</b><small>{subs.length} môn · {all.length} mô-đun · {ok}/{all.length} đủ học liệu</small></summary>
-        {view === 'table' ? <div className="tblwrap"><table><thead><tr><th>STT</th><th>Mô-đun</th><th>Thời lượng</th><th>Học liệu (PB đang dùng)</th><th>Bài giảng</th><th /></tr></thead><tbody>
-          {subs.map(([s, ms]) => <Fragment key={s}><tr className="band"><td colSpan={6}><span className="tag">Môn học</span> {k.SUBJ(s)} <small className="sub">· {ms.length} mô-đun · {ms.filter(m => k.matSt(m).s === 'ok').length} đủ học liệu</small></td></tr>
+        <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{p.code}</span><b>{p.name}</b><small>{subs.length} học phần · {all.length} chuyên đề · {ok}/{all.length} đủ học liệu</small></summary>
+        {view === 'table' ? <div className="tblwrap"><table><thead><tr><th>STT</th><th>Chuyên đề</th><th>Thời lượng</th><th>Học liệu (PB đang dùng)</th><th>Bài giảng</th><th /></tr></thead><tbody>
+          {subs.map(([s, ms]) => <Fragment key={s}><tr className="band"><td colSpan={6}><span className="tag">Học phần</span> {k.SUBJ(s)} <small className="sub">· {ms.length} chuyên đề · {ms.filter(m => k.matSt(m).s === 'ok').length} đủ học liệu</small></td></tr>
             {ms.map((m, i) => <tr key={m.id}><td className="n">{i + 1}</td><td><b>{m.title}</b></td><td>{Number(m.hours)} giờ</td><td><MatPill k={k} m={m} />{k.matSt(m).s !== 'none' && <> <small className="sub">PB {k.matSt(m).v}</small></>}</td>
               <td>{db.lects.filter(l => l.module_id === m.id).length}</td><td style={{ textAlign: 'right' }}>{act(m)}</td></tr>)}</Fragment>)}</tbody></table></div>
-          : subs.map(([s, ms]) => <div key={s} className="msub"><div className="msubh"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[s] ?? SGLYPH.khtn }} /><b>{k.SUBJ(s)}</b><small>{ms.length} mô-đun</small></div>
-            <div className="grid hlgrid">{ms.map((m, i) => <article key={m.id} className="pcard dcard hlcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={s} /><span>{k.SUBJ(s)} · {Number(m.hours)} giờ</span><b>Mô-đun {i + 1}</b></div><h3>{m.title}</h3>
+          : subs.map(([s, ms]) => <div key={s} className="msub"><div className="msubh"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[s] ?? SGLYPH.khtn }} /><b>{k.SUBJ(s)}</b><small>{ms.length} chuyên đề</small></div>
+            <div className="grid hlgrid">{ms.map((m, i) => <article key={m.id} className="pcard dcard hlcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={s} /><span>{k.SUBJ(s)} · {Number(m.hours)} giờ</span><b>Chuyên đề {i + 1}</b></div><h3>{m.title}</h3>
               <div className="chips"><MatPill k={k} m={m} />{k.matSt(m).s !== 'none' && <span className="chip">PB {k.matSt(m).v}</span>}<span className="chip">{db.lects.filter(l => l.module_id === m.id).length} bài giảng</span></div><div className="foot"><span />{act(m)}</div></article>)}</div></div>)}</details> })}
-    {!progs.some(p => k.subjectsOf(p).some(s => k.subjMods(p, s).some(m => okM(s, m)))) && <Empty>Không có mô-đun phù hợp.</Empty>}
+    {!progs.some(p => k.subjectsOf(p).some(s => k.subjMods(p, s).some(m => okM(s, m)))) && <Empty>Không có chuyên đề phù hợp.</Empty>}
   </>
 }
 
@@ -89,7 +89,7 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
   const [tab, setTab] = useState<string>('info')
   const [calc, setCalc] = useState({ students: 30, groups: 6 })
   const v: Mat | undefined = vs.find(x => x.version_no === (ver ?? m.mat_use ?? vs[vs.length - 1]?.version_no)) ?? vs[vs.length - 1]
-  if (!v) return <><Back onClick={onBack} title={m.title}>Học liệu tập huấn</Back><Empty>Mô-đun chưa có học liệu.</Empty></>
+  if (!v) return <><Back onClick={onBack} title={m.title}>Học liệu đào tạo</Back><Empty>Chuyên đề chưa có học liệu.</Empty></>
   const ro = v.status !== 'draft' || !P.canManage; const C = v.content
   const saveC = (x: Partial<MatContent>) => P.run(supabase.from('ph2_materials').update({ content: { ...C, ...x } }).eq('id', v.id))
   const toggleG = (key: string) => P.run(supabase.from('ph2_materials').update({ groups: { ...v.groups, [key]: v.groups[key] === 'ok' ? '' : 'ok' } }).eq('id', v.id))
@@ -101,7 +101,7 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
     : <button type="button" className={'btn sm' + (v.groups[key] === 'ok' ? '' : ' primary')} onClick={() => toggleG(key)}>{v.groups[key] === 'ok' ? 'Đã chốt · bỏ chốt' : <><Ic n="check" /> Chốt nhóm này</>}</button>
   let body: ReactNode = null
   if (tab === 'info') body = <Panel icon="info" title="Thông tin bài học" act={gT('info')}>
-    <div className="gahead" style={cssVar(g.color)}><b>{m.title.toUpperCase()}</b><span>Môn: <b>{k.SUBJ(m.subject)}</b></span><span>Thời lượng: <b>{Number(m.hours)} giờ</b> ({fmtM(p.mpp)}/buổi)</span><span>Chương trình: <b>{p.code}</b></span></div>
+    <div className="gahead" style={cssVar(g.color)}><b>{m.title.toUpperCase()}</b><span>Học phần: <b>{k.SUBJ(m.subject)}</b></span><span>Thời lượng: <b>{Number(m.hours)} giờ</b> ({fmtM(p.mpp)}/buổi)</span><span>Chương trình: <b>{p.code}</b></span></div>
     <div className="gasec"><h3>Mô tả</h3>{ro ? <p className="outcomes">{C.desc}</p> : <textarea rows={3} defaultValue={C.desc} key={v.id + 'd'} onBlur={e => e.target.value !== C.desc && saveC({ desc: e.target.value })} />}</div>
     <div className="gasec"><h3>I. Yêu cầu cần đạt</h3>{Lst(C.outcomes, x => saveC({ outcomes: x }))}</div>
     <div className="gasec"><h3>Yêu cầu sản phẩm của học viên</h3>{Lst(C.product, x => saveC({ product: x }))}</div>
@@ -110,7 +110,7 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
       return <tr key={key}><th>{n}</th><td>{ro ? (arr.length ? arr.map(([d, b], i) => <div key={i}>{d} · <b>{b}</b></div>) : <span className="sub">—</span>)
         : <textarea rows={Math.max(1, arr.length)} placeholder="dd/mm/yyyy · Họ tên" defaultValue={arr.map(([d, b]) => d + ' · ' + b).join('\n')} key={v.id + key + arr.length} onBlur={e => saveC({ doc: { ...C.doc, [key]: lines(e.target.value).map(x => x.split('·').map(y => y.trim())) } })} />}</td></tr> })}</tbody></table></div></div></Panel>
   if (tab === 'content') { const tot = (C.acts ?? []).reduce((a, x) => a + (+x.minutes || 0), 0); const acts = C.acts ?? []
-    body = <Panel icon="list" title="III. Tiến trình tập huấn" act={<><small className="sub">{acts.length} hoạt động · {tot} phút ({fmtM(tot)})</small>{!ro && <button type="button" className="btn sm" onClick={() => saveC({ acts: [...acts, { title: 'Hoạt động mới', minutes: 15, items: [] }] })}><Ic n="plus" /> Hoạt động</button>}{gT('content')}</>}>
+    body = <Panel icon="list" title="III. Tiến trình đào tạo" act={<><small className="sub">{acts.length} hoạt động · {tot} phút ({fmtM(tot)})</small>{!ro && <button type="button" className="btn sm" onClick={() => saveC({ acts: [...acts, { title: 'Hoạt động mới', minutes: 15, items: [] }] })}><Ic n="plus" /> Hoạt động</button>}{gT('content')}</>}>
       {acts.map((x, ai) => <div key={ai} className="gaact"><div className="gaacth"><span className="sno">{ai + 1}</span>{ro ? <><b>{x.title}</b><span className="mins">{x.minutes}′</span></>
         : <><input defaultValue={x.title} key={v.id + ai + x.title} aria-label="Tên hoạt động" onBlur={e => e.target.value !== x.title && saveC({ acts: acts.map((y, j) => j === ai ? { ...y, title: e.target.value } : y) })} />
           <label className="mins"><input type="number" min={0} defaultValue={x.minutes} key={v.id + ai + 'm' + x.minutes} aria-label="Số phút" onBlur={e => saveC({ acts: acts.map((y, j) => j === ai ? { ...y, minutes: +e.target.value || 0 } : y) })} /> phút</label>
@@ -138,15 +138,15 @@ function MatDetail({ P, k, mid, onBack, onNewLect, onLect }: { P: P2; k: K; mid:
                 <td style={{ textAlign: 'right' }}><b>{need(n)}</b> {n.unit}</td><td><button type="button" className="btn sm ghost" aria-label="Xoá" onClick={() => saveC({ norms: ns.filter((_, j) => j !== i) })}><Ic n="trash" /></button></td></tr> })}
           {!list.length && <tr><td colSpan={7} className="sub">Chưa có mục nào.</td></tr>}</tbody></table></div></div> }
     body = <Panel icon="box" title="Định mức vật tư" act={gT('norms')}>
-      <div className="calc"><label>Số học viên <input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: +e.target.value || 1 })} /></label><label>Số nhóm <input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: +e.target.value || 1 })} /></label><span>→ nhu cầu cho một lớp tập huấn ở cột cuối</span></div>
+      <div className="calc"><label>Số học viên <input type="number" min={1} value={calc.students} onChange={e => setCalc({ ...calc, students: +e.target.value || 1 })} /></label><label>Số nhóm <input type="number" min={1} value={calc.groups} onChange={e => setCalc({ ...calc, groups: +e.target.value || 1 })} /></label><span>→ nhu cầu cho một lớp đào tạo ở cột cuối</span></div>
       {part('vl', 'Nguyên vật liệu', 'tiêu hao, tính theo học viên / nhóm')}{part('cc', 'Công cụ & thiết bị', 'dùng lại, tính theo nhóm / lớp')}</Panel> }
   const ls = P.db!.lects.filter(l => l.module_id === mid)
-  if (tab === 'lects') body = <Panel icon="edit" title="Kho bài giảng của mô-đun" act={<button type="button" className="btn sm primary" onClick={onNewLect}><Ic n="plus" /> Soạn bài giảng từ PB {k.matSt(m).v || v.version_no}</button>}>
+  if (tab === 'lects') body = <Panel icon="edit" title="Kho bài giảng của chuyên đề" act={<button type="button" className="btn sm primary" onClick={onNewLect}><Ic n="plus" /> Soạn bài giảng từ PB {k.matSt(m).v || v.version_no}</button>}>
     {ls.length ? <div className="tblwrap"><table><thead><tr><th>Bài giảng</th><th>Từ phiên bản</th><th>Người soạn</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead><tbody>{ls.map(l => <tr key={l.id} className="rowlink" tabIndex={0} onClick={() => onLect(l.id)}>
       <td><b>{l.title}</b></td><td>PB {l.mat_version ?? '?'}</td><td>{l.author}</td><td>{l.status === 'published' ? <span className="pill good plain">Đã xuất bản</span> : <span className="pill draft plain">Nháp</span>}</td><td>{vn(l.updated_at)}</td></tr>)}</tbody></table></div>
       : <Empty>Chưa có bài giảng nào soạn từ học liệu này.</Empty>}</Panel>
   return <>
-    <Back onClick={onBack} title={m.title}>Học liệu tập huấn</Back>
+    <Back onClick={onBack} title={m.title}>Học liệu đào tạo</Back>
     <div className="dhead"><span className="code" style={cssVar(g.color)}>{p.code}</span><div><h1>{m.title}{v.status !== 'draft' ? <HNote lock tip="Phiên bản đã phát hành được giữ nguyên — bấm “Tạo phiên bản mới” để sửa." /> : !allOk && <HNote tip="Chốt đủ 4 nhóm (chấm xanh trên các tab) để phát hành phiên bản." />}</h1><span className="crumb">{p.name} › {k.SUBJ(m.subject)} · {Number(m.hours)} giờ</span></div></div>
     <div className="verbar"><span className="tag">Phiên bản</span><select value={v.version_no} aria-label="Phiên bản" onChange={e => setVer(+e.target.value)}>{[...vs].reverse().map(x => <option key={x.id} value={x.version_no}>PB {x.version_no} · {x.status === 'published' ? 'Đã phát hành' : 'Nháp'}{x.version_no === m.mat_use ? ' · đang dùng' : ''}</option>)}</select>
       <StatusPill s={v.status} /> {v.version_no === m.mat_use ? <span className="pill good plain">Đang dùng</span> : v.status === 'published' && P.canManage ? <button type="button" className="btn sm" onClick={() => P.run(supabase.from('ph2_modules').update({ mat_use: v.version_no }).eq('id', mid), `✓ Đang dùng PB ${v.version_no}`)}>Dùng phiên bản này</button> : null}
@@ -176,13 +176,13 @@ function LectList({ P, k, newLect, onOpen }: { P: P2; k: K; newLect: (mid: strin
       addTo={{ title: 'Thêm vào bài giảng của tôi', docLabel: 'Bài giảng', partLabel: 'Đặt vào phần', button: 'Thêm vào bài giảng của tôi', docs: db.lects.map(l => [l.id, `${l.title}${l.status === 'published' ? ' (đã xuất bản → chuyển về nháp)' : ''}`] as [string, string]),
         partsOf: id => (db.lects.find(l => l.id === id)?.parts ?? []).map((x, i) => [String(i), `Phần ${i + 1}. ${x.title}`] as [string, string]),
         onAdd: (id, part, a, cfg) => { const L = db.lects.find(l => l.id === id); if (L) addBlock(L, part, { type: 'activity', act: a.id, cfg: clone(cfg) }) } }}
-      newFrom={{ title: 'Tạo bài giảng mới với hoạt động này', label: 'Soạn từ học liệu của mô-đun', hint: 'Bài giảng mới lấy khung từ phiên bản học liệu đang dùng; hoạt động này được đặt vào phần đầu tiên.', button: 'Tạo bài giảng', footBtn: 'Tạo bài giảng mới với hoạt động này',
+      newFrom={{ title: 'Tạo bài giảng mới với hoạt động này', label: 'Soạn từ học liệu của chuyên đề', hint: 'Bài giảng mới lấy khung từ phiên bản học liệu đang dùng; hoạt động này được đặt vào phần đầu tiên.', button: 'Tạo bài giảng', footBtn: 'Tạo bài giảng mới với hoạt động này',
         options: mods.map(({ p, s, m }) => [m.id, `${p.code} · ${k.SUBJ(s)} · ${m.title}`] as [string, string]), onNew: (mid, a, cfg) => newLect(mid, { type: 'activity', act: a.id, cfg: clone(cfg) }) }} />
     : <>
-      <div className="toolbar"><span className="sub">Bài giảng soạn từ một phiên bản học liệu mô-đun; trình chiếu trong buổi trực tiếp hoặc lớp học ảo.</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button type="button" className="btn primary sm" onClick={() => setPick(true)}><Ic n="plus" /> Soạn bài giảng</button></span></div>
-      {pick && <Panel icon="file" title="Chọn mô-đun có học liệu" act={<button type="button" className="btn sm ghost" onClick={() => setPick(false)}>Đóng</button>}><div className="grid">{mods.map(({ p, s, m }) =>
+      <div className="toolbar"><span className="sub">Bài giảng soạn từ một phiên bản học liệu chuyên đề; trình chiếu trong buổi trực tiếp hoặc lớp học ảo.</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}><button type="button" className="btn primary sm" onClick={() => setPick(true)}><Ic n="plus" /> Soạn bài giảng</button></span></div>
+      {pick && <Panel icon="file" title="Chọn chuyên đề có học liệu" act={<button type="button" className="btn sm ghost" onClick={() => setPick(false)}>Đóng</button>}><div className="grid">{mods.map(({ p, s, m }) =>
         <button type="button" key={m.id} className="pcard mini" style={cssVar(k.groupOf(p.group_code).color)} onClick={() => newLect(m.id)}><div className="top"><span className="code sm">{p.code}</span><div style={{ minWidth: 0 }}><h3>{m.title}</h3><small style={{ color: 'var(--muted)' }}>{k.SUBJ(s)} · PB {k.matSt(m).v}</small></div></div></button>)}
-        {!mods.length && <Empty>Chưa có mô-đun nào có học liệu.</Empty>}</div></Panel>}
+        {!mods.length && <Empty>Chưa có chuyên đề nào có học liệu.</Empty>}</div></Panel>}
       <div className="grid dgrid">{db.lects.map(l => { const m = k.mod(l.module_id); const p = m ? k.prog(m.program_id) : null; const g = k.groupOf(p?.group_code ?? null)
         return <article key={l.id} className="pcard dcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={m?.subject} /><span>{p?.code} · {k.SUBJ(m?.subject)}</span><b>{shortTitle(l.title).slice(0, 26)}</b></div><h3>{l.title}</h3>
           <small className="sub">{m?.title} · học liệu PB {l.mat_version ?? '?'} · {l.author}</small>
@@ -219,7 +219,7 @@ function LectEditor({ P, k, L, part, setPart, learner, setLearner, onBack, onSto
           {!ro && <div className="bkadd">{Object.entries(BLOCK_KIND).map(([t, [n, icn]]) => <button type="button" key={t} className="btn sm" onClick={() => t === 'activity' ? onStore() : patch({ blocks: [...cur.blocks, newBlock(t)] })}><Ic n={icn} /> {n}</button>)}</div>}</div></Fragment> : <Empty>Chưa có phần nào.</Empty>}</section>
       <aside className="infop"><div className="covbig" style={cssVar(g.color)}><CoverDeco s={m?.subject} /><span>{p?.code} · {k.SUBJ(m?.subject)}</span><b>{L.title}</b></div>
         <label className="fld"><span>Tên bài giảng</span>{ro ? <b>{L.title}</b> : <input defaultValue={L.title} onBlur={e => e.target.value.trim() && e.target.value !== L.title && P.run(supabase.from('ph2_lectures').update({ title: e.target.value.trim() }).eq('id', L.id))} />}</label>
-        <dl className="kv one"><div><dt>Mô-đun</dt><dd>{m?.title}</dd></div><div><dt>Học liệu gốc</dt><dd>PB {L.mat_version ?? '?'}</dd></div><div><dt>Người soạn</dt><dd>{L.author}</dd></div></dl></aside></div>
+        <dl className="kv one"><div><dt>Chuyên đề</dt><dd>{m?.title}</dd></div><div><dt>Học liệu gốc</dt><dd>PB {L.mat_version ?? '?'}</dd></div><div><dt>Người soạn</dt><dd>{L.author}</dd></div></dl></aside></div>
   </>
 }
 

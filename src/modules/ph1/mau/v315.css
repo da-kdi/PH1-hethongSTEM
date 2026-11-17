@@ -223,3 +223,11 @@ body.rzing{cursor:col-resize;user-select:none}
 .mau .qlist{list-style:none;margin:0;padding:0 14px 10px;display:grid;gap:6px}
 .mau .qlist>li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line)}
 .mau .qlist .qno{color:var(--muted);font-variant-numeric:tabular-nums}.mau .qlist small{display:block;margin-top:2px}
+
+/* C6 · khung Thông tin chung bên phải (chương trình đào tạo) */
+.mau .ctkv{display:grid;grid-template-columns:86px minmax(0,1fr);gap:4px 10px;margin:0;font-size:13.5px}
+.mau .ctkv>div{display:contents}
+.mau .ctkv dt{color:var(--muted)}.mau .ctkv dd{margin:0;min-width:0}
+.mau .ctkv .clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mau .ctul{margin:0;padding-left:18px;font-size:13.5px;line-height:1.6}
+.mau .ctver{display:flex;align-items:center;gap:8px;font-size:13.5px}.mau .ctver .pill{margin-left:auto}

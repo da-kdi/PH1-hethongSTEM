@@ -1,5 +1,5 @@
 import { PH1_NAV, PH1_LABEL, PH1_MODULE_OF, PH1_ENT_MODULE_OF } from '../modules/ph1/nav'
-import { PH2_NAV, PH2_MODULE_OF } from '../modules/ph2/nav'
+import { PH2_NAV, PH2_LABEL, PH2_MODULE_OF } from '../modules/ph2/nav'
 
 export type RoleKey = 'school_admin' | 'teacher' | 'student' | 'department' | 'platform' | 'parent' | 'judge'
 // section: tên phân hệ khi phân hệ chia nhiều nhóm (menu hiện tiêu đề phân hệ phía trên các nhóm con)
@@ -20,7 +20,7 @@ export const LABEL: Partial<Record<RoleKey | '*', Record<string, string>>> = {
   // ví dụ: department: { 'Dashboard toàn Sở': 'Tổng quan toàn Sở' },
   school_admin: { 'Quản lý Phòng STEM': 'Quản lý phòng' },   // 056: phòng STEM, phòng học, kho
   platform: { ...PH1_LABEL.platform },   // PH1: src/modules/ph1/nav.ts
-  '*': { ...PH1_LABEL['*'] },
+  '*': { ...PH1_LABEL['*'], ...PH2_LABEL },
 }
 export const labelOf = (role: RoleKey, id: string) => LABEL[role]?.[id] ?? LABEL['*']?.[id] ?? id
 

@@ -35,7 +35,7 @@ export function TrainEval({ orgId, go }: { orgId: string | null; go?: (p: string
     : tab === 'result' ? <DgResult P={P} k={k} p={p} onCert={setCert} onHist={setHist} toAssess={() => goto(go, PAGE.tp, { open: pr.id, tab: 'assess' })} />
     : tab === 'cert' ? <DgCert P={P} k={k} p={p} onCert={setCert} /> : <DgFeedback P={P} k={k} p={p} orgId={orgId} />
   return <Mau>{msg}{head}
-    <Back onClick={() => { setPlan(null); setCert(null) }} title={p.title}>Tất cả đợt tập huấn</Back>
+    <Back onClick={() => { setPlan(null); setCert(null) }} title={p.title}>Tất cả đợt đào tạo</Back>
     <div className="dhead"><span className="code" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span><div><h1>{p.title}</h1><span className="crumb">{pr.name} · {p.unit} · {k.planRange(p)}</span></div><span className={`pill ${scl} plain`}>{sl}</span></div>
     <div className="stats"><StatCard c="c-blue" icon="users" label="Học viên" value={tr.length} sub={`${ss.filter(k.sessEnd).length}/${ss.length} buổi đã diễn ra`} />
       <StatCard c="c-green" icon="check" label="Chuyên cần TB" value={Math.round(avg(at) ?? 0) + '%'} sub="trên các buổi đã diễn ra" />
@@ -76,10 +76,10 @@ function PlanList({ P, k, tab, onOpen }: { P: P2; k: K; tab: Tab; onOpen: (id: s
             <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
             <div className="chips"><span className="chip">{m.past}/{k.sessOfPlan(p.id).length} buổi</span><span className="chip">CC {m.att == null ? '—' : m.att + '%'}</span><span className="chip">Điểm {m.sc ?? '—'}</span><span className="chip">HT {m.done}/{m.n}</span></div>
             <div className="foot"><span><b>{key(p, m)}</b></span><span className={`pill ${sc} plain`}>{sl}</span></div></article> })}</div>
-          : <div className="tblwrap"><table><thead><tr><th>Đợt tập huấn</th><th>Thời gian</th><th className="c">Học viên</th><th className="c">Buổi đã học</th><th className="c">Chuyên cần TB</th><th className="c">Đã chấm</th><th className="c">Điểm TB</th><th className="c">Hoàn thành</th><th className="c">Chứng nhận</th><th>Trạng thái</th></tr></thead><tbody>
+          : <div className="tblwrap"><table><thead><tr><th>Đợt đào tạo</th><th>Thời gian</th><th className="c">Học viên</th><th className="c">Buổi đã học</th><th className="c">Chuyên cần TB</th><th className="c">Đã chấm</th><th className="c">Điểm TB</th><th className="c">Hoàn thành</th><th className="c">Chứng nhận</th><th>Trạng thái</th></tr></thead><tbody>
             {ps.map(p => { const m = mt(p); const [sl, sc] = k.planSt(p); return <tr key={p.id} className="rowlink" tabIndex={0} onClick={() => onOpen(p.id)}><td><b>{p.title}</b><br /><small className="sub">{p.unit}</small></td><td>{k.planRange(p)}</td><td className="c">{m.n}</td>
               <td className="c">{m.past}/{k.sessOfPlan(p.id).length}</td><td className="c">{m.att == null ? '—' : m.att + '%'}</td><td className="c">{m.gd}/{m.gt}</td><td className="c">{m.sc ?? '—'}</td><td className="c">{m.done}/{m.n}</td><td className="c">{m.iss}</td><td><span className={`pill ${sc} plain`}>{sl}</span></td></tr> })}</tbody></table></div>}</details> })}
-    {!progs.length && <Empty>Chưa có đợt tập huấn nào đã phát hành.</Empty>}
+    {!progs.length && <Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}
   </>
 }
 
@@ -109,7 +109,7 @@ function DgAtt({ P, k, p }: { P: P2; k: K; p: Plan }) {
 function DgGrade({ P, k, p, item, setItem }: { P: P2; k: K; p: Plan; item: string | null; setItem: (id: string) => void }) {
   const [gopen, setGopen] = useState<string | null>(null)
   const its = k.planItems(p)
-  if (!its.length) return <Empty>Chương trình chưa có khung đánh giá — thiết lập ở Chương trình tập huấn › Khung đánh giá.</Empty>
+  if (!its.length) return <Empty>Chương trình chưa có khung đánh giá — thiết lập ở Chương trình đào tạo › Khung đánh giá.</Empty>
   const i = its.find(x => x.id === item) ?? its[0]; const open = k.itemOpen(p, i); const sub = SUBMIT(i.kind); const tr = k.traineesOf(p.id); const n = tr.length; const C = k.prog(p.program_id)!.criteria
   const gd = tr.filter(t => k.itemScore(p, i, t) != null).length; const sb = tr.filter(t => k.grOf(p, i, t)?.sub).length
   const vals = tr.map(t => k.itemScore(p, i, t)).filter((x): x is number => x != null)
@@ -212,7 +212,7 @@ function CertModal({ k, p, tid, onClose, setMsg }: { k: K; p: Plan; tid: string;
   const t = k.teacher(tid); const c = k.certOf(p, tid)!; const pr = k.prog(p.program_id)!
   return <><div className="amask" onClick={onClose} /><div className="amodal certm" role="dialog" aria-modal="true" aria-label="Chứng nhận" style={{ ['--kc' as string]: '#b7791f' }}><div className="abodyw">
     <div className="cert"><div className="cert-in"><small>{(p.unit ?? '').toUpperCase()}</small><h2>CHỨNG NHẬN</h2><p>Chứng nhận nhà giáo</p><h3>{t.full_name}</h3><p>{t.school}{t.subj && <> · giáo viên {k.SUBJ(t.subj)}</>}</p>
-      <p>Đã hoàn thành chương trình tập huấn<br /><b>“{pr.name}”</b><br />({k.progH(pr)} giờ, {k.sessOfPlan(p.id).length} buổi · {k.planRange(p)})</p>
+      <p>Đã hoàn thành chương trình đào tạo<br /><b>“{pr.name}”</b><br />({k.progH(pr)} giờ, {k.sessOfPlan(p.id).length} buổi · {k.planRange(p)})</p>
       <div className="cert-f"><span>Số: <b>{c.no}</b></span><span>Ngày cấp: {vn(c.issued_on)}</span></div><span className="seal"><Ic n="award" /></span></div></div></div>
     <div className="afoot"><button type="button" className="btn big" onClick={onClose}>Đóng</button><button type="button" className="btn primary big" onClick={() => { setMsg(''); print() }}><Ic n="file" /> In / tải PDF</button></div></div></>
 }
@@ -282,7 +282,7 @@ function DgHist({ P, k, onHist }: { P: P2; k: K; onHist: (t: string) => void }) 
     <div className="stats"><StatCard c="c-blue" icon="users" label="Lượt tham gia" value={lt} sub={tids.length + ' học viên'} /><StatCard c="c-green" icon="check" label="Tỉ lệ hoàn thành" value={(lt ? Math.round(ld / lt * 100) : 0) + '%'} sub={`${ld}/${lt} lượt`} />
       <StatCard c="c-violet" icon="award" label="Chứng nhận" value={issued.length} sub="đã cấp" /><StatCard c="c-amber" icon="target" label="Hài lòng TB" value={fbs.length ? <>{avg(fbs)!.toFixed(1)}<small>/5</small></> : '—'} sub="từ phiếu phản hồi khoá" /></div>
     <Panel icon="list" title="Kết quả từng đợt" act={<button type="button" className="btn sm" onClick={() => exportCsv(plansR.map(r => [r.p.title, r.pr.code ?? '', r.n, r.att ?? '', fmt1(r.sc), `${r.done}/${r.n}`, r.cn, r.fb == null ? '' : r.fb.toFixed(1)]))}><Ic n="file" /> Xuất báo cáo</button>}>
-      <div className="tblwrap"><table><thead><tr><th>Đợt tập huấn</th><th>Chương trình</th><th className="c">Học viên</th><th className="c">Chuyên cần TB</th><th className="c">Điểm TB</th><th>Tỉ lệ hoàn thành</th><th className="c">Chứng nhận</th><th className="c">Hài lòng</th></tr></thead><tbody>
+      <div className="tblwrap"><table><thead><tr><th>Đợt đào tạo</th><th>Chương trình</th><th className="c">Học viên</th><th className="c">Chuyên cần TB</th><th className="c">Điểm TB</th><th>Tỉ lệ hoàn thành</th><th className="c">Chứng nhận</th><th className="c">Hài lòng</th></tr></thead><tbody>
         {plansR.map(r => <tr key={r.p.id}><td><b>{r.p.title}</b><br /><small className="sub">{r.p.unit} · {k.planRange(r.p)}</small></td><td>{r.pr.code}</td><td className="c">{r.n}</td><td className="c">{r.att ?? '—'}%</td><td className="c">{fmt1(r.sc)}</td>
           <td><div className="hbar"><i style={{ width: `${r.n ? r.done / r.n * 100 : 0}%` }} /></div><small className="sub">{r.done}/{r.n} · {r.n ? Math.round(r.done / r.n * 100) : 0}%</small></td><td className="c">{r.cn}</td><td className="c">{r.fb == null ? '—' : r.fb.toFixed(1) + '/5'}</td></tr>)}
         {!plansR.length && <tr><td colSpan={8} className="sub">Chưa có đợt đã phát hành.</td></tr>}</tbody></table></div></Panel>
@@ -297,7 +297,7 @@ function DgHist({ P, k, onHist }: { P: P2; k: K; onHist: (t: string) => void }) 
   </>
 }
 function exportCsv(rows: (string | number)[][]) {
-  const head = ['Đợt tập huấn', 'Chương trình', 'Học viên', 'Chuyên cần TB (%)', 'Điểm TB', 'Hoàn thành', 'Chứng nhận', 'Hài lòng (/5)']
+  const head = ['Đợt đào tạo', 'Chương trình', 'Học viên', 'Chuyên cần TB (%)', 'Điểm TB', 'Hoàn thành', 'Chứng nhận', 'Hài lòng (/5)']
   const csv = '﻿' + [head, ...rows].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(',')).join('\n')
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'bao-cao-tap-huan.csv'; a.click(); URL.revokeObjectURL(a.href)
 }
