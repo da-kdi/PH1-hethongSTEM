@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
+import { DataTable } from '../ph1/mau/DataTable'
 import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from '../ph1/designs/blocks'
 import { ACTS, clone, setActToast } from '../ph1/designs/acts'
-import { IKIND, PAGE, SUBMIT, TBASIS, TG4, TLINK, fmtM, goto, lines, shortTitle, takeIntent, vn, vnS, type K, type Lect, type Mat, type MatContent, type Mod, type Part } from './api'
+import { IKIND, PAGE, SUBMIT, TBASIS, TG4, TLINK, fmtM, goto, lines, shortTitle, takeIntent, vn, vnS, type Item, type K, type Lect, type Mat, type MatContent, type Mod, type Part, type Prog } from './api'
 import { MatPill } from './TrainProgs'
 import { useP2, type P2 } from './use'
 
@@ -224,28 +225,54 @@ function LectEditor({ P, k, L, part, setPart, learner, setLearner, onBack, onSto
 }
 
 // ---------- Hoạt động thực hành ----------
+// Bản mẫu v315 · C8: dạng bảng dùng chung (mặc định; còn Thẻ), gom theo chương trình › học phần (đề cuối khoá ở cuối); tìm kiếm + lọc chương trình; không thanh tiến độ
+type PRow = { pr: Prog; i: Item; md: Mod | null; gi: number }
 function Practice({ P, k, go }: { P: P2; k: K; go?: (p: string) => void }) {
   const db = P.db!
-  const [prog, setProg] = useState(''); const [shut, setShut] = useState<Set<string>>(new Set())
+  const [prog, setProg] = useState(''); const [q, setQ] = useState(''); const [shut, setShut] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.bt.prac') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const pk = (i: { kind: string }) => i.kind !== 'quiz'
+  const qq = norm(q)
   const progs = db.progs.filter(p => p.items.some(pk) && (!prog || p.id === prog))
+  const pubPlans = (pr: Prog) => k.plansOf(pr.id).filter(p => p.status === 'published')
+  const usedBy = (pr: Prog, i: Item) => pubPlans(pr).filter(p => k.planItems(p).some(x => x.id === i.id))
+  const graded = (pr: Prog, i: Item) => usedBy(pr, i).reduce((a, p) => { const tr = k.traineesOf(p.id); return [a[0] + tr.filter(t => k.itemScore(p, i, t) != null).length, a[1] + tr.length] }, [0, 0])
+  const rows: PRow[] = progs.flatMap(pr => { const subs = k.subjectsOf(pr)
+    return pr.items.filter(pk).filter(i => !qq || norm(`${i.name} ${i.task}`).includes(qq)).map(i => { const md = i.mod ? k.mod(i.mod) ?? null : null
+      return { pr, i, md, gi: md ? subs.indexOf(md.subject) : 999 } }).sort((a, b) => a.gi - b.gi) })
+  const used = (r: PRow) => usedBy(r.pr, r.i).length
   return <>
-    <div className="toolbar"><Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(p => p.items.some(pk)).map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <span className="sub">Đề bài gắn với đầu điểm trong <b>Khung đánh giá</b> của chương trình — học viên nộp sau buổi học, giảng viên chấm theo rubric ở <b>Đánh giá kết quả › Chấm bài</b>.</span></div>
-    {progs.map(pr => { const g = k.groupOf(pr.group_code); const its = pr.items.filter(pk); const plans = k.plansOf(pr.id).filter(p => p.status === 'published')
+    <div className="toolbar"><Search value={q} onChange={setQ} placeholder="Tìm đề bài…" />
+      <Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(p => p.items.some(pk)).map(p => [p.id, `${p.code} · ${p.name}`])} />
+      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.bt.prac', v) } catch { /* bỏ qua */ } }} />
+      <HNote tip="Đề bài gắn với đầu điểm trong Khung đánh giá của chương trình — học viên nộp sau buổi học, giảng viên chấm theo rubric ở Đánh giá kết quả › Chấm bài." /></div>
+    {view === 'table' ? <DataTable id="bt-prac" rows={rows} rowKey={r => r.pr.id + '|' + r.i.id} noun="đề bài"
+      onOpen={r => goto(go, PAGE.tp, { open: r.pr.id, tab: 'assess', item: r.i.id })}
+      groupBy={r => [r.pr.id + '|' + (r.md?.subject ?? '~'), <><span className="code sm" style={cssVar(k.groupOf(r.pr.group_code).color)}>{r.pr.code}</span> {r.pr.name} › {r.md ? <>Học phần {k.SUBJ(r.md.subject)}</> : 'Cuối khoá'}</>]}
+      empty={<Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}
+      cols={[
+        { key: 'name', label: 'Đề bài', name: true, sort: r => r.i.name, cell: r => <><b>{r.i.name}</b><small>{r.i.task || 'Chưa có đề bài.'}</small></> },
+        { key: 'kind', label: 'Loại', sort: r => IKIND[r.i.kind]?.[0], cell: r => IKIND[r.i.kind]?.[0] ?? r.i.kind },
+        { key: 'mod', label: 'Chuyên đề', sort: r => r.md?.title ?? null, cell: r => r.md?.title ?? 'Cả chương trình (cuối khoá)' },
+        { key: 'w', label: 'Trọng số', sum: false, sort: r => r.i.w, cell: r => r.i.w + '%' },
+        { key: 'plans', label: 'Đợt dùng', sum: 'sum', sort: used, cell: used },
+        { key: 'gd', label: 'Đã chấm', sum: 'frac', sort: r => graded(r.pr, r.i)[0], cell: r => { const [a, b] = graded(r.pr, r.i); return `${a}/${b}` } },
+      ]} />
+    : <>{progs.map(pr => { const g = k.groupOf(pr.group_code); const its = rows.filter(r => r.pr.id === pr.id); const plans = pubPlans(pr)
+      if (!its.length) return null
       return <details key={pr.id} className="kprog mprog" open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
         <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{its.length} đề bài · {plans.length} đợt đang dùng</small>
           <span className="act"><button type="button" className="btn sm ghost" onClick={e => { e.preventDefault(); goto(go, PAGE.tp, { open: pr.id, tab: 'assess' }) }}><Ic n="edit" /> Khung đánh giá</button></span></summary>
-        <div className="prgrid">{its.map(i => { const md = i.mod ? k.mod(i.mod) : null; const ps = plans.filter(p => k.planItems(p).some(x => x.id === i.id))
+        <div className="prgrid">{its.map(({ i, md }) => { const ps = usedBy(pr, i)
           return <article key={i.id} className="prcard"><div className="prh"><span className="pill info plain"><Ic n={IKIND[i.kind]?.[1] ?? 'file'} /> {IKIND[i.kind]?.[0]}</span><small>{i.w}% điểm tổng</small></div>
             <b>{i.name}</b><small className="sub">{md ? `${k.SUBJ(md.subject)} · ${md.title}` : 'Cả chương trình (cuối khoá)'}</small><p className="prtask">{i.task || 'Chưa có đề bài.'}</p>
             {i.mode === 'rubric' ? <div className="chips">{i.rubric.map(c => <span key={c.id} className="chip">{c.name}{c.req ? ' *' : ''}</span>)}</div> : <small className="sub">Chấm điểm số, thang {i.max}</small>}
             <div className="prplans">{ps.map(p => { const open = k.itemOpen(p, i); const tr = k.traineesOf(p.id); const n = tr.length; const sb = tr.filter(t => k.grOf(p, i, t)?.sub).length; const gd = tr.filter(t => k.itemScore(p, i, t) != null).length
               return <button type="button" key={p.id} className="prpl" onClick={() => goto(go, PAGE.dg, { plan: p.id, tab: 'grade', item: i.id })}><span><b>{shortTitle(p.title)}</b>
                 <small>{open ? `${SUBMIT(i.kind) ? `nộp ${sb}/${n} · ` : ''}chấm ${gd}/${n} · hạn ${vnS(k.itemDue(p, i))}` : 'mở sau buổi ' + vnS(k.itemFrom(p, i))}</small></span>
-                {open ? <div className="hbar"><i style={{ width: `${n ? gd / n * 100 : 0}%` }} /></div> : <span className="pill draft plain">Chưa mở</span>}</button> })}
+                {!open && <span className="pill draft plain">Chưa mở</span>}</button> })}
               {!ps.length && <small className="sub">Chưa có đợt đã phát hành dùng đề này.</small>}</div>
             <div className="prfoot"><span /><span><button type="button" className="btn sm ghost" onClick={() => goto(go, PAGE.tp, { open: pr.id, tab: 'assess', item: i.id })}><Ic n="edit" /> Sửa đề & rubric</button></span></div></article> })}</div></details> })}
-    {!progs.length && <Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}
+      {!rows.length && <Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}</>}
   </>
 }
