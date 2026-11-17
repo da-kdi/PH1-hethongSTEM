@@ -1,4 +1,4 @@
-/* Bản mẫu giao diện v315 (docs/mockup/he-thong-stem.html), phạm vi .mau — SINH TỰ ĐỘNG bằng scripts/mau-css.mjs, không sửa tay.
+/* Bản mẫu giao diện v315 (docs/mockup/he-thong-stem.html), phạm vi .mau — SINH TỰ ĐỘNG bằng scripts/mau-css.cjs, không sửa tay.
    Chỉnh riêng cho app: src/modules/ph1/mau/app.css */
 .mau{--vh100:100vh;
   --bg:#f4f6fb; --surface:#ffffff; --soft:#eef2f9; --line:#e2e7f1; --fg:#14213d; --muted:#5f6b85; --faint:#8a94ab;

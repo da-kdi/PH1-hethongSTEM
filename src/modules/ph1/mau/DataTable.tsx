@@ -194,7 +194,7 @@ export function DataTable<T>({ id, rows, cols, rowKey, onOpen, noun = 'dòng', b
           <div className="fpanel" hidden={!fOpen} role="group" aria-label="Bộ lọc">{filterBox}
             <div className="fpfoot"><button type="button" className="btn sm ghost" disabled={!fcount} onClick={() => onClearFilters?.()}>Xoá bộ lọc</button><button type="button" className="btn sm" onClick={() => setFOpen(false)}>Xong</button></div></div></div>}
         {!grid && <span className="colpkw fwrap">
-          <button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} title="Chọn cột hiện trên bảng"><Ic n="sliders" /> Cột</button>
+          <button type="button" className="btn sm" aria-expanded={pick} onClick={() => setPick(!pick)} title="Chọn cột hiện trên bảng"><Ic n="cols" /> Cột{cols.filter(c => hide.has(c.key) && c.key !== lockKey).length ? <em>{cols.filter(c => hide.has(c.key) && c.key !== lockKey).length} ẩn</em> : null}</button>
           {pick && <ColPicker cols={cols} order={order} hide={hide} lockKey={lockKey} onClose={() => setPick(false)}
             onSave={(o, h) => { putCfg({ order: o, hide: h }); setPick(false) }} onReset={() => { putCfg({}); setPick(false) }} />}
         </span>}

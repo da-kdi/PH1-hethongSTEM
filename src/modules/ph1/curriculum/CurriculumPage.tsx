@@ -335,7 +335,7 @@ function ProgramDetail({ cur, orgId, cat, canManage, orgs, below, isPlatform, ma
     {ask && <Confirm text={ask.text} yes={ask.yes} danger={ask.act === 'delete'} onNo={() => setAsk(null)} onYes={() => { const a = ask.act; setAsk(null); a === 'delete' ? removeProgram() : setStatus(a === 'archive' ? 'archived' : 'draft') }} />}
     {msg && <p className="msg">{msg}</p>}
     {note && <p className="okmsg">{note}</p>}
-    <div className="ctbar"><div className="tabs" role="tablist">
+    <div className="ctbar"><div className="seg" role="tablist">
       <button type="button" role="tab" className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>Chương trình</button>
       <button type="button" role="tab" className={tab === 'deploy' ? 'on' : ''} onClick={() => setTab('deploy')}>Phân phối & trường áp dụng</button>
       {editable && <button type="button" role="tab" className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>Thiết lập</button>}</div>

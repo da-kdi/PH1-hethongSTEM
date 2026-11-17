@@ -595,7 +595,7 @@ function DocView({ d, st, sn, school, canManage, tip, yearLine, onBack, openMat,
         <button type="button" className="btn" onClick={onEdit}><Ic n="edit" /> Xếp lại lịch</button><button type="button" className="btn" onClick={onCopy}><Ic n="copy" /> Nhân bản</button>
         <button type="button" className="btn ghost" aria-label="Xoá bản phân phối" onClick={() => setDel(true)}><Ic n="trash" /></button></div>}</div>
     {del && <Confirm danger text={`Xoá “${d.title}”? Không hoàn tác được.`} yes="Xoá" onYes={onDelete} onNo={() => setDel(false)} />}
-    <div className="ctbar"><div className="tabs" role="tablist">
+    <div className="ctbar"><div className="seg" role="tablist">
       <button type="button" role="tab" className={view === 'cal' ? 'on' : ''} onClick={() => setView('cal')}>Lịch năm học</button>
       <button type="button" role="tab" className={view === 'ppct' ? 'on' : ''} onClick={() => setView('ppct')}>Bảng PPCT <small>{tot} tiết</small></button></div>
       <div className="ctstats"><span><b>{sch.length}</b>môn học</span><span><b>{tot}</b>tiết/năm học</span><span><b>{wUsed}</b>/{cal.WEEKS} tuần học</span>

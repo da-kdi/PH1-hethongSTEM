@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errMsg } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Seg, Sel, StatCard, cssVar } from '../ph1/mau/kit'
 import { CoverDeco } from '../ph1/designs/blocks'
 import { ATTK, COMP, FBG, IKIND, LV, LVC, LVP, PAGE, SUBMIT, SUPK, SURVEY, addD, fmt1, goto, resPill, shortTitle, takeIntent, uid, vn, vnS, type Item, type K, type Plan, type Q } from './api'
 import { useP2, type P2 } from './use'
@@ -77,25 +77,11 @@ function PlanList({ P, k, tab, onOpen }: { P: P2; k: K; tab: Tab; onOpen: (id: s
       const { data, error } = await supabase.rpc('ph2_issue_certs', { p_plan: p.id, p_teachers: ids }); if (error) return errMsg(error.message); n += Number(data) || 0 }
     await P.reload(); return `Đã cấp ${n} chứng nhận${skip ? ` · bỏ qua ${skip} đợt chưa kết thúc & chốt kết quả` : ''}` }
   return <>
-    <div className="toolbar"><Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(pr => k.plansOf(pr.id).length).map(pr => [pr.id, `${pr.code} · ${pr.name}`])} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.dg.mode', v) } catch { /* bỏ qua */ } }} /><small className="sub" style={{ marginLeft: 'auto' }}>Chọn một đợt để mở {what[tab]}</small></div>
-    {view === 'table' ? <DataTable id="dg" rows={rows} rowKey={p => p.id} noun="đợt" onOpen={p => onOpen(p.id)}
-      groupBy={p => { const pr = k.prog(p.program_id)!; const ps = pub(pr.id); return [pr.id, <><span className="code sm" style={cssVar(k.groupOf(pr.group_code).color)}>{pr.code}</span> {pr.name} <small>{ps.length} đợt · {new Set(ps.flatMap(x => k.traineesOf(x.id))).size} học viên</small></>] }}
-      empty={<Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}
-      bulk={[{ label: 'Xuất kết quả', run: exportRes }, ...(P.canManage ? [{ label: 'Cấp chứng nhận', run: certAll }] : [])]}
-      cols={[
-        { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit}</small></> },
-        { key: 'date', label: 'Thời gian', date: true, sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
-        { key: 'n', label: 'Học viên', sum: 'sum', sort: p => k.traineesOf(p.id).length, cell: p => k.traineesOf(p.id).length },
-        { key: 'past', label: 'Buổi đã học', sum: 'frac', sort: p => mt(p).past, cell: p => `${mt(p).past}/${k.sessOfPlan(p.id).length}` },
-        { key: 'att', label: 'Chuyên cần TB', sum: 'avg', sort: p => mt(p).att, cell: p => { const a = mt(p).att; return a == null ? '—' : a + '%' } },
-        { key: 'gd', label: 'Đã chấm', sum: 'frac', sort: p => mt(p).gd, cell: p => `${mt(p).gd}/${mt(p).gt}` },
-        { key: 'sc', label: 'Điểm TB', sum: false, sort: p => mt(p).sc, cell: p => mt(p).sc ?? '—' },
-        { key: 'done', label: 'Hoàn thành', sum: 'frac', sort: p => mt(p).done, cell: p => `${mt(p).done}/${mt(p).n}` },
-        { key: 'iss', label: 'Chứng nhận', sum: 'sum', sort: p => mt(p).iss, cell: p => mt(p).iss },
-        { key: 'status', label: 'Trạng thái', sum: 'status', sort: p => k.planSt(p)[0], cell: p => { const [sl, sc] = k.planSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
-      ]} />
-    : <>{progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = pub(pr.id)
+    <DataTable id="dg" rows={rows} rowKey={p => p.id} noun="đợt" onOpen={p => onOpen(p.id)} fold
+      filterBox={<FRow label="Chương trình"><Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(pr => k.plansOf(pr.id).length).map(pr => [pr.id, `${pr.code} · ${pr.name}`])} /></FRow>}
+      fcount={prog ? 1 : 0} onClearFilters={() => setProg('')}
+      view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.dg.mode', v) } catch { /* bỏ qua */ } }} />}
+      grid={view === 'grid' ? (<>{progs.map(pr => { const g = k.groupOf(pr.group_code); const ps = pub(pr.id)
       return <details key={pr.id} className="kprog mprog" open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
         <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{ps.length} đợt · {new Set(ps.flatMap(p => k.traineesOf(p.id))).size} học viên</small></summary>
         <div className="grid dgrid kgrid">{ps.map(p => { const m = mt(p); const [sl, sc] = k.planSt(p)
@@ -104,7 +90,22 @@ function PlanList({ P, k, tab, onOpen }: { P: P2; k: K; tab: Tab; onOpen: (id: s
             <h3>{p.title}</h3><small className="sub">{p.unit} · {k.planRange(p)}</small>
             <div className="chips"><span className="chip">{m.past}/{k.sessOfPlan(p.id).length} buổi</span><span className="chip">CC {m.att == null ? '—' : m.att + '%'}</span><span className="chip">Điểm {m.sc ?? '—'}</span><span className="chip">HT {m.done}/{m.n}</span></div>
             <div className="foot"><span><b>{key(p, m)}</b></span><span className={`pill ${sc} plain`}>{sl}</span></div></article> })}</div></details> })}
-      {!progs.length && <Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}</>}
+      {!progs.length && <Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}</>) : undefined}
+      groupBy={p => { const pr = k.prog(p.program_id)!; const ps = pub(pr.id); return [pr.id, <><span className="pcd">{pr.code}</span><div className="ptit"><b>{pr.name}</b></div><small className="pmeta">{ps.length} đợt · {new Set(ps.flatMap(x => k.traineesOf(x.id))).size} học viên</small></>, k.groupOf(pr.group_code).color] }}
+      empty={<Empty>Chưa có đợt đào tạo nào đã phát hành.</Empty>}
+      bulk={[{ label: 'Xuất kết quả', run: exportRes }, ...(P.canManage ? [{ label: 'Cấp chứng nhận', run: certAll }] : [])]}
+      cols={[
+        { key: 'title', label: 'Đợt đào tạo', name: true, sort: p => p.title, cell: p => <><b>{p.title}</b><small>{p.unit}</small></> },
+        { key: 'date', label: 'Thời gian', date: true, sort: p => k.sessOfPlan(p.id)[0]?.date ?? null, cell: p => k.planRange(p) },
+        { key: 'n', label: 'Học viên', sum: 'sum', sort: p => k.traineesOf(p.id).length, cell: p => k.traineesOf(p.id).length },
+        { key: 'past', label: 'Buổi đã học', hidden: true, sum: 'frac', sort: p => mt(p).past, cell: p => `${mt(p).past}/${k.sessOfPlan(p.id).length}` },
+        { key: 'att', label: 'Chuyên cần TB', sum: 'avg', sort: p => mt(p).att, cell: p => { const a = mt(p).att; return a == null ? '—' : a + '%' } },
+        { key: 'gd', label: 'Đã chấm', hidden: true, sum: 'frac', sort: p => mt(p).gd, cell: p => `${mt(p).gd}/${mt(p).gt}` },
+        { key: 'sc', label: 'Điểm TB', sum: false, sort: p => mt(p).sc, cell: p => mt(p).sc ?? '—' },
+        { key: 'done', label: 'Hoàn thành', sum: 'frac', sort: p => mt(p).done, cell: p => `${mt(p).done}/${mt(p).n}` },
+        { key: 'iss', label: 'Chứng nhận', hidden: true, sum: 'sum', sort: p => mt(p).iss, cell: p => mt(p).iss },
+        { key: 'status', label: 'Trạng thái', sum: 'status', sort: p => k.planSt(p)[0], cell: p => { const [sl, sc] = k.planSt(p); return <span className={`pill ${sc} plain`}>{sl}</span> } },
+      ]} />
   </>
 }
 

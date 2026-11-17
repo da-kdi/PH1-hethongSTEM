@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { norm } from '../ph1/ui'
 import { DataTable } from '../ph1/mau/DataTable'
-import { Back, HNote, Empty, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
+import { Back, HNote, Empty, FRow, Flow, Ic, Mau, PageHead, Panel, Search, Seg, Sel, StatusPill, cssVar } from '../ph1/mau/kit'
 import { SGLYPH } from '../ph1/mau/icons'
 import { ActStore, BLOCK_KIND, BlockEdit, BlockView, CoverDeco, newBlock, type Block } from '../ph1/designs/blocks'
 import { ACTS, clone, setActToast } from '../ph1/designs/acts'
@@ -38,8 +38,8 @@ export function TrainContent({ orgId, go }: { orgId: string | null; go?: (p: str
   if (tab === 'lect' && L) return <Mau>{msg}<LectEditor P={P} k={k} L={L} part={part} setPart={setPart} learner={learner} setLearner={setLearner} onBack={() => { setLect(null); setLearner(false) }}
     onStore={() => { setTarget({ lect: L.id, part }); setLect(null) }} /></Mau>
   return <Mau>{msg}
-    <PageHead icon="video" title="Nội dung đào tạo" sub="Học liệu theo chuyên đề (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch đào tạo › Lịch" />
-    <Flow steps={[['mat', 'Học liệu', `${db.mods.filter(m => k.matSt(m).s !== 'none').length} học liệu chuyên đề`], ['lect', 'Bài giảng', `${db.lects.length} bài giảng`],
+    <PageHead icon="video" title="Nội dung đào tạo" sub="Học liệu theo chuyên đề (nhiều phiên bản), bài giảng và đề bài thực hành — buổi học & lớp học trực tuyến ở Kế hoạch đào tạo › Lịch">{tab === 'mat' && P.canManage && <button type="button" className="btn primary" onClick={() => P.setMsg('Chọn một chuyên đề “Chưa có” rồi bấm “Tạo học liệu” ở cuối dòng.')}><Ic n="plus" /> Tạo học liệu</button>}</PageHead>
+    <Flow steps={[['mat', 'Học phần', `${db.mods.filter(m => k.matSt(m).s !== 'none').length} học liệu chuyên đề`], ['lect', 'Bài giảng', `${db.lects.length} bài giảng`],
       ['prac', 'Hoạt động thực hành', `${db.progs.flatMap(p => p.items).filter(i => i.kind !== 'quiz').length} đề bài · gắn khung đánh giá`]]} value={tab} onChange={t => { setTab(t); setOpen(null); setLect(null) }} />
     {tab === 'mat' ? <MatList P={P} k={k} onOpen={setOpen} />
       : tab === 'lect' ? <LectList P={P} k={k} newLect={newLect} onOpen={(id, l) => { setLect(id); setPart(0); setLearner(l); scrollTo(0, 0) }} />
@@ -50,37 +50,48 @@ export function TrainContent({ orgId, go }: { orgId: string | null; go?: (p: str
 let TARGET: { lect: string; part: number } | null = null
 
 // ---------- Học liệu: danh sách ----------
+// Bản mẫu v315 (tab “Học phần”): một bảng, khối thu gọn theo chương trình › dải học phần; STT · Chuyên đề · Thời lượng · Cập nhật · Tình trạng · Bài giảng
+type MRow = { p: Prog; s: string; m: Mod }
 function MatList({ P, k, onOpen }: { P: P2; k: K; onOpen: (mid: string) => void }) {
   const db = P.db!
   const [F, setF] = useState({ q: '', subj: '', st: '', prog: '' })
-  const [view, setView] = useState<'table' | 'grid'>('table')
-  const [shut, setShut] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<'table' | 'grid'>(() => { try { return (localStorage.getItem('ph2.bt.mat') as 'table' | 'grid') || 'table' } catch { return 'table' } })
   const qq = norm(F.q)
   const okM = (s: string, m: Mod) => (!qq || norm(m.title).includes(qq)) && (!F.subj || s === F.subj) && (!F.st || k.matSt(m).s === F.st)
   const create = async (m: Mod) => { const { error } = await supabase.rpc('ph2_material_new', { p_module: m.id }); if (error) return P.setMsg(error.message); await P.reload(); P.setMsg('✓ Đã tạo học liệu PB 1 (nháp)'); onOpen(m.id) }
-  const act = (m: Mod) => k.matSt(m).s === 'none' ? (P.canManage ? <button type="button" className="btn sm primary" onClick={() => create(m)}><Ic n="plus" /> Tạo học liệu</button> : <span className="sub">Chưa có</span>)
-    : <button type="button" className="btn sm" onClick={() => onOpen(m.id)}>Mở ›</button>
+  const act = (m: Mod) => k.matSt(m).s === 'none' ? (P.canManage ? <button type="button" className="btn sm primary" onClick={e => { e.stopPropagation(); create(m) }}><Ic n="plus" /> Tạo học liệu</button> : <span className="sub">Chưa có</span>)
+    : <button type="button" className="btn sm" onClick={e => { e.stopPropagation(); onOpen(m.id) }}>Mở ›</button>
   const allS = Array.from(new Set(db.progs.flatMap(k.subjectsOf)))
   const progs = db.progs.filter(p => !F.prog || p.id === F.prog)
-  return <>
-    <div className="toolbar"><Search value={F.q} onChange={q => setF({ ...F, q })} placeholder="Tìm chuyên đề…" /><Sel label="Tất cả chương trình" value={F.prog} onChange={v => setF({ ...F, prog: v })} options={db.progs.map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={allS.map(s => [s, k.SUBJ(s)])} />
-      <Sel label="Mọi tình trạng học liệu" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['ok', 'Đủ'], ['draft', 'Đang soạn'], ['none', 'Chưa có']]} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={setView} />
-      <button type="button" className="btn sm ghost" onClick={() => setShut(progs.every(p => shut.has(p.id)) ? new Set() : new Set(progs.map(p => p.id)))}>{progs.every(p => shut.has(p.id)) ? 'Mở tất cả' : 'Thu gọn tất cả'}</button></div>
-    {progs.map(p => { const g = k.groupOf(p.group_code); const subs = k.subjectsOf(p).map(s => [s, k.subjMods(p, s).filter(m => okM(s, m))] as const).filter(([, ms]) => ms.length); if (!subs.length) return null
-      const all = subs.flatMap(([, ms]) => ms); const ok = all.filter(m => k.matSt(m).s === 'ok').length
-      return <details key={p.id} className="kprog mprog" open={!shut.has(p.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(p.id); else n.add(p.id); return n }) }}>
-        <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{p.code}</span><b>{p.name}</b><small>{subs.length} học phần · {all.length} chuyên đề · {ok}/{all.length} đủ học liệu</small></summary>
-        {view === 'table' ? <div className="tblwrap"><table><thead><tr><th>STT</th><th>Chuyên đề</th><th>Thời lượng</th><th>Học liệu (PB đang dùng)</th><th>Bài giảng</th><th /></tr></thead><tbody>
-          {subs.map(([s, ms]) => <Fragment key={s}><tr className="band"><td colSpan={6}><span className="tag">Học phần</span> {k.SUBJ(s)} <small className="sub">· {ms.length} chuyên đề · {ms.filter(m => k.matSt(m).s === 'ok').length} đủ học liệu</small></td></tr>
-            {ms.map((m, i) => <tr key={m.id}><td className="n">{i + 1}</td><td><b>{m.title}</b></td><td>{Number(m.hours)} giờ</td><td><MatPill k={k} m={m} />{k.matSt(m).s !== 'none' && <> <small className="sub">PB {k.matSt(m).v}</small></>}</td>
-              <td>{db.lects.filter(l => l.module_id === m.id).length}</td><td style={{ textAlign: 'right' }}>{act(m)}</td></tr>)}</Fragment>)}</tbody></table></div>
-          : subs.map(([s, ms]) => <div key={s} className="msub"><div className="msubh"><svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: SGLYPH[s] ?? SGLYPH.khtn }} /><b>{k.SUBJ(s)}</b><small>{ms.length} chuyên đề</small></div>
-            <div className="grid hlgrid">{ms.map((m, i) => <article key={m.id} className="pcard dcard hlcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={s} /><span>{k.SUBJ(s)} · {Number(m.hours)} giờ</span><b>Chuyên đề {i + 1}</b></div><h3>{m.title}</h3>
-              <div className="chips"><MatPill k={k} m={m} />{k.matSt(m).s !== 'none' && <span className="chip">PB {k.matSt(m).v}</span>}<span className="chip">{db.lects.filter(l => l.module_id === m.id).length} bài giảng</span></div><div className="foot"><span />{act(m)}</div></article>)}</div></div>)}</details> })}
-    {!progs.some(p => k.subjectsOf(p).some(s => k.subjMods(p, s).some(m => okM(s, m)))) && <Empty>Không có chuyên đề phù hợp.</Empty>}
-  </>
+  const rows: MRow[] = progs.flatMap(p => k.subjectsOf(p).flatMap(s => k.subjMods(p, s).filter(m => okM(s, m)).map(m => ({ p, s, m }))))
+  const inP = (p: Prog) => rows.filter(r => r.p === p); const inS = (p: Prog, s: string) => rows.filter(r => r.p === p && r.s === s)
+  const verOf = (m: Mod) => k.matsOf(m.id).find(x => x.version_no === k.matSt(m).v)
+  const LSt: Record<string, string> = { ok: 'Đủ', draft: 'Nháp', none: 'Chưa có' }
+  return <DataTable id="bt-mat" rows={rows} rowKey={r => r.m.id} noun="chuyên đề" onOpen={r => k.matSt(r.m).s !== 'none' ? onOpen(r.m.id) : undefined} fold
+    search={{ value: F.q, onChange: q => setF({ ...F, q }), placeholder: 'Tìm chuyên đề…' }}
+    filterBox={<><FRow label="Chương trình"><Sel label="Tất cả chương trình" value={F.prog} onChange={v => setF({ ...F, prog: v })} options={db.progs.map(p => [p.id, `${p.code} · ${p.name}`])} /></FRow>
+      <FRow label="Học phần"><Sel label="Tất cả học phần" value={F.subj} onChange={v => setF({ ...F, subj: v })} options={allS.map(s => [s, k.SUBJ(s)])} /></FRow>
+      <FRow label="Tình trạng học liệu"><Sel label="Mọi tình trạng học liệu" value={F.st} onChange={v => setF({ ...F, st: v })} options={[['ok', 'Đủ'], ['draft', 'Nháp'], ['none', 'Chưa có']]} /></FRow></>}
+    fcount={[F.prog, F.subj, F.st].filter(Boolean).length} onClearFilters={() => setF({ ...F, prog: '', subj: '', st: '' })}
+    filters={F} onFilters={x => setF({ q: x.q ?? '', subj: x.subj ?? '', st: x.st ?? '', prog: x.prog ?? '' })}
+    view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.bt.mat', v) } catch { /* bỏ qua */ } }} />}
+    groupBy={r => { const all = inP(r.p); return [r.p.id, <><span className="pcd">{r.p.code}</span><div className="ptit"><b>{r.p.name}</b></div><small className="pmeta">{new Set(all.map(x => x.s)).size} học phần · {all.length} chuyên đề · <b>{all.filter(x => k.matSt(x.m).s === 'ok').length}/{all.length}</b> đủ học liệu</small></>, k.groupOf(r.p.group_code).color] }}
+    subBy={r => { const ms = inS(r.p, r.s); return [r.s, <><span className="tag">Học phần</span> <b className="hpname">{k.SUBJ(r.s)}</b> <small className="sub">· {ms.length} chuyên đề · {ms.filter(x => k.matSt(x.m).s === 'ok').length} đủ học liệu</small></>] }}
+    grid={view === 'grid' ? (rows.length ? <>{progs.map(p => { const g = k.groupOf(p.group_code); const ps = inP(p); if (!ps.length) return null
+      return <div key={p.id}><div className="group"><span className="code sm" style={cssVar(g.color)}>{p.code}</span> {p.name}</div>
+        <div className="grid hlgrid">{ps.map(({ s, m }, i) => <article key={m.id} className="pcard dcard hlcard" style={cssVar(g.color)}><div className="cover"><CoverDeco s={s} /><span>{k.SUBJ(s)} · {Number(m.hours)} giờ</span><b>Chuyên đề {i + 1}</b></div><h3>{m.title}</h3>
+          <div className="chips"><MatPill k={k} m={m} />{k.matSt(m).s !== 'none' && <span className="chip">PB {k.matSt(m).v}</span>}<span className="chip">{db.lects.filter(l => l.module_id === m.id).length} bài giảng</span></div><div className="foot"><span />{act(m)}</div></article>)}</div></div> })}</>
+      : <Empty>Không có chuyên đề phù hợp.</Empty>) : undefined}
+    empty={<Empty>Không có chuyên đề phù hợp.</Empty>}
+    cols={[
+      { key: 'stt', label: 'STT', width: '64px', sum: false, sort: r => inS(r.p, r.s).indexOf(r) + 1, cell: r => inS(r.p, r.s).indexOf(r) + 1 },
+      { key: 'title', label: 'Chuyên đề', name: true, sort: r => r.m.title, cell: r => <b>{r.m.title}</b> },
+      { key: 'hours', label: 'Thời lượng', sum: 'sum', sort: r => Number(r.m.hours), cell: r => Number(r.m.hours) + ' giờ' },
+      { key: 'date', label: 'Cập nhật', date: true, sort: r => verOf(r.m) ? vn(verOf(r.m)!.updated_at.slice(0, 10)) : null, cell: r => verOf(r.m) ? vn(verOf(r.m)!.updated_at.slice(0, 10)) : 'Chưa có' },
+      { key: 'st', label: 'Tình trạng', sum: 'status', sort: r => LSt[k.matSt(r.m).s], cell: r => <><MatPill k={k} m={r.m} />{k.matSt(r.m).s !== 'none' && <> <small className="sub">PB {k.matSt(r.m).v}</small></>}</> },
+      { key: 'lect', label: 'Bài giảng', sum: 'sum', sort: r => db.lects.filter(l => l.module_id === r.m.id).length, cell: r => db.lects.filter(l => l.module_id === r.m.id).length },
+      { key: 'act', label: 'Thao tác', width: '140px', raw: true, sum: false, cell: r => act(r.m) },
+    ]} />
 }
 
 // ---------- Học liệu: chi tiết theo phiên bản ----------
@@ -242,23 +253,12 @@ function Practice({ P, k, go }: { P: P2; k: K; go?: (p: string) => void }) {
       return { pr, i, md, gi: md ? subs.indexOf(md.subject) : 999 } }).sort((a, b) => a.gi - b.gi) })
   const used = (r: PRow) => usedBy(r.pr, r.i).length
   return <>
-    <div className="toolbar"><Search value={q} onChange={setQ} placeholder="Tìm đề bài…" />
-      <Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(p => p.items.some(pk)).map(p => [p.id, `${p.code} · ${p.name}`])} />
-      <Seg label="Kiểu xem" items={[['table', 'Bảng'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.bt.prac', v) } catch { /* bỏ qua */ } }} />
-      <HNote tip="Đề bài gắn với đầu điểm trong Khung đánh giá của chương trình — học viên nộp sau buổi học, giảng viên chấm theo rubric ở Đánh giá kết quả › Chấm bài." /></div>
-    {view === 'table' ? <DataTable id="bt-prac" rows={rows} rowKey={r => r.pr.id + '|' + r.i.id} noun="đề bài"
-      onOpen={r => goto(go, PAGE.tp, { open: r.pr.id, tab: 'assess', item: r.i.id })}
-      groupBy={r => [r.pr.id + '|' + (r.md?.subject ?? '~'), <><span className="code sm" style={cssVar(k.groupOf(r.pr.group_code).color)}>{r.pr.code}</span> {r.pr.name} › {r.md ? <>Học phần {k.SUBJ(r.md.subject)}</> : 'Cuối khoá'}</>]}
-      empty={<Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}
-      cols={[
-        { key: 'name', label: 'Đề bài', name: true, sort: r => r.i.name, cell: r => <><b>{r.i.name}</b><small>{r.i.task || 'Chưa có đề bài.'}</small></> },
-        { key: 'kind', label: 'Loại', sort: r => IKIND[r.i.kind]?.[0], cell: r => IKIND[r.i.kind]?.[0] ?? r.i.kind },
-        { key: 'mod', label: 'Chuyên đề', sort: r => r.md?.title ?? null, cell: r => r.md?.title ?? 'Cả chương trình (cuối khoá)' },
-        { key: 'w', label: 'Trọng số', sum: false, sort: r => r.i.w, cell: r => r.i.w + '%' },
-        { key: 'plans', label: 'Đợt dùng', sum: 'sum', sort: used, cell: used },
-        { key: 'gd', label: 'Đã chấm', sum: 'frac', sort: r => graded(r.pr, r.i)[0], cell: r => { const [a, b] = graded(r.pr, r.i); return `${a}/${b}` } },
-      ]} />
-    : <>{progs.map(pr => { const g = k.groupOf(pr.group_code); const its = rows.filter(r => r.pr.id === pr.id); const plans = pubPlans(pr)
+    <DataTable id="bt-prac" rows={rows} rowKey={r => r.pr.id + '|' + r.i.id} noun="đề bài" fold
+      search={{ value: q, onChange: setQ, placeholder: 'Tìm đề bài…' }}
+      filterBox={<FRow label="Chương trình"><Sel label="Tất cả chương trình" value={prog} onChange={setProg} options={db.progs.filter(p => p.items.some(pk)).map(p => [p.id, `${p.code} · ${p.name}`])} /></FRow>}
+      fcount={prog ? 1 : 0} onClearFilters={() => setProg('')}
+      view={<Seg label="Kiểu xem" items={[['table', 'Danh sách'], ['grid', 'Thẻ']]} value={view} onChange={v => { setView(v); try { localStorage.setItem('ph2.bt.prac', v) } catch { /* bỏ qua */ } }} />}
+      grid={view === 'grid' ? (<>{progs.map(pr => { const g = k.groupOf(pr.group_code); const its = rows.filter(r => r.pr.id === pr.id); const plans = pubPlans(pr)
       if (!its.length) return null
       return <details key={pr.id} className="kprog mprog" open={!shut.has(pr.id)} onToggle={e => { const o = (e.currentTarget as HTMLDetailsElement).open; setShut(x => { const n = new Set(x); if (o) n.delete(pr.id); else n.add(pr.id); return n }) }}>
         <summary className="phead" style={cssVar(g.color)}><span className="chev"><Ic n="chev" /></span><span className="code sm">{pr.code}</span><b>{pr.name}</b><small>{its.length} đề bài · {plans.length} đợt đang dùng</small>
@@ -273,6 +273,18 @@ function Practice({ P, k, go }: { P: P2; k: K; go?: (p: string) => void }) {
                 {!open && <span className="pill draft plain">Chưa mở</span>}</button> })}
               {!ps.length && <small className="sub">Chưa có đợt đã phát hành dùng đề này.</small>}</div>
             <div className="prfoot"><span /><span><button type="button" className="btn sm ghost" onClick={() => goto(go, PAGE.tp, { open: pr.id, tab: 'assess', item: i.id })}><Ic n="edit" /> Sửa đề & rubric</button></span></div></article> })}</div></details> })}
-      {!rows.length && <Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}</>}
+      {!rows.length && <Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}</>) : undefined}
+      onOpen={r => goto(go, PAGE.tp, { open: r.pr.id, tab: 'assess', item: r.i.id })}
+      groupBy={r => [r.pr.id, <><span className="pcd">{r.pr.code}</span><div className="ptit"><b>{r.pr.name}</b></div><small className="pmeta">{rows.filter(x => x.pr === r.pr).length} đề bài · {pubPlans(r.pr).length} đợt đang dùng <button type="button" className="linkbtn" onClick={e => { e.preventDefault(); goto(go, PAGE.tp, { open: r.pr.id, tab: 'assess' }) }}>Khung đánh giá</button></small></>, k.groupOf(r.pr.group_code).color]}
+      subBy={r => [r.md?.subject ?? '~', r.md ? <><span className="tag">Học phần</span> <b className="hpname">{k.SUBJ(r.md.subject)}</b></> : <b className="hpname">Cuối khoá</b>]}
+      empty={<Empty>Chưa có đề bài thực hành — thêm đầu điểm ở Khung đánh giá của chương trình.</Empty>}
+      cols={[
+        { key: 'name', label: 'Đề bài', name: true, sort: r => r.i.name, cell: r => <><b>{r.i.name}</b><small>{r.i.task || 'Chưa có đề bài.'}</small></> },
+        { key: 'kind', label: 'Loại', sort: r => IKIND[r.i.kind]?.[0], cell: r => IKIND[r.i.kind]?.[0] ?? r.i.kind },
+        { key: 'mod', label: 'Chuyên đề', sort: r => r.md?.title ?? null, cell: r => r.md?.title ?? 'Cả chương trình (cuối khoá)' },
+        { key: 'w', label: 'Trọng số', sum: false, sort: r => r.i.w, cell: r => r.i.w + '%' },
+        { key: 'plans', label: 'Đợt dùng', sum: 'sum', sort: used, cell: used },
+        { key: 'gd', label: 'Đã chấm', sum: 'frac', sort: r => graded(r.pr, r.i)[0], cell: r => { const [a, b] = graded(r.pr, r.i); return `${a}/${b}` } },
+      ]} />
   </>
 }
